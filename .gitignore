@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+apps/web/dist/
+apps/api/dist/
+packages/*/dist/
+
+# Vite
+.vite/
+apps/web/.vite/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+prisma/migrations/dev.db*
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+
+# Local uploads / storage (S3-compatible dev buckets)
+uploads/
+storage/
+tmp/
+
+# Editors / tooling
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.qodo/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code local state
+.claude/settings.local.json
