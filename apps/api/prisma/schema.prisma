@@ -226,6 +226,12 @@ model Club {
   trfContributions            TrfContribution[]
   assessments                 ClubAssessment[]
 
+  // Trigram search. Prisma CAN express this one — single column, custom
+  // operator class — and therefore must: an index it can represent but does
+  // not know about gets proposed for dropping on the next migrate dev. pg_trgm
+  // exists by now because the extensions migration runs first.
+  // persons_name_trgm cannot live here; it indexes an expression.
+  @@index([name(ops: raw("gin_trgm_ops"))], map: "clubs_name_trgm", type: Gin)
   @@map("clubs")
 }
 

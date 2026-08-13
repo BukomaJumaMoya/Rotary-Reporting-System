@@ -23,5 +23,9 @@ export default defineConfig({
   datasource: {
     url,
     directUrl,
+    // Prisma replays the migration history into this database to check for
+    // drift. It is created and dropped on demand and must never point at a
+    // database holding real data.
+    shadowDatabaseUrl: process.env['SHADOW_DATABASE_URL'] ?? `${url}_shadow`,
   },
 });
