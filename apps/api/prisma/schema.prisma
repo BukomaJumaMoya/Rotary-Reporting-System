@@ -1,0 +1,1690 @@
+// =====================================================================
+// Rotaract District Information System (DIS)
+//
+// This file is a TRANSLATION of docs/schema.sql, which remains the
+// authoritative definition. When the two disagree, schema.sql is right
+// and this file is wrong.
+//
+// Conventions (docs/03-Data-Model.md §7):
+//   * snake_case in the database via @map / @@map; camelCase in TypeScript
+//   * UUID primary keys defaulted in the DATABASE via gen_random_uuid(),
+//     so a client may still supply its own id for offline-created rows
+//     and retry idempotently (ADR-004)
+//   * NUMERIC for money, never Float
+//   * Timestamptz(6) everywhere, never Timestamp
+//   * Referential actions are written out explicitly. Prisma's defaults
+//     (onDelete: Restrict, onUpdate: Cascade) are NOT Postgres's
+//     defaults, so every relation states NoAction unless schema.sql
+//     specifies otherwise.
+//
+// Things Postgres can express and Prisma cannot — CHECK constraints,
+// partial indexes, expression indexes, the club_rosters materialised
+// view, RLS — are listed at the end of each domain and land in a raw SQL
+// migration.
+// =====================================================================
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+  // `views` lets the client read the club_rosters materialised view. Migrations
+  // still neither create nor drop it — the raw SQL migration owns it.
+  previewFeatures     = ["views"]
+}
+
+// The connection URL is supplied by prisma.config.ts, not here: declaring
+// `url = env("DATABASE_URL")` in this block makes `prisma generate` fail when the
+// variable is absent, which is precisely the situation in CI.
+datasource db {
+  provider = "postgresql"
+}
+
+// =====================================================================
+// 1. ORGANISATION
+// =====================================================================
+
+enum ClubBaseType {
+  CBC
+  IBC
+  ECLUB
+
+  @@map("club_base_type")
+}
+
+enum ClubStatus {
+  PROVISIONAL
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+  MERGED
+
+  @@map("club_status")
+}
+
+enum ClubTier {
+  T1
+  T2
+  IBC
+
+  @@map("club_tier")
+}
+
+model District {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  riDistrictCode String    @unique @map("ri_district_code")
+  name           String
+  countryCode    String    @default("UG") @map("country_code") @db.Char(2)
+  timezone       String    @default("Africa/Kampala")
+  currencyCode   String    @default("UGX") @map("currency_code") @db.Char(3)
+  charteredOn    DateTime? @map("chartered_on") @db.Date
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  districtYears    DistrictYear[]
+  regions          Region[]
+  clusters         Cluster[]
+  clubAffiliations ClubDistrictAffiliation[]
+  positions        Position[]
+  appointments     Appointment[]
+  committees       Committee[]
+  membershipEvents      MembershipEvent[]
+  activityTypes         ActivityType[]
+  activities            Activity[]
+  financeCategories     FinanceCategory[]
+  budgets               Budget[]
+  financialTransactions FinancialTransaction[]
+  duesInvoices          DuesInvoice[]
+  memberDues            MemberDues[]
+  trfContributions      TrfContribution[]
+  assessmentFrameworks  AssessmentFramework[]
+  clubAssessments       ClubAssessment[]
+  goals                 Goal[]
+  documents             Document[]
+  socialAccounts        SocialAccount[]
+  mediaAppearances      MediaAppearance[]
+  notifications         Notification[]
+  exportJobs            ExportJob[]
+
+  @@map("districts")
+}
+
+/// The Rotary Year is global (1 Jul – 30 Jun); lock state is per district,
+/// which is why it lives on district_years and not here.
+model RotaryYear {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  label    String   @unique
+  startsOn DateTime @map("starts_on") @db.Date
+  endsOn   DateTime @map("ends_on") @db.Date
+  riTheme  String?  @map("ri_theme")
+
+  districtYears          DistrictYear[]
+  clusters               Cluster[]
+  clubAffiliations       ClubDistrictAffiliation[]
+  clubClusterAssignments ClubClusterAssignment[]
+  appointments           Appointment[]
+  committees             Committee[]
+  membershipEvents       MembershipEvent[]
+  activities             Activity[]
+  budgets                Budget[]
+  financialTransactions  FinancialTransaction[]
+  duesInvoices           DuesInvoice[]
+  memberDues             MemberDues[]
+  trfContributions       TrfContribution[]
+  assessmentFrameworks   AssessmentFramework[]
+  goals                  Goal[]
+  mediaAppearances       MediaAppearance[]
+
+  @@map("rotary_years")
+}
+
+model DistrictYear {
+  districtId   String    @map("district_id") @db.Uuid
+  rotaryYearId String    @map("rotary_year_id") @db.Uuid
+  isCurrent    Boolean   @default(false) @map("is_current")
+  /// Locked = read-only. The data access layer rejects writes with YEAR_LOCKED.
+  isLocked     Boolean   @default(false) @map("is_locked")
+  openedAt     DateTime? @map("opened_at") @db.Timestamptz(6)
+  lockedAt     DateTime? @map("locked_at") @db.Timestamptz(6)
+
+  district   District   @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([districtId, rotaryYearId])
+  @@map("district_years")
+}
+
+/// LDRR territory.
+model Region {
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId String @map("district_id") @db.Uuid
+  name       String
+
+  district District  @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clusters Cluster[]
+
+  @@unique([districtId, name])
+  @@map("regions")
+}
+
+/// Clusters are redrawn annually, so they are year-scoped.
+model Cluster {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId   String  @map("district_id") @db.Uuid
+  rotaryYearId String  @map("rotary_year_id") @db.Uuid
+  regionId     String? @map("region_id") @db.Uuid
+  name         String
+
+  district   District   @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  region     Region?    @relation(fields: [regionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  clubAssignments     ClubClusterAssignment[]
+  assessorAssignments AssessorAssignment[]
+
+  @@unique([districtId, rotaryYearId, name])
+  @@map("clusters")
+}
+
+/// Clubs are GLOBAL entities keyed on RI Club ID. A club is not owned by a
+/// district; it is affiliated to one, for a year. (Axiom 2 — there is
+/// deliberately no districtId here.)
+model Club {
+  id                   String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  riClubId             BigInt?      @unique @map("ri_club_id")
+  name                 String
+  slug                 String       @unique
+  baseType             ClubBaseType @map("base_type")
+  status               ClubStatus   @default(ACTIVE)
+  charteredOn          DateTime?    @map("chartered_on") @db.Date
+  charteredMemberCount Int?         @map("chartered_member_count")
+  sponsorRotaryClub    String?      @map("sponsor_rotary_club")
+  /// IBCs.
+  hostInstitution      String?      @map("host_institution")
+  meetingDay           Int?         @map("meeting_day") @db.SmallInt
+  meetingTime          DateTime?    @map("meeting_time") @db.Time(6)
+  meetingVenue         String?      @map("meeting_venue")
+  isVirtual            Boolean      @default(false) @map("is_virtual")
+  postalAddress        String?      @map("postal_address")
+  ursbNumber           String?      @map("ursb_number")
+  bankName             String?      @map("bank_name")
+  bankAccountRef       String?      @map("bank_account_ref")
+  logoUrl              String?      @map("logo_url")
+  createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime?    @map("deleted_at") @db.Timestamptz(6)
+
+  districtAffiliations        ClubDistrictAffiliation[]
+  clusterAssignments          ClubClusterAssignment[]
+  membershipEvents            MembershipEvent[]        @relation("MembershipEventClub")
+  counterpartyMembershipEvent MembershipEvent[]        @relation("MembershipEventCounterparty")
+  rosters                     ClubRoster[]
+  activityPartnerships        ActivityPartner[]
+  duesInvoices                DuesInvoice[]
+  memberDues                  MemberDues[]
+  trfContributions            TrfContribution[]
+  assessments                 ClubAssessment[]
+
+  @@map("clubs")
+}
+
+/// THE table that makes redistricting survivable.
+model ClubDistrictAffiliation {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clubId       String   @map("club_id") @db.Uuid
+  districtId   String   @map("district_id") @db.Uuid
+  rotaryYearId String   @map("rotary_year_id") @db.Uuid
+  /// Recalculated at rollover from roster size, then frozen for the year.
+  tier         ClubTier
+  isConfirmed  Boolean  @default(false) @map("is_confirmed")
+
+  club       Club       @relation(fields: [clubId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  district   District   @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  /// One district per club per year.
+  @@unique([clubId, rotaryYearId])
+  @@index([districtId, rotaryYearId], map: "cda_district_year")
+  @@map("club_district_affiliations")
+}
+
+model ClubClusterAssignment {
+  clubId       String @map("club_id") @db.Uuid
+  clusterId    String @map("cluster_id") @db.Uuid
+  rotaryYearId String @map("rotary_year_id") @db.Uuid
+
+  club       Club       @relation(fields: [clubId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cluster    Cluster    @relation(fields: [clusterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([clubId, rotaryYearId])
+  @@map("club_cluster_assignments")
+}
+
+// =====================================================================
+// 2. PEOPLE, IDENTITY, CONSENT
+//
+// Person and user are separate: most members will never log in, and
+// deactivating a login must not touch a member's history.
+// =====================================================================
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  DISABLED
+
+  @@map("user_status")
+}
+
+model Person {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  riMemberId     BigInt?   @unique @map("ri_member_id")
+  firstName      String    @map("first_name")
+  lastName       String    @map("last_name")
+  otherNames     String?   @map("other_names")
+  gender         String?
+  dateOfBirth    DateTime? @map("date_of_birth") @db.Date
+  email          String?   @unique @db.Citext
+  phone          String?
+  altPhone       String?   @map("alt_phone")
+  occupation     String?
+  classification String?
+  employer       String?
+  nationality    String?
+  countryCode    String?   @map("country_code") @db.Char(2)
+  city           String?
+  photoUrl       String?   @map("photo_url")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  visibility       PersonVisibility?
+  user             User?
+  consents         Consent[]
+  appointments        Appointment[]
+  membershipEvents    MembershipEvent[]
+  rosters             ClubRoster[]
+  activityAttendances ActivityAttendee[]
+  memberDues          MemberDues[]
+  trfContributions    TrfContribution[]
+  assessorAssignments AssessorAssignment[]
+  notifications       Notification[]
+
+  @@map("persons")
+}
+
+/// Private by default. Nothing here is ever served unauthenticated. (Axiom 6)
+///
+/// A row is created for every person by the `persons_visibility_ins` trigger
+/// (raw SQL migration), so "no row" cannot be mistaken for a permissive default.
+/// Read paths must still treat a missing row as fully closed.
+model PersonVisibility {
+  personId        String  @id @map("person_id") @db.Uuid
+  showEmail       Boolean @default(false) @map("show_email")
+  showPhone       Boolean @default(false) @map("show_phone")
+  showPhoto       Boolean @default(true) @map("show_photo")
+  showOccupation  Boolean @default(true) @map("show_occupation")
+  showCity        Boolean @default(false) @map("show_city")
+  directoryOptout Boolean @default(false) @map("directory_optout")
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("person_visibility")
+}
+
+/// Versioned: when the privacy policy changes, existing consent does not
+/// carry over. A row with a timestamp, a policy version and a source IP is
+/// what "demonstrable lawful basis" means under the DPPA 2019.
+model Consent {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  personId      String    @map("person_id") @db.Uuid
+  /// 'DATA_PROCESSING' | 'DIRECTORY' | 'MARKETING'
+  consentType   String    @map("consent_type")
+  policyVersion String    @map("policy_version")
+  grantedAt     DateTime? @map("granted_at") @db.Timestamptz(6)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
+  sourceIp      String?   @map("source_ip") @db.Inet
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([personId, consentType], map: "consents_person")
+  @@map("consents")
+}
+
+model User {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  personId       String     @unique @map("person_id") @db.Uuid
+  /// Argon2id.
+  passwordHash   String?    @map("password_hash")
+  status         UserStatus @default(INVITED)
+  mfaSecret      String?    @map("mfa_secret")
+  mfaEnabled     Boolean    @default(false) @map("mfa_enabled")
+  lastLoginAt    DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  failedAttempts Int        @default(0) @map("failed_attempts")
+  lockedUntil    DateTime?  @map("locked_until") @db.Timestamptz(6)
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  person                   Person            @relation(fields: [personId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tokens                   UserToken[]
+  recordedMembershipEvents MembershipEvent[]
+  createdActivities        Activity[]             @relation("ActivityCreatedBy")
+  verifiedActivities       Activity[]             @relation("ActivityVerifiedBy")
+  approvedBudgets            Budget[]
+  recordedTransactions       FinancialTransaction[]
+  confirmedDuesPayments      DuesPayment[]
+  confirmedMemberDuesPayment MemberDuesPayment[]
+  waivedDuesInvoices         DuesInvoice[]
+  verifiedTrfContributions   TrfContribution[]
+  finalisedAssessments       ClubAssessment[]
+  assessorScores             AssessmentScore[]
+  assessmentComments         AssessmentComment[]
+  raisedDisputes             AssessmentDispute[]    @relation("DisputeRaisedBy")
+  resolvedDisputes           AssessmentDispute[]    @relation("DisputeResolvedBy")
+  verifiedDocuments          Document[]             @relation("DocumentVerifiedBy")
+  uploadedDocuments          Document[]             @relation("DocumentUploadedBy")
+  exportJobs                 ExportJob[]
+  auditEntries               AuditLogEntry[]
+
+  @@map("users")
+}
+
+/// Reset, invite and verification tokens. Stored hashed, single use, with expiry.
+model UserToken {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  /// 'RESET' | 'INVITE' | 'VERIFY'
+  purpose    String
+  tokenHash  String    @unique(map: "user_tokens_hash") @map("token_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("user_tokens")
+}
+
+// =====================================================================
+// 3. GOVERNANCE — positions, appointments, committees
+//
+// Nobody has a role. People hold appointments, and permissions attach to
+// the appointment: (person, position, org unit, year). Annual turnover is
+// therefore automatic — last year's appointments simply fall out of scope.
+// =====================================================================
+
+enum OrgScope {
+  DISTRICT
+  REGION
+  CLUSTER
+  CLUB
+  COMMITTEE
+
+  @@map("org_scope")
+}
+
+/// Permission codes are `resource:action:scope`, e.g. 'activity:create:club'.
+/// The code IS the primary key: it is what position_permissions references and
+/// what the permission set carries at runtime.
+model Permission {
+  code        String @id
+  description String
+
+  positions PositionPermission[]
+
+  @@map("permissions")
+}
+
+model Position {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// NULL = system-wide template, available to every district.
+  districtId       String?  @map("district_id") @db.Uuid
+  code             String
+  name             String
+  scope            OrgScope
+  sequence         Int      @default(0)
+  /// e.g. only one DRR per district per year.
+  isUniquePerScope Boolean  @default(false) @map("is_unique_per_scope")
+  isActive         Boolean  @default(true) @map("is_active")
+
+  district     District?            @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  permissions  PositionPermission[]
+  appointments Appointment[]
+
+  // This unique does NOT constrain templates — Postgres treats NULLs as
+  // distinct. positions_template_code (partial unique, raw SQL) covers those.
+  @@unique([districtId, code])
+  @@map("positions")
+}
+
+model PositionPermission {
+  positionId     String @map("position_id") @db.Uuid
+  permissionCode String @map("permission_code")
+
+  position   Position   @relation(fields: [positionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  permission Permission @relation(fields: [permissionCode], references: [code], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([positionId, permissionCode])
+  @@map("position_permissions")
+}
+
+/// The unit of authorisation. Every request resolves its permission set by
+/// reading the caller's ACTIVE appointments for the current Rotary Year.
+model Appointment {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId   String    @map("district_id") @db.Uuid
+  rotaryYearId String    @map("rotary_year_id") @db.Uuid
+  personId     String    @map("person_id") @db.Uuid
+  positionId   String    @map("position_id") @db.Uuid
+  scopeType    OrgScope  @map("scope_type")
+  /// Deliberately a bare UUID, not a foreign key: it may reference a club,
+  /// cluster, region or committee. The one place the schema trades referential
+  /// integrity for polymorphism — validate it in the service layer.
+  scopeId      String?   @map("scope_id") @db.Uuid
+  startsOn     DateTime  @map("starts_on") @db.Date
+  endsOn       DateTime? @map("ends_on") @db.Date
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  district   District   @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  person     Person     @relation(fields: [personId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  position   Position   @relation(fields: [positionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  committeeMemberships CommitteeMember[]
+
+  // appointments_lookup and appointments_scope are PARTIAL indexes
+  // (WHERE is_active) and live in the raw SQL migration. They are deliberately
+  // NOT declared here: Prisma would create full indexes instead, which is a
+  // different object with the same name.
+  @@map("appointments")
+}
+
+/// Self-referencing so a chair can create sub-committees without a developer.
+model Committee {
+  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId        String  @map("district_id") @db.Uuid
+  rotaryYearId      String  @map("rotary_year_id") @db.Uuid
+  parentCommitteeId String? @map("parent_committee_id") @db.Uuid
+  name              String
+  mandate           String?
+
+  district   District   @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  parent   Committee?  @relation("CommitteeHierarchy", fields: [parentCommitteeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children Committee[] @relation("CommitteeHierarchy")
+
+  members CommitteeMember[]
+
+  @@unique([districtId, rotaryYearId, name])
+  @@map("committees")
+}
+
+/// Membership is by APPOINTMENT, not by person: serving on a committee is
+/// something you do in a capacity, for a year, and it expires with it.
+model CommitteeMember {
+  committeeId   String  @map("committee_id") @db.Uuid
+  appointmentId String  @map("appointment_id") @db.Uuid
+  roleLabel     String? @map("role_label")
+
+  committee   Committee   @relation(fields: [committeeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([committeeId, appointmentId])
+  @@map("committee_members")
+}
+
+// =====================================================================
+// 4. MEMBERSHIP — an immutable event log. The roster is derived. (Axiom 3)
+//
+// Nothing may UPDATE or DELETE a row here, and this is enforced by the
+// membership_events_no_mutate trigger rather than left to convention.
+// corroboratedAt is the one column that may be set after insert.
+//
+// Corrections come in two shapes (docs/03-Data-Model.md §4):
+//   * fix a fact    — append the corrected event with its REAL type,
+//                     superseding the original
+//   * retract a fact — append an event of type CORRECTION superseding it
+// Either way the original row stays.
+// =====================================================================
+
+enum MembershipEventType {
+  JOIN
+  INDUCT
+  TRANSFER_IN
+  TRANSFER_OUT
+  TERMINATE
+  TRANSITION_TO_ROTARY
+  REINSTATE
+  CATEGORY_CHANGE
+  CORRECTION
+
+  @@map("membership_event_type")
+}
+
+enum MemberCategory {
+  ACTIVE
+  HONORARY
+  CORPORATE
+
+  @@map("member_category")
+}
+
+model MembershipEvent {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId         String              @map("district_id") @db.Uuid
+  rotaryYearId       String              @map("rotary_year_id") @db.Uuid
+  personId           String              @map("person_id") @db.Uuid
+  clubId             String              @map("club_id") @db.Uuid
+  eventType          MembershipEventType @map("event_type")
+  memberCategory     MemberCategory      @default(ACTIVE) @map("member_category")
+  effectiveOn        DateTime            @map("effective_on") @db.Date
+  /// 'RELOCATION' | 'STUDIES_ENDED' | 'NON_PAYMENT' | …
+  reasonCode         String?             @map("reason_code")
+  reasonNote         String?             @map("reason_note")
+  /// Transfers: the club on the other side of the move.
+  counterpartyClubId String?             @map("counterparty_club_id") @db.Uuid
+  /// TRANSITION_TO_ROTARY: the receiving Rotary club, and the timestamp that
+  /// makes the transition verifiable on both sides rather than merely asserted.
+  rotaryClubName     String?             @map("rotary_club_name")
+  rotaryClubRiId     BigInt?             @map("rotary_club_ri_id")
+  corroboratedAt     DateTime?           @map("corroborated_at") @db.Timestamptz(6)
+  supersedesEventId  String?             @map("supersedes_event_id") @db.Uuid
+  evidenceUrl        String?             @map("evidence_url")
+  recordedByUserId   String?             @map("recorded_by_user_id") @db.Uuid
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  district         District         @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear       RotaryYear       @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  person           Person           @relation(fields: [personId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  club             Club             @relation("MembershipEventClub", fields: [clubId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  counterpartyClub Club?            @relation("MembershipEventCounterparty", fields: [counterpartyClubId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  recordedBy       User?            @relation(fields: [recordedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supersedes       MembershipEvent? @relation("MembershipCorrection", fields: [supersedesEventId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supersededBy     MembershipEvent[] @relation("MembershipCorrection")
+
+  @@index([clubId, effectiveOn], map: "me_club_date")
+  @@index([personId, effectiveOn], map: "me_person")
+  @@index([districtId, rotaryYearId, eventType], map: "me_type_year")
+  @@map("membership_events")
+}
+
+/// Derived current roster — a MATERIALISED VIEW, created by the raw SQL
+/// migration and refreshed on event write and nightly. Modelled here as a
+/// Prisma view so the membership module can read it through Prisma rather than
+/// through raw SQL, which the conventions confine to assessment resolvers.
+///
+/// It contains the tip of every supersede chain: events that have BEEN
+/// superseded are excluded, events that supersede are kept.
+///
+/// Prisma migrations neither create nor drop views. Nothing may write here:
+/// the log is the truth and this is a projection of it.
+view ClubRoster {
+  personId       String         @map("person_id") @db.Uuid
+  clubId         String         @map("club_id") @db.Uuid
+  districtId     String         @map("district_id") @db.Uuid
+  memberCategory MemberCategory @map("member_category")
+  since          DateTime       @db.Date
+
+  person Person @relation(fields: [personId], references: [id])
+  club   Club   @relation(fields: [clubId], references: [id])
+
+  @@unique([personId, clubId])
+  @@map("club_rosters")
+}
+
+// =====================================================================
+// 5. ACTIVITY — one model, configurable types. (Axiom 4)
+//
+// Fellowships, service projects, international service, PLD, assemblies,
+// cluster and district activities: all rows in `activities`, distinguished
+// by activityTypeId. A new type is an INSERT by an administrator, never a
+// new table and never a deployment.
+// =====================================================================
+
+enum ActivityStatus {
+  PLANNED
+  HELD
+  CANCELLED
+
+  @@map("activity_status")
+}
+
+enum VerificationState {
+  UNVERIFIED
+  VERIFIED
+  QUERIED
+  REJECTED
+
+  @@map("verification_state")
+}
+
+enum PartnerType {
+  ROTARACT_CLUB
+  ROTARY_CLUB
+  INTERACT_CLUB
+  CORPORATE
+  NGO
+  GOVERNMENT
+  ACADEMIC
+  OTHER
+
+  @@map("partner_type")
+}
+
+enum AttendeeRole {
+  MEMBER
+  VISITOR
+  GUEST
+  SPEAKER
+
+  @@map("attendee_role")
+}
+
+/// Seeded: PEACE, DISEASE, WATER, MATERNAL_CHILD, EDUCATION, ECONOMIC, ENVIRONMENT.
+model AreaOfFocus {
+  id   String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code String @unique
+  name String
+
+  activities ActivityAreaOfFocus[]
+
+  @@map("areas_of_focus")
+}
+
+/// Configuration, not code. Field requirements live here, so "extra activities
+/// should not require a photo" is a checkbox rather than a ticket.
+model ActivityType {
+  id                  String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// NULL = system-wide template, available to every district.
+  districtId          String?    @map("district_id") @db.Uuid
+  code                String
+  name                String
+  /// FELLOWSHIP | SERVICE | INTERNATIONAL | YOUTH | PLD | GOVERNANCE
+  /// | CLUSTER | DISTRICT | COMMITTEE
+  category            String
+  allowedHostScopes   OrgScope[] @default([CLUB]) @map("allowed_host_scopes")
+  requiresPhoto       Boolean    @default(false) @map("requires_photo")
+  requiresReport      Boolean    @default(false) @map("requires_report")
+  requiresAttendance  Boolean    @default(false) @map("requires_attendance")
+  requiresPartner     Boolean    @default(false) @map("requires_partner")
+  requiresAreaOfFocus Boolean    @default(false) @map("requires_area_of_focus")
+  isScoringEligible   Boolean    @default(true) @map("is_scoring_eligible")
+  /// Extra type-specific fields, rendered by the client.
+  fieldConfig         Json       @default("{}") @map("field_config")
+  sequence            Int        @default(0)
+  isActive            Boolean    @default(true) @map("is_active")
+
+  district   District?  @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  activities Activity[]
+
+  // As with positions, this unique does NOT constrain templates.
+  // activity_types_template_code (partial unique, raw SQL) covers those.
+  @@unique([districtId, code])
+  @@map("activity_types")
+}
+
+model Activity {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId         String            @map("district_id") @db.Uuid
+  rotaryYearId       String            @map("rotary_year_id") @db.Uuid
+  activityTypeId     String            @map("activity_type_id") @db.Uuid
+  hostScopeType      OrgScope          @map("host_scope_type")
+  /// Polymorphic: club / cluster / committee / district. Validated in the
+  /// service layer, like appointments.scopeId.
+  hostScopeId        String            @map("host_scope_id") @db.Uuid
+  title              String
+  /// No length limit, by design.
+  description        String?
+  startsAt           DateTime          @map("starts_at") @db.Timestamptz(6)
+  endsAt             DateTime?         @map("ends_at") @db.Timestamptz(6)
+  venue              String?
+  isVirtual          Boolean           @default(false) @map("is_virtual")
+  meetingUrl         String?           @map("meeting_url")
+  status             ActivityStatus    @default(PLANNED)
+  /// Monthly Rotary theme.
+  themeAlignment     String?           @map("theme_alignment")
+  reportUrl          String?           @map("report_url")
+  narrativeReport    String?           @map("narrative_report")
+  /// RI Service Project Centre.
+  spcReference       String?           @map("spc_reference")
+  /// Authoritative ONLY when the activity type has requiresAttendance = false.
+  /// When it is true, the scoring engine counts ActivityAttendee rows and
+  /// ignores these. (docs/schema.sql, §5)
+  attendanceMembers  Int?              @map("attendance_members")
+  attendanceVisitors Int?              @map("attendance_visitors")
+  attendanceGuests   Int?              @map("attendance_guests")
+  beneficiariesCount Int?              @map("beneficiaries_count")
+  treesPlanted       Int?              @map("trees_planted")
+  fundsRaised        Decimal?          @map("funds_raised") @db.Decimal(14, 2)
+  volunteerHours     Decimal?          @map("volunteer_hours") @db.Decimal(10, 2)
+  /// Type-specific fields. Use sparingly: anything the scoring engine reads
+  /// belongs in a real column, because JSONB predicates are slow and easy to
+  /// get subtly wrong.
+  extra              Json              @default("{}")
+  verification       VerificationState @default(UNVERIFIED)
+  verifiedByUserId   String?           @map("verified_by_user_id") @db.Uuid
+  verifiedAt         DateTime?         @map("verified_at") @db.Timestamptz(6)
+  createdByUserId    String?           @map("created_by_user_id") @db.Uuid
+  /// Offline sync: the client generated the id, so retry is idempotent.
+  clientGenerated    Boolean           @default(false) @map("client_generated")
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt          DateTime?         @map("deleted_at") @db.Timestamptz(6)
+
+  district     District     @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear   RotaryYear   @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  activityType ActivityType @relation(fields: [activityTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  verifiedBy   User?        @relation("ActivityVerifiedBy", fields: [verifiedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy    User?        @relation("ActivityCreatedBy", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  areasOfFocus          ActivityAreaOfFocus[]
+  partners              ActivityPartner[]
+  media                 ActivityMedia[]
+  attendees             ActivityAttendee[]
+  financialTransactions FinancialTransaction[]
+
+  // act_scoring is a PARTIAL index (WHERE deleted_at IS NULL AND status = 'HELD')
+  // and lives in the raw SQL migration, as do the act_dates and act_non_negative
+  // CHECK constraints.
+  @@index([hostScopeType, hostScopeId, rotaryYearId], map: "act_host_year")
+  @@index([activityTypeId, startsAt], map: "act_type_date")
+  @@map("activities")
+}
+
+model ActivityAreaOfFocus {
+  activityId    String @map("activity_id") @db.Uuid
+  areaOfFocusId String @map("area_of_focus_id") @db.Uuid
+
+  activity    Activity    @relation(fields: [activityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  areaOfFocus AreaOfFocus @relation(fields: [areaOfFocusId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([activityId, areaOfFocusId])
+  @@map("activity_areas_of_focus")
+}
+
+/// International service is DERIVED, not declared: an activity qualifies when a
+/// partner's countryCode is not 'UG'. A club cannot tick a box to claim it.
+model ActivityPartner {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  activityId       String      @map("activity_id") @db.Uuid
+  partnerType      PartnerType @map("partner_type")
+  partnerClubId    String?     @map("partner_club_id") @db.Uuid
+  partnerOrgName   String?     @map("partner_org_name")
+  /// NOT NULL with a domestic default so the international-service derivation is
+  /// total and conservative. The resolver predicate is `countryCode <> 'UG'`.
+  countryCode      String      @default("UG") @map("country_code") @db.Char(2)
+  contributionNote String?     @map("contribution_note")
+
+  activity    Activity @relation(fields: [activityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  partnerClub Club?    @relation(fields: [partnerClubId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("activity_partners")
+}
+
+/// Storage keys, never URLs: the provider or CDN can change without a data
+/// migration. EXIF is stripped before anything reaches storage.
+model ActivityMedia {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  activityId String  @map("activity_id") @db.Uuid
+  mediaType  String  @default("IMAGE") @map("media_type")
+  storageKey String  @map("storage_key")
+  thumbKey   String? @map("thumb_key")
+  caption    String?
+  sequence   Int     @default(0)
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("activity_media")
+}
+
+model ActivityAttendee {
+  activityId  String       @map("activity_id") @db.Uuid
+  personId    String       @map("person_id") @db.Uuid
+  role        AttendeeRole @default(MEMBER)
+  confirmedAt DateTime?    @map("confirmed_at") @db.Timestamptz(6)
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  person   Person   @relation(fields: [personId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([activityId, personId])
+  @@map("activity_attendees")
+}
+
+// =====================================================================
+// 6. FINANCE
+//
+// Money is NUMERIC, never Float. Rounding errors in dues reconciliation
+// are indefensible in front of a room of club treasurers.
+// =====================================================================
+
+enum TxnDirection {
+  INCOME
+  EXPENDITURE
+
+  @@map("txn_direction")
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  WAIVED
+
+  @@map("invoice_status")
+}
+
+enum DuesType {
+  DISTRICT
+  RI
+
+  @@map("dues_type")
+}
+
+enum TrfFundType {
+  ANNUAL_FUND
+  POLIO_PLUS
+  ENDOWMENT
+  DISASTER_RESPONSE
+  OTHER
+
+  @@map("trf_fund_type")
+}
+
+/// Configuration, not code: a district treasurer adds a category without a
+/// deployment. NULL districtId = system-wide template.
+model FinanceCategory {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId String?      @map("district_id") @db.Uuid
+  code       String
+  name       String
+  direction  TxnDirection
+  isActive   Boolean      @default(true) @map("is_active")
+
+  district     District?              @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  budgetLines  BudgetLine[]
+  transactions FinancialTransaction[]
+
+  // Templates (districtId IS NULL) are NOT constrained by this unique.
+  @@unique([districtId, code])
+  @@map("finance_categories")
+}
+
+model Budget {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId        String    @map("district_id") @db.Uuid
+  rotaryYearId      String    @map("rotary_year_id") @db.Uuid
+  /// Polymorphic owner: club, cluster, committee or district.
+  ownerScopeType    OrgScope  @map("owner_scope_type")
+  ownerScopeId      String    @map("owner_scope_id") @db.Uuid
+  currencyCode      String    @default("UGX") @map("currency_code") @db.Char(3)
+  approvedAt        DateTime? @map("approved_at") @db.Timestamptz(6)
+  approvedByUserId  String?   @map("approved_by_user_id") @db.Uuid
+
+  district   District   @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  approvedBy User?      @relation(fields: [approvedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lines      BudgetLine[]
+
+  @@unique([ownerScopeType, ownerScopeId, rotaryYearId])
+  @@map("budgets")
+}
+
+model BudgetLine {
+  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  budgetId      String  @map("budget_id") @db.Uuid
+  categoryId    String  @map("category_id") @db.Uuid
+  description   String
+  amountPlanned Decimal @map("amount_planned") @db.Decimal(14, 2)
+
+  budget       Budget                 @relation(fields: [budgetId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  category     FinanceCategory        @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  transactions FinancialTransaction[]
+
+  @@map("budget_lines")
+}
+
+model FinancialTransaction {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId       String       @map("district_id") @db.Uuid
+  rotaryYearId     String       @map("rotary_year_id") @db.Uuid
+  ownerScopeType   OrgScope     @map("owner_scope_type")
+  ownerScopeId     String       @map("owner_scope_id") @db.Uuid
+  categoryId       String       @map("category_id") @db.Uuid
+  budgetLineId     String?      @map("budget_line_id") @db.Uuid
+  direction        TxnDirection
+  /// CHECK (amount >= 0) lives in the raw SQL migration. Direction carries the
+  /// sign; a negative amount would silently invert an income into an expense.
+  amount           Decimal      @db.Decimal(14, 2)
+  currencyCode     String       @default("UGX") @map("currency_code") @db.Char(3)
+  occurredOn       DateTime     @map("occurred_on") @db.Date
+  description      String?
+  evidenceUrl      String?      @map("evidence_url")
+  activityId       String?      @map("activity_id") @db.Uuid
+  recordedByUserId String?      @map("recorded_by_user_id") @db.Uuid
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt        DateTime?    @map("deleted_at") @db.Timestamptz(6)
+
+  district   District        @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear      @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  category   FinanceCategory @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  budgetLine BudgetLine?     @relation(fields: [budgetLineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  activity   Activity?       @relation(fields: [activityId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  recordedBy User?           @relation(fields: [recordedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([ownerScopeType, ownerScopeId, rotaryYearId], map: "ft_owner_year")
+  @@map("financial_transactions")
+}
+
+model DuesInvoice {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId   String        @map("district_id") @db.Uuid
+  rotaryYearId String        @map("rotary_year_id") @db.Uuid
+  clubId       String        @map("club_id") @db.Uuid
+  duesType     DuesType  @default(DISTRICT) @map("dues_type")
+  amountDue    Decimal   @map("amount_due") @db.Decimal(14, 2)
+  currencyCode String    @default("UGX") @map("currency_code") @db.Char(3)
+  dueOn        DateTime  @map("due_on") @db.Date
+  /// Status is NOT stored (ADR-012) — read DuesInvoiceState. Waiving is the one
+  /// part of the state a human decides, so it is the one part recorded here.
+  waivedAt     DateTime? @map("waived_at") @db.Timestamptz(6)
+  waivedByUserId String? @map("waived_by_user_id") @db.Uuid
+  waiverReason String?   @map("waiver_reason")
+
+  district   District      @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear    @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  club       Club          @relation(fields: [clubId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  waivedBy   User?         @relation(fields: [waivedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payments   DuesPayment[]
+
+  @@unique([clubId, rotaryYearId, duesType])
+  @@map("dues_invoices")
+}
+
+/// Derived dues state (ADR-012). Read-only by construction: there is no stored
+/// status column to write, so it cannot drift from the payment log.
+view DuesInvoiceState {
+  invoiceId         String        @unique @map("invoice_id") @db.Uuid
+  districtId        String        @map("district_id") @db.Uuid
+  rotaryYearId      String        @map("rotary_year_id") @db.Uuid
+  clubId            String        @map("club_id") @db.Uuid
+  duesType          DuesType      @map("dues_type")
+  amountDue         Decimal       @map("amount_due") @db.Decimal(14, 2)
+  dueOn             DateTime      @map("due_on") @db.Date
+  amountPaid        Decimal       @map("amount_paid") @db.Decimal(14, 2)
+  amountOutstanding Decimal       @map("amount_outstanding") @db.Decimal(14, 2)
+  status            InvoiceStatus
+
+  @@map("dues_invoice_states")
+}
+
+model DuesPayment {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId          String    @map("invoice_id") @db.Uuid
+  amount             Decimal   @db.Decimal(14, 2)
+  paidOn             DateTime  @map("paid_on") @db.Date
+  method             String?
+  reference          String?
+  evidenceUrl        String?   @map("evidence_url")
+  receiptNo          String?   @unique @map("receipt_no")
+  confirmedByUserId  String?   @map("confirmed_by_user_id") @db.Uuid
+  confirmedAt        DateTime? @map("confirmed_at") @db.Timestamptz(6)
+
+  invoice     DuesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  confirmedBy User?       @relation(fields: [confirmedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([invoiceId], map: "dues_payments_invoice")
+  @@map("dues_payments")
+}
+
+model MemberDues {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId   String  @map("district_id") @db.Uuid
+  rotaryYearId String  @map("rotary_year_id") @db.Uuid
+  clubId       String  @map("club_id") @db.Uuid
+  personId     String  @map("person_id") @db.Uuid
+  amountDue    Decimal @default(0) @map("amount_due") @db.Decimal(14, 2)
+  /// amountPaid is NOT stored (ADR-012) — read MemberDuesState.
+  isPrepaid    Boolean @default(false) @map("is_prepaid")
+
+  district   District            @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear          @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  club       Club                @relation(fields: [clubId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  person     Person              @relation(fields: [personId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payments   MemberDuesPayment[]
+
+  @@unique([personId, clubId, rotaryYearId])
+  @@map("member_dues")
+}
+
+/// Members hand cash to a club treasurer — the collection path most open to
+/// dispute, so it carries the same audit trail as club dues.
+model MemberDuesPayment {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  memberDuesId      String    @map("member_dues_id") @db.Uuid
+  amount            Decimal   @db.Decimal(14, 2)
+  paidOn            DateTime  @map("paid_on") @db.Date
+  method            String?
+  reference         String?
+  evidenceUrl       String?   @map("evidence_url")
+  receiptNo         String?   @unique @map("receipt_no")
+  confirmedByUserId String?   @map("confirmed_by_user_id") @db.Uuid
+  confirmedAt       DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  memberDues  MemberDues @relation(fields: [memberDuesId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  confirmedBy User?      @relation(fields: [confirmedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([memberDuesId], map: "mdp_member_dues")
+  @@map("member_dues_payments")
+}
+
+// =====================================================================
+// 7. ASSESSMENT ENGINE — the rubric is data. (Axiom 5)
+//
+// Parameters, criteria, weights and thresholds are ROWS the PIME Chair
+// edits in the UI. Nothing here is hard-coded, and no SQL is ever stored
+// in assessment_criteria.rule: a rule names a resolver from the code
+// registry and supplies config.
+// =====================================================================
+
+enum FrameworkStatus {
+  DRAFT
+  PUBLISHED
+  LOCKED
+  ARCHIVED
+
+  @@map("framework_status")
+}
+
+enum EvaluationMode {
+  AUTO
+  ASSESSOR
+  HYBRID
+
+  @@map("evaluation_mode")
+}
+
+enum PeriodType {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+
+  @@map("period_type")
+}
+
+enum PeriodStatus {
+  SCHEDULED
+  OPEN
+  CLOSED
+  FINALISED
+
+  @@map("period_status")
+}
+
+enum AssessmentStatus {
+  PENDING
+  AUTO_SCORED
+  UNDER_REVIEW
+  FINALISED
+  DISPUTED
+
+  @@map("assessment_status")
+}
+
+enum ScoreSource {
+  AUTO
+  ASSESSOR
+  OVERRIDE
+
+  @@map("score_source")
+}
+
+enum CommentVisibility {
+  INTERNAL
+  CLUB
+
+  @@map("comment_visibility")
+}
+
+enum DisputeStatus {
+  OPEN
+  UPHELD
+  REJECTED
+  WITHDRAWN
+
+  @@map("dispute_status")
+}
+
+model AssessmentFramework {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId   String          @map("district_id") @db.Uuid
+  rotaryYearId String          @map("rotary_year_id") @db.Uuid
+  name         String
+  version      Int             @default(1)
+  totalPoints  Decimal         @default(100) @map("total_points") @db.Decimal(6, 2)
+  status       FrameworkStatus @default(DRAFT)
+  publishedAt  DateTime?       @map("published_at") @db.Timestamptz(6)
+  lockedAt     DateTime?       @map("locked_at") @db.Timestamptz(6)
+
+  district   District              @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear            @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parameters AssessmentParameter[]
+  periods    AssessmentPeriod[]
+
+  @@unique([districtId, rotaryYearId, version])
+  @@map("assessment_frameworks")
+}
+
+model AssessmentParameter {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  frameworkId String  @map("framework_id") @db.Uuid
+  sequence    Int
+  /// 'Service Projects' | 'TRF' | 'PLD' | …
+  name        String
+  maxPoints   Decimal @map("max_points") @db.Decimal(6, 2)
+  description String?
+
+  framework           AssessmentFramework  @relation(fields: [frameworkId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  criteria            AssessmentCriterion[]
+  assessorAssignments AssessorAssignment[]
+
+  @@unique([frameworkId, sequence])
+  @@map("assessment_parameters")
+}
+
+model AssessmentCriterion {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parameterId    String         @map("parameter_id") @db.Uuid
+  sequence       Int
+  description    String
+  points         Decimal        @db.Decimal(6, 2)
+  evaluationMode EvaluationMode @map("evaluation_mode")
+  /// Names a resolver in the code registry. NULL for ASSESSOR mode.
+  /// NEVER SQL — a rule supplies config to a named resolver, nothing more.
+  resolverKey    String?        @map("resolver_key")
+  rule           Json?
+  appliesToTiers ClubTier[]     @default([T1, T2, IBC]) @map("applies_to_tiers")
+  guidance       String?
+
+  parameter AssessmentParameter @relation(fields: [parameterId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  scores    AssessmentScore[]
+  disputes  AssessmentDispute[]
+
+  @@unique([parameterId, sequence])
+  @@map("assessment_criteria")
+}
+
+model AssessmentPeriod {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  frameworkId        String       @map("framework_id") @db.Uuid
+  periodType         PeriodType   @map("period_type")
+  /// 'August 2027' | 'Q1 2027-28'
+  label              String
+  startsOn           DateTime     @map("starts_on") @db.Date
+  endsOn             DateTime     @map("ends_on") @db.Date
+  submissionDeadline DateTime     @map("submission_deadline") @db.Timestamptz(6)
+  disputeClosesAt    DateTime?    @map("dispute_closes_at") @db.Timestamptz(6)
+  status             PeriodStatus @default(SCHEDULED)
+
+  framework           AssessmentFramework  @relation(fields: [frameworkId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clubAssessments     ClubAssessment[]
+  assessorAssignments AssessorAssignment[]
+
+  @@unique([frameworkId, label])
+  @@map("assessment_periods")
+}
+
+model ClubAssessment {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId         String           @map("district_id") @db.Uuid
+  periodId           String           @map("period_id") @db.Uuid
+  clubId             String           @map("club_id") @db.Uuid
+  /// Frozen from the affiliation at period open: a club is judged in the tier
+  /// it was in, not the tier it is in now.
+  tier               ClubTier
+  status             AssessmentStatus @default(PENDING)
+  /// totalScore, maxPossible and rankInTier are NOT stored (ADR-012) — read
+  /// ClubAssessmentState. They are sums and a window function over the scores,
+  /// and a standings table that disagrees with its own scorecard is the
+  /// argument this system exists to prevent.
+  ///
+  /// isStale is NOT derived state: it records that resolvers need re-running.
+  isStale            Boolean          @default(true) @map("is_stale")
+  computedAt         DateTime?        @map("computed_at") @db.Timestamptz(6)
+  finalisedAt        DateTime?        @map("finalised_at") @db.Timestamptz(6)
+  finalisedByUserId  String?          @map("finalised_by_user_id") @db.Uuid
+
+  district    District            @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  period      AssessmentPeriod    @relation(fields: [periodId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  club        Club                @relation(fields: [clubId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  finalisedBy User?               @relation(fields: [finalisedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  scores      AssessmentScore[]
+  comments    AssessmentComment[]
+  disputes    AssessmentDispute[]
+
+  // ca_stale is a PARTIAL index (WHERE is_stale) and lives in raw SQL.
+  @@unique([periodId, clubId])
+  @@map("club_assessments")
+}
+
+model AssessmentScore {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clubAssessmentId String      @map("club_assessment_id") @db.Uuid
+  criterionId      String      @map("criterion_id") @db.Uuid
+  pointsAwarded    Decimal     @default(0) @map("points_awarded") @db.Decimal(6, 2)
+  pointsPossible   Decimal     @map("points_possible") @db.Decimal(6, 2)
+  source           ScoreSource
+  /// What the resolver actually saw: counts, thresholds, contributing row ids.
+  /// This is what makes an automated score defensible in a room full of club
+  /// presidents, so every score persists it.
+  evidence         Json        @default("{}")
+  assessorUserId   String?     @map("assessor_user_id") @db.Uuid
+  comment          String?
+  scoredAt         DateTime    @default(now()) @map("scored_at") @db.Timestamptz(6)
+
+  clubAssessment ClubAssessment      @relation(fields: [clubAssessmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  criterion      AssessmentCriterion @relation(fields: [criterionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assessor       User?               @relation(fields: [assessorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([clubAssessmentId, criterionId])
+  @@map("assessment_scores")
+}
+
+model AssessorAssignment {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  periodId    String  @map("period_id") @db.Uuid
+  parameterId String  @map("parameter_id") @db.Uuid
+  personId    String  @map("person_id") @db.Uuid
+  /// NULL = every club in the period.
+  clusterId   String? @map("cluster_id") @db.Uuid
+
+  period    AssessmentPeriod    @relation(fields: [periodId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  parameter AssessmentParameter @relation(fields: [parameterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  person    Person              @relation(fields: [personId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cluster   Cluster?            @relation(fields: [clusterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([periodId, parameterId, personId, clusterId])
+  @@map("assessor_assignments")
+}
+
+/// The feedback loop the incumbent system never had.
+model AssessmentComment {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clubAssessmentId String            @map("club_assessment_id") @db.Uuid
+  authorUserId     String            @map("author_user_id") @db.Uuid
+  body             String
+  visibility       CommentVisibility @default(CLUB)
+  isCommendation   Boolean           @default(false) @map("is_commendation")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  clubAssessment ClubAssessment @relation(fields: [clubAssessmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  author         User           @relation(fields: [authorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("assessment_comments")
+}
+
+/// Disputes are modelled, not emailed. An award system without a dispute
+/// process generates the arguments anyway — in WhatsApp groups, unrecorded.
+model AssessmentDispute {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clubAssessmentId String        @map("club_assessment_id") @db.Uuid
+  criterionId      String?       @map("criterion_id") @db.Uuid
+  raisedByUserId   String        @map("raised_by_user_id") @db.Uuid
+  body             String
+  evidenceUrl      String?       @map("evidence_url")
+  status           DisputeStatus @default(OPEN)
+  resolutionNote   String?       @map("resolution_note")
+  resolvedByUserId String?       @map("resolved_by_user_id") @db.Uuid
+  resolvedAt       DateTime?     @map("resolved_at") @db.Timestamptz(6)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  clubAssessment ClubAssessment       @relation(fields: [clubAssessmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  criterion      AssessmentCriterion? @relation(fields: [criterionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  raisedBy       User                 @relation("DisputeRaisedBy", fields: [raisedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  resolvedBy     User?                @relation("DisputeResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("assessment_disputes")
+}
+
+// =====================================================================
+// 8. GOALS · DOCUMENTS · PUBLIC IMAGE · PLATFORM
+// =====================================================================
+
+enum NotificationChannel {
+  EMAIL
+  WHATSAPP
+  SMS
+  IN_APP
+
+  @@map("notification_channel")
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  CANCELLED
+
+  @@map("notification_status")
+}
+
+enum ExportStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  EXPIRED
+
+  @@map("export_status")
+}
+
+enum ExportFormat {
+  XLSX
+  CSV
+
+  @@map("export_format")
+}
+
+/// Lookup, not free text: a criterion resolves "club has a valid URSB
+/// certificate" by matching this code, so a typo at upload costs points.
+model DocumentType {
+  code        String  @id
+  name        String
+  description String?
+  isActive    Boolean @default(true) @map("is_active")
+
+  documents Document[]
+
+  @@map("document_types")
+}
+
+/// Lookup, not free text: platform is part of the social_accounts unique key,
+/// so 'Instagram' and 'INSTAGRAM' would be two accounts for one club.
+model SocialPlatform {
+  code     String  @id
+  name     String
+  isActive Boolean @default(true) @map("is_active")
+
+  accounts SocialAccount[]
+
+  @@map("social_platforms")
+}
+
+model Goal {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId     String   @map("district_id") @db.Uuid
+  rotaryYearId   String   @map("rotary_year_id") @db.Uuid
+  ownerScopeType OrgScope @default(DISTRICT) @map("owner_scope_type")
+  ownerScopeId   String?  @map("owner_scope_id") @db.Uuid
+  /// 'TRF Contribution', 'Clubs chartered', …
+  name           String
+  /// 'USD' | 'clubs' | 'members'
+  unit           String
+  targetValue    Decimal  @map("target_value") @db.Decimal(14, 2)
+  baselineValue  Decimal? @map("baseline_value") @db.Decimal(14, 2)
+  /// NULL = tracked by manual entry rather than a resolver.
+  resolverKey    String?  @map("resolver_key")
+  resolverConfig Json     @default("{}") @map("resolver_config")
+  sequence       Int      @default(0)
+
+  district   District       @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear     @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  snapshots  GoalSnapshot[]
+
+  @@map("goals")
+}
+
+model GoalSnapshot {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  goalId      String      @map("goal_id") @db.Uuid
+  asOf        DateTime    @map("as_of") @db.Date
+  actualValue Decimal     @map("actual_value") @db.Decimal(14, 2)
+  source      ScoreSource @default(AUTO)
+  note        String?
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([goalId, asOf])
+  @@map("goal_snapshots")
+}
+
+/// Storage keys, never URLs. Private documents are served through short-lived
+/// signed URLs, so the key must stay portable across providers.
+model Document {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId        String            @map("district_id") @db.Uuid
+  ownerScopeType    OrgScope          @map("owner_scope_type")
+  ownerScopeId      String            @map("owner_scope_id") @db.Uuid
+  docType           String            @map("doc_type")
+  title             String
+  storageKey        String            @map("storage_key")
+  mimeType          String?           @map("mime_type")
+  sizeBytes         BigInt?           @map("size_bytes")
+  issuedOn          DateTime?         @map("issued_on") @db.Date
+  expiresOn         DateTime?         @map("expires_on") @db.Date
+  verification      VerificationState @default(UNVERIFIED)
+  verifiedByUserId  String?           @map("verified_by_user_id") @db.Uuid
+  uploadedByUserId  String?           @map("uploaded_by_user_id") @db.Uuid
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt         DateTime?         @map("deleted_at") @db.Timestamptz(6)
+
+  district     District     @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  documentType DocumentType @relation(fields: [docType], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  verifiedBy   User?        @relation("DocumentVerifiedBy", fields: [verifiedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  uploadedBy   User?        @relation("DocumentUploadedBy", fields: [uploadedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([ownerScopeType, ownerScopeId, docType], map: "documents_owner")
+  @@map("documents")
+}
+
+model SocialAccount {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId     String   @map("district_id") @db.Uuid
+  ownerScopeType OrgScope @map("owner_scope_type")
+  ownerScopeId   String   @map("owner_scope_id") @db.Uuid
+  platform       String
+  handle         String?
+  url            String
+  isActive       Boolean  @default(true) @map("is_active")
+
+  district        District         @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  socialPlatform  SocialPlatform   @relation(fields: [platform], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  snapshots       SocialSnapshot[]
+
+  @@unique([ownerScopeType, ownerScopeId, platform])
+  @@map("social_accounts")
+}
+
+model SocialSnapshot {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  socialAccountId String   @map("social_account_id") @db.Uuid
+  capturedOn      DateTime @map("captured_on") @db.Date
+  followerCount   Int?     @map("follower_count")
+  postCount30d    Int?     @map("post_count_30d")
+
+  socialAccount SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([socialAccountId, capturedOn])
+  @@map("social_snapshots")
+}
+
+model MediaAppearance {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId     String   @map("district_id") @db.Uuid
+  rotaryYearId   String   @map("rotary_year_id") @db.Uuid
+  ownerScopeType OrgScope @map("owner_scope_type")
+  ownerScopeId   String   @map("owner_scope_id") @db.Uuid
+  outlet         String
+  /// TV | RADIO | PRINT | ONLINE
+  outletType     String?  @map("outlet_type")
+  url            String?
+  appearedOn     DateTime @map("appeared_on") @db.Date
+  evidenceUrl    String?  @map("evidence_url")
+
+  district   District   @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("media_appearances")
+}
+
+/// Append-only. Written by Prisma middleware on every governed mutation, and
+/// by nothing else. Retention is indefinite: this is the record that makes a
+/// contested award reconstructable.
+///
+/// BIGSERIAL rather than a UUID: nothing references an audit row by id in a
+/// URL, and the sequence gives cheap chronological ordering.
+model AuditLogEntry {
+  id           BigInt   @id @default(autoincrement())
+  /// Deliberately no foreign key: an audit row outlives the rows it describes.
+  districtId   String?  @map("district_id") @db.Uuid
+  actorUserId  String?  @map("actor_user_id") @db.Uuid
+  entityType   String   @map("entity_type")
+  entityId     String?  @map("entity_id") @db.Uuid
+  /// CREATE | UPDATE | DELETE | LOGIN | LOGOUT | EXPORT
+  action       String
+  before       Json?
+  after        Json?
+  ipAddress    String?  @map("ip_address") @db.Inet
+  userAgent    String?  @map("user_agent")
+  occurredAt   DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([entityType, entityId, occurredAt(sort: Desc)], map: "audit_entity")
+  @@index([actorUserId, occurredAt(sort: Desc)], map: "audit_actor")
+  @@map("audit_log")
+}
+
+model NotificationTemplate {
+  code     String              @id
+  channel  NotificationChannel
+  subject  String?
+  /// Handlebars-style.
+  body     String
+  isActive Boolean             @default(true) @map("is_active")
+
+  notifications Notification[]
+
+  @@map("notification_templates")
+}
+
+model Notification {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId        String?            @map("district_id") @db.Uuid
+  recipientPersonId String             @map("recipient_person_id") @db.Uuid
+  channel           NotificationChannel
+  templateCode      String?            @map("template_code")
+  payload           Json               @default("{}")
+  status            NotificationStatus @default(QUEUED)
+  scheduledFor      DateTime           @default(now()) @map("scheduled_for") @db.Timestamptz(6)
+  sentAt            DateTime?          @map("sent_at") @db.Timestamptz(6)
+  error             String?
+  attempts          Int                @default(0)
+
+  district  District?             @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  recipient Person                @relation(fields: [recipientPersonId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  template  NotificationTemplate? @relation(fields: [templateCode], references: [code], onDelete: NoAction, onUpdate: NoAction)
+
+  // notif_due is a PARTIAL index (WHERE status = 'QUEUED') and lives in raw SQL.
+  @@map("notifications")
+}
+
+model ExportJob {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId         String    @map("district_id") @db.Uuid
+  requestedByUserId  String    @map("requested_by_user_id") @db.Uuid
+  resource           String
+  format             ExportFormat @default(XLSX)
+  filters            Json         @default("{}")
+  status             ExportStatus @default(QUEUED)
+  storageKey         String?   @map("storage_key")
+  rowCount           Int?      @map("row_count")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt        DateTime? @map("completed_at") @db.Timestamptz(6)
+  expiresAt          DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  district    District @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  requestedBy User     @relation(fields: [requestedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("export_jobs")
+}
+
+/// Scorecard totals and tier standings, derived (ADR-012). Ranking is computed
+/// from the same numbers it ranks, so the two cannot disagree.
+view ClubAssessmentState {
+  clubAssessmentId String           @unique @map("club_assessment_id") @db.Uuid
+  districtId       String           @map("district_id") @db.Uuid
+  periodId         String           @map("period_id") @db.Uuid
+  clubId           String           @map("club_id") @db.Uuid
+  tier             ClubTier
+  status           AssessmentStatus
+  isStale          Boolean          @map("is_stale")
+  totalScore       Decimal          @map("total_score") @db.Decimal(6, 2)
+  maxPossible      Decimal          @map("max_possible") @db.Decimal(6, 2)
+  percentage       Decimal?         @db.Decimal(6, 2)
+  scoredCriteria   Int              @map("scored_criteria")
+  rankInTier       BigInt           @map("rank_in_tier")
+
+  @@map("club_assessment_states")
+}
+
+/// Does the rubric add up? Three independent numbers — the declared total, the
+/// sum of parameter weights, the sum of criterion points — with nothing forcing
+/// agreement. The service blocks publishing while isBalanced is false.
+view FrameworkPointTotal {
+  frameworkId    String          @unique @map("framework_id") @db.Uuid
+  districtId     String          @map("district_id") @db.Uuid
+  rotaryYearId   String          @map("rotary_year_id") @db.Uuid
+  version        Int
+  status         FrameworkStatus
+  declaredTotal  Decimal         @map("declared_total") @db.Decimal(6, 2)
+  parameterTotal Decimal         @map("parameter_total") @db.Decimal(6, 2)
+  criterionTotal Decimal         @map("criterion_total") @db.Decimal(6, 2)
+  isBalanced     Boolean         @map("is_balanced")
+
+  @@map("framework_point_totals")
+}
+
+/// Derived member dues state (ADR-012).
+view MemberDuesState {
+  memberDuesId      String  @unique @map("member_dues_id") @db.Uuid
+  districtId        String  @map("district_id") @db.Uuid
+  rotaryYearId      String  @map("rotary_year_id") @db.Uuid
+  clubId            String  @map("club_id") @db.Uuid
+  personId          String  @map("person_id") @db.Uuid
+  amountDue         Decimal @map("amount_due") @db.Decimal(14, 2)
+  isPrepaid         Boolean @map("is_prepaid")
+  amountPaid        Decimal @map("amount_paid") @db.Decimal(14, 2)
+  amountOutstanding Decimal @map("amount_outstanding") @db.Decimal(14, 2)
+
+  @@map("member_dues_states")
+}
+
+model TrfContribution {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  districtId       String            @map("district_id") @db.Uuid
+  rotaryYearId     String            @map("rotary_year_id") @db.Uuid
+  clubId           String            @map("club_id") @db.Uuid
+  /// NULL = club-level gift rather than a named member's.
+  personId         String?           @map("person_id") @db.Uuid
+  fundType         TrfFundType       @default(ANNUAL_FUND) @map("fund_type")
+  /// USD, not UGX: TRF reports in dollars. CHECK (>= 0) in raw SQL.
+  amountUsd        Decimal           @map("amount_usd") @db.Decimal(12, 2)
+  contributedOn    DateTime          @map("contributed_on") @db.Date
+  riReceiptRef     String?           @map("ri_receipt_ref")
+  evidenceUrl      String?           @map("evidence_url")
+  verification     VerificationState @default(UNVERIFIED)
+  verifiedByUserId String?           @map("verified_by_user_id") @db.Uuid
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  district   District   @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rotaryYear RotaryYear @relation(fields: [rotaryYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  club       Club       @relation(fields: [clubId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  person     Person?    @relation(fields: [personId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  verifiedBy User?      @relation(fields: [verifiedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([clubId, rotaryYearId], map: "trf_club_year")
+  @@map("trf_contributions")
+}

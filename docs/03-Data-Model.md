@@ -121,6 +121,8 @@ erDiagram
 
 **Visibility defaults to false.** Every boolean in `person_visibility` that governs contact data starts closed. This is the schema-level expression of the correction to the incumbent system's central failure — four thousand people's phone numbers served to anyone who visited a URL. A default of `TRUE` here would reproduce the entire problem, so the default is written into the DDL rather than left to application code.
 
+A column default only applies when a row exists, so a trigger creates the visibility row on every person insert. Otherwise a person added by a seed, an import or an offline sync has no row at all, and whatever the application assumes about a missing row silently becomes the real default. Read paths treat a missing row as fully closed regardless.
+
 **Consent is versioned.** When the privacy policy changes, existing consent does not silently carry over — the new version must be granted. Uganda's Data Protection and Privacy Act 2019 requires a demonstrable lawful basis; a row with a timestamp, a policy version and a source IP is what "demonstrable" means in practice.
 
 ---
@@ -209,7 +211,18 @@ The incumbent system stored current state. Every one of these logged requests th
 
 With an event log, all of them are `SELECT`s. So are retention rate, net growth, churn by cluster, and average tenure — questions nobody has asked yet but somebody will.
 
-**Events are never edited.** A mistake is corrected by a `CORRECTION` event pointing at the original through `supersedes_event_id`. The original stays. When a club disputes its membership score in April, you can reconstruct exactly what was known on any date. Editable history and contested awards are incompatible.
+**Events are never edited.** A mistake is corrected by appending an event that points at the original through `supersedes_event_id`. The original stays. When a club disputes its membership score in April, you can reconstruct exactly what was known on any date. Editable history and contested awards are incompatible.
+
+There are two shapes of correction, and the distinction is what the roster view depends on:
+
+| Intent | How | Effect on the roster |
+|---|---|---|
+| Fix a wrong fact | Append the corrected event with its **real** type — a mistyped join date is a second `JOIN` carrying the right date, superseding the original | The corrected event replaces the original |
+| Retract a fact entirely | Append an event of type `CORRECTION` superseding the original | The original is superseded and `CORRECTION` is not a joining type, so the person drops off |
+
+The roster therefore excludes events that **have been** superseded, not events that supersede. Getting that predicate the wrong way round discards every correction while continuing to count the row it corrected — which is what the baseline did until it was caught during the Prisma translation.
+
+Immutability is enforced by a trigger, not by convention. `corroborated_at` is the single column that may be set after insert, because corroborating a transition to Rotary necessarily happens later than recording it. Everything else raises.
 
 **Transitions to Rotary are first-class,** with the receiving Rotary club and a corroboration timestamp, because the district's own criterion requires the member to appear on both sides. The corroboration field is what makes that verifiable rather than asserted.
 
@@ -266,6 +279,10 @@ The incumbent system built each as its own form and table, which is why the dist
 **Field requirements are configuration.** `requires_photo`, `requires_report`, `requires_attendance` live on the type. The district's request that *"extra activities should not require a photo"* is a checkbox, not a ticket.
 
 **International service is derived, not declared.** A club cannot tick a box claiming international service. It qualifies when `activity_partners.country_code <> 'UG'` — which means the scoring engine can verify it and a club cannot inflate it. This is a small design choice with a large integrity payoff, and it generalises: wherever possible, make the scored fact derivable from structured data rather than from a self-assessment.
+
+For that to hold, `country_code` is `NOT NULL DEFAULT 'UG'`. A nullable column would make the derivation partial in the dangerous direction: `NULL <> 'UG'` is `NULL`, not `TRUE`, so an unclassified partner would fail to qualify an activity that genuinely was international — and the obvious "fix" of writing `IS DISTINCT FROM` would qualify every partner nobody bothered to classify.
+
+**Attendance has one authoritative source, chosen per activity type.** Where `activity_types.requires_attendance` is true, the scoring engine counts `activity_attendees` rows and ignores `activities.attendance_*`; where it is false, the columns are the number and attendee rows are optional detail. Both exist because both are needed — a fellowship can name everyone present, a 400-person community project cannot — but only one of them is ever scored for a given activity, and which one is configuration rather than a judgement made in the resolver.
 
 **`extra JSONB`** absorbs genuinely type-specific fields without a schema change. Use it sparingly. Anything queried by the scoring engine belongs in a real column, because JSONB predicates are slow and easy to get subtly wrong.
 

@@ -27,6 +27,8 @@ apps/web/.vite/
 prisma/*.db
 prisma/*.db-journal
 prisma/migrations/dev.db*
+# Generated client — rebuilt by postinstall, never committed.
+apps/api/src/generated/
 
 # Logs
 logs/

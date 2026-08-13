@@ -41,7 +41,7 @@ Every design decision derives from these. If a change conflicts with one, the ch
 
 **Out-of-scope records return `404`, not `403`.** `403` confirms existence and leaks the dataset shape.
 
-**Personal data.** Default `person_visibility` booleans to `false`. Strip EXIF from every uploaded image (phone photos carry GPS). No public directory endpoint exists — do not create one, even a reduced one, without an explicit design review.
+**Personal data.** Default every `person_visibility` contact field — `show_email`, `show_phone`, `show_city` — to `false`. `show_photo` and `show_occupation` default to `true` and are visible to **authenticated district users only**; no visibility flag ever affects an unauthenticated caller. A person row without a `person_visibility` row is treated as fully closed, and a database trigger creates one on insert so the case cannot arise. Strip EXIF from every uploaded image (phone photos carry GPS). No public directory endpoint exists — do not create one, even a reduced one, without an explicit design review.
 
 **Membership events are immutable.** No `PUT`, no `DELETE`. Nothing writes to `club_rosters` directly.
 

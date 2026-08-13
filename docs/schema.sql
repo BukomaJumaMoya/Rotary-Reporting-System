@@ -1,6 +1,45 @@
 -- =====================================================================
 -- Rotaract District Information System (DIS)
--- Authoritative PostgreSQL 16 schema — design baseline v1.0
+-- Authoritative PostgreSQL 16 schema — design baseline v1.4
+--
+-- v1.4 (platform): audit_log made append-only by trigger; document types and
+-- social platforms became lookup tables rather than free text a scoring rule
+-- would string-match; export status and format became enums; document dates,
+-- file sizes and social counts bounded.
+--
+-- v1.3 (assessment): a score may not exceed the criterion it is awarded
+-- against; scorecard totals and tier ranking became the club_assessment_states
+-- view rather than three stored columns; framework_point_totals exposes whether
+-- a rubric adds up; AUTO/HYBRID criteria must name a resolver; period dates
+-- ordered; assessor "all clubs" assignments made unique.
+--
+-- v1.2 applies ADR-012 (where an invariant lives): declarative constraints
+-- first; derived state is a VIEW, never a stored column maintained by a
+-- trigger; triggers only as guards, each with a stable SQLSTATE. This removed
+-- dues_invoices.status and member_dues.amount_paid in favour of the
+-- dues_invoice_states and member_dues_states views.
+--
+-- Amendments since v1.0 (all raised during the Prisma translation, M0 s2):
+--   * person_visibility rows created by trigger — a column default cannot
+--     apply to a row that does not exist
+--   * user_tokens.token_hash indexed UNIQUE — looked up on every reset
+--   * positions and activity_types: template codes (district_id IS NULL)
+--     made unique
+--   * committees: a committee may not be its own parent
+--   * membership_events: CORRECTION must supersede something; the log is
+--     made immutable by trigger rather than by convention
+--   * club_rosters: the superseded-event predicate was inverted, so
+--     corrections were ignored and the rows they corrected still counted
+--   * activities: dates ordered, scored quantities non-negative, and the
+--     authoritative attendance source stated
+--   * activity_partners.country_code NOT NULL DEFAULT 'UG' — international
+--     service is derived from it, so it may not be unknown
+--   * finance_categories: template codes made unique (third instance)
+--   * every money column now CHECK (>= 0), not just two of them
+--   * dues_type is an enum: it is part of a unique key, and free text there
+--     means 'district' and 'DISTRICT' are two invoices for one debt
+--   * dues_invoices.status maintained by trigger, WAIVED preserved
+--   * member_dues_payments added — member cash collection had no audit trail
 --
 -- Conventions:
 --   * UUID primary keys via gen_random_uuid()   (ADR-004)
@@ -31,6 +70,9 @@ CREATE TYPE activity_status  AS ENUM ('PLANNED','HELD','CANCELLED');
 CREATE TYPE verification_state AS ENUM ('UNVERIFIED','VERIFIED','QUERIED','REJECTED');
 CREATE TYPE txn_direction    AS ENUM ('INCOME','EXPENDITURE');
 CREATE TYPE invoice_status   AS ENUM ('UNPAID','PARTIAL','PAID','WAIVED');
+CREATE TYPE dues_type        AS ENUM ('DISTRICT','RI');
+CREATE TYPE export_status    AS ENUM ('QUEUED','RUNNING','COMPLETED','FAILED','EXPIRED');
+CREATE TYPE export_format    AS ENUM ('XLSX','CSV');
 CREATE TYPE framework_status AS ENUM ('DRAFT','PUBLISHED','LOCKED','ARCHIVED');
 CREATE TYPE evaluation_mode  AS ENUM ('AUTO','ASSESSOR','HYBRID');
 CREATE TYPE period_type      AS ENUM ('MONTHLY','QUARTERLY','ANNUAL');
@@ -189,6 +231,22 @@ CREATE TABLE person_visibility (
   directory_optout BOOLEAN NOT NULL DEFAULT FALSE
 );
 
+-- Every person gets a visibility row at insert. Without this, a person created by
+-- a seed, an import or an offline sync has NO visibility row at all, the column
+-- defaults above never apply, and whatever the application does with a missing row
+-- becomes the real default. That is too important a decision to leave implicit.
+CREATE FUNCTION person_visibility_defaults() RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO person_visibility (person_id) VALUES (NEW.id)
+  ON CONFLICT (person_id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER persons_visibility_ins
+  AFTER INSERT ON persons
+  FOR EACH ROW EXECUTE FUNCTION person_visibility_defaults();
+
 CREATE TABLE consents (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   person_id       UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
@@ -221,6 +279,9 @@ CREATE TABLE user_tokens (
   expires_at  TIMESTAMPTZ NOT NULL,
   consumed_at TIMESTAMPTZ
 );
+-- Tokens are looked up by hash on every reset and invite acceptance. Unique so a
+-- collision or a duplicated issue is an error rather than an ambiguous match.
+CREATE UNIQUE INDEX user_tokens_hash ON user_tokens (token_hash);
 
 -- =====================================================================
 -- 3. GOVERNANCE — positions, appointments, committees
@@ -243,6 +304,10 @@ CREATE TABLE positions (
   is_active    BOOLEAN NOT NULL DEFAULT TRUE,
   UNIQUE (district_id, code)
 );
+-- UNIQUE above does NOT constrain templates: Postgres treats NULLs as distinct,
+-- so two rows with district_id IS NULL could share a code. Templates are seeded,
+-- so a duplicate would be silent and would make position lookup ambiguous.
+CREATE UNIQUE INDEX positions_template_code ON positions (code) WHERE district_id IS NULL;
 
 CREATE TABLE position_permissions (
   position_id     UUID NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
@@ -267,6 +332,11 @@ CREATE INDEX appointments_lookup
   ON appointments (person_id, rotary_year_id) WHERE is_active;
 CREATE INDEX appointments_scope
   ON appointments (scope_type, scope_id, rotary_year_id) WHERE is_active;
+-- NOT enforceable here: an appointment's district_id must match its position's
+-- district_id, unless the position is a template (district_id IS NULL). A
+-- composite foreign key cannot express that, because the nullable half would
+-- reject every template. The governance service validates it; M1 tests it.
+-- Likewise scope_id, which is polymorphic by design.
 
 CREATE TABLE committees (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -275,7 +345,11 @@ CREATE TABLE committees (
   parent_committee_id UUID REFERENCES committees(id),
   name                TEXT NOT NULL,
   mandate             TEXT,
-  UNIQUE (district_id, rotary_year_id, name)
+  UNIQUE (district_id, rotary_year_id, name),
+  -- Stops the trivial cycle. Longer cycles (A -> B -> A) cannot be expressed as
+  -- a CHECK; the service layer walks the ancestry before setting a parent, and a
+  -- cycle would otherwise hang the recursive query that renders the tree.
+  CONSTRAINT committees_not_self_parent CHECK (parent_committee_id IS DISTINCT FROM id)
 );
 
 CREATE TABLE committee_members (
@@ -307,19 +381,66 @@ CREATE TABLE membership_events (
   supersedes_event_id  UUID REFERENCES membership_events(id), -- CORRECTION
   evidence_url         TEXT,
   recorded_by_user_id  UUID REFERENCES users(id),
-  created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- A correction must say what it corrects. (Non-correction events MAY also
+  -- supersede: a restated JOIN is how a wrong date is fixed — see below.)
+  CONSTRAINT me_correction_supersedes
+    CHECK (event_type <> 'CORRECTION' OR supersedes_event_id IS NOT NULL)
 );
 CREATE INDEX me_club_date ON membership_events (club_id, effective_on);
 CREATE INDEX me_person     ON membership_events (person_id, effective_on);
 CREATE INDEX me_type_year  ON membership_events (district_id, rotary_year_id, event_type);
 
+-- Axiom 3 enforced, not merely documented. The log is the evidentiary basis for
+-- contested awards, so "append-only" cannot depend on every future code path
+-- remembering. corroborated_at is the single legitimate mutation: corroboration
+-- of a transition to Rotary happens after the event is recorded.
+CREATE FUNCTION membership_events_immutable() RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'membership_events is append-only: supersede the event instead of deleting it'
+      USING ERRCODE = 'DIS01';
+  END IF;
+  IF ROW(NEW.*) IS DISTINCT FROM ROW(OLD.*) THEN
+    IF (to_jsonb(NEW) - 'corroborated_at') IS DISTINCT FROM (to_jsonb(OLD) - 'corroborated_at') THEN
+      RAISE EXCEPTION 'membership_events is append-only: only corroborated_at may be set after insert'
+        USING ERRCODE = 'DIS01';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER membership_events_no_mutate
+  BEFORE UPDATE OR DELETE ON membership_events
+  FOR EACH ROW EXECUTE FUNCTION membership_events_immutable();
+
 -- Derived current roster. Refreshed on event write and nightly.
+--
+-- HOW CORRECTIONS WORK, because the predicate below depends on it:
+--   * To fix a wrong fact, append the corrected event with its REAL type — a
+--     mistyped join date is a second JOIN carrying the right date, with
+--     supersedes_event_id pointing at the original.
+--   * To retract a fact entirely ("this never happened"), append an event of
+--     type CORRECTION pointing at the original. It supersedes the original and,
+--     not being a joining type, drops the person from the roster.
+--   * Either way the original row stays. The log is never edited.
+--
+-- The predicate excludes events that HAVE BEEN superseded, not events that
+-- supersede. v1.0 had this inverted (WHERE supersedes_event_id IS NULL), which
+-- silently discarded every correction and kept counting the row it corrected.
+-- Chains resolve naturally: only the tip of a supersede chain survives.
 CREATE MATERIALIZED VIEW club_rosters AS
-WITH ranked AS (
+WITH live AS (
+  SELECT me.*
+  FROM membership_events me
+  WHERE NOT EXISTS (
+    SELECT 1 FROM membership_events c WHERE c.supersedes_event_id = me.id
+  )
+), ranked AS (
   SELECT DISTINCT ON (person_id, club_id)
          person_id, club_id, district_id, event_type, member_category, effective_on
-  FROM membership_events
-  WHERE supersedes_event_id IS NULL
+  FROM live
   ORDER BY person_id, club_id, effective_on DESC, created_at DESC
 )
 SELECT person_id, club_id, district_id, member_category, effective_on AS since
@@ -358,6 +479,9 @@ CREATE TABLE activity_types (
   is_active           BOOLEAN NOT NULL DEFAULT TRUE,
   UNIQUE (district_id, code)
 );
+-- Same NULL-distinct hole as positions: without this, two template types
+-- (district_id IS NULL) could share a code and type lookup becomes ambiguous.
+CREATE UNIQUE INDEX activity_types_template_code ON activity_types (code) WHERE district_id IS NULL;
 
 CREATE TABLE activities (
   id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -393,8 +517,29 @@ CREATE TABLE activities (
   client_generated         BOOLEAN NOT NULL DEFAULT FALSE,  -- offline sync
   created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at               TIMESTAMPTZ
+  deleted_at               TIMESTAMPTZ,
+  CONSTRAINT act_dates CHECK (ends_at IS NULL OR ends_at >= starts_at),
+  -- Every scored quantity is non-negative. NULL means "not reported" and passes;
+  -- a negative is always data entry gone wrong, and it would score.
+  CONSTRAINT act_non_negative CHECK (
+    attendance_members >= 0 AND attendance_visitors >= 0 AND
+    attendance_guests  >= 0 AND beneficiaries_count >= 0 AND
+    trees_planted      >= 0 AND funds_raised        >= 0 AND
+    volunteer_hours    >= 0
+  )
 );
+
+-- WHICH ATTENDANCE NUMBER IS AUTHORITATIVE (the scoring engine depends on this):
+--   activity_types.requires_attendance = TRUE  -> count activity_attendees rows;
+--     the columns below are ignored and the client does not collect them.
+--   activity_types.requires_attendance = FALSE -> use attendance_members /
+--     _visitors / _guests; attendee rows are optional detail and are not scored.
+-- Named attendance where it is practical to collect, counts where it is not — a
+-- 400-person community project cannot list every beneficiary by name.
+--
+-- Enforced in the activity service at submission, NOT by a trigger: a deferred
+-- constraint trigger would reject the legitimate flow where a secretary marks an
+-- activity HELD and then adds attendees one at a time.
 CREATE INDEX act_host_year   ON activities (host_scope_type, host_scope_id, rotary_year_id);
 CREATE INDEX act_type_date   ON activities (activity_type_id, starts_at);
 CREATE INDEX act_scoring     ON activities (district_id, rotary_year_id, starts_at)
@@ -412,7 +557,10 @@ CREATE TABLE activity_partners (
   partner_type      partner_type NOT NULL,
   partner_club_id   UUID REFERENCES clubs(id),
   partner_org_name  TEXT,
-  country_code      CHAR(2),                        -- <> 'UG' qualifies international service
+  -- <> 'UG' qualifies international service. NOT NULL so the derivation is total
+  -- and fails conservatively: a partner nobody classified is domestic, and cannot
+  -- silently qualify an activity for international service points.
+  country_code      CHAR(2) NOT NULL DEFAULT 'UG',
   contribution_note TEXT
 );
 
@@ -447,6 +595,8 @@ CREATE TABLE finance_categories (
   is_active   BOOLEAN NOT NULL DEFAULT TRUE,
   UNIQUE (district_id, code)
 );
+-- Third instance of the NULL-distinct hole; see positions and activity_types.
+CREATE UNIQUE INDEX finance_categories_template_code ON finance_categories (code) WHERE district_id IS NULL;
 
 CREATE TABLE budgets (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -465,7 +615,7 @@ CREATE TABLE budget_lines (
   budget_id    UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
   category_id  UUID NOT NULL REFERENCES finance_categories(id),
   description  TEXT NOT NULL,
-  amount_planned NUMERIC(14,2) NOT NULL
+  amount_planned NUMERIC(14,2) NOT NULL CHECK (amount_planned >= 0)
 );
 
 CREATE TABLE financial_transactions (
@@ -494,18 +644,24 @@ CREATE TABLE dues_invoices (
   district_id    UUID NOT NULL REFERENCES districts(id),
   rotary_year_id UUID NOT NULL REFERENCES rotary_years(id),
   club_id        UUID NOT NULL REFERENCES clubs(id),
-  dues_type      TEXT NOT NULL DEFAULT 'DISTRICT',  -- DISTRICT | RI
-  amount_due     NUMERIC(14,2) NOT NULL,
+  -- Enum, not free text: this column is part of the unique key below, so
+  -- 'district' and 'DISTRICT' would be two invoices for the same debt.
+  dues_type      dues_type NOT NULL DEFAULT 'DISTRICT',
+  amount_due     NUMERIC(14,2) NOT NULL CHECK (amount_due >= 0),
   currency_code  CHAR(3) NOT NULL DEFAULT 'UGX',
   due_on         DATE NOT NULL,
-  status         invoice_status NOT NULL DEFAULT 'UNPAID',
+  -- Status is NOT stored: see dues_invoice_states below and ADR-012. Waiving is
+  -- the only part of the state a human decides, so it is the only part recorded.
+  waived_at      TIMESTAMPTZ,
+  waived_by_user_id UUID REFERENCES users(id),
+  waiver_reason  TEXT,
   UNIQUE (club_id, rotary_year_id, dues_type)
 );
 
 CREATE TABLE dues_payments (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   invoice_id   UUID NOT NULL REFERENCES dues_invoices(id) ON DELETE CASCADE,
-  amount       NUMERIC(14,2) NOT NULL,
+  amount       NUMERIC(14,2) NOT NULL CHECK (amount >= 0),
   paid_on      DATE NOT NULL,
   method       TEXT,
   reference    TEXT,
@@ -514,6 +670,30 @@ CREATE TABLE dues_payments (
   confirmed_by_user_id UUID REFERENCES users(id),
   confirmed_at TIMESTAMPTZ
 );
+CREATE INDEX dues_payments_invoice ON dues_payments (invoice_id);
+
+-- Dues status is DERIVED (ADR-012). No trigger, no stored column, nothing to
+-- drift. The as_of parameter that scoring needs is a WHERE clause on paid_on
+-- against this same shape — a stored status could only ever answer "now".
+CREATE VIEW dues_invoice_states AS
+SELECT i.id            AS invoice_id,
+       i.district_id,
+       i.rotary_year_id,
+       i.club_id,
+       i.dues_type,
+       i.amount_due,
+       i.due_on,
+       COALESCE(p.paid, 0) AS amount_paid,
+       GREATEST(i.amount_due - COALESCE(p.paid, 0), 0) AS amount_outstanding,
+       CASE WHEN i.waived_at IS NOT NULL             THEN 'WAIVED'::invoice_status
+            WHEN COALESCE(p.paid, 0) >= i.amount_due THEN 'PAID'::invoice_status
+            WHEN COALESCE(p.paid, 0) > 0            THEN 'PARTIAL'::invoice_status
+            ELSE                                         'UNPAID'::invoice_status
+       END AS status
+FROM dues_invoices i
+LEFT JOIN LATERAL (
+  SELECT SUM(amount) AS paid FROM dues_payments WHERE invoice_id = i.id
+) p ON TRUE;
 
 CREATE TABLE member_dues (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -521,11 +701,45 @@ CREATE TABLE member_dues (
   rotary_year_id UUID NOT NULL REFERENCES rotary_years(id),
   club_id        UUID NOT NULL REFERENCES clubs(id),
   person_id      UUID NOT NULL REFERENCES persons(id),
-  amount_due     NUMERIC(14,2) NOT NULL DEFAULT 0,
-  amount_paid    NUMERIC(14,2) NOT NULL DEFAULT 0,
+  amount_due     NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK (amount_due >= 0),
+  -- amount_paid is NOT stored: see member_dues_states below and ADR-012.
   is_prepaid     BOOLEAN NOT NULL DEFAULT FALSE,
   UNIQUE (person_id, club_id, rotary_year_id)
 );
+
+-- Members hand cash to a club treasurer. That is the collection path most open
+-- to dispute, so it gets the same audit trail as club dues rather than a bare
+-- running total someone overwrites.
+CREATE TABLE member_dues_payments (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_dues_id UUID NOT NULL REFERENCES member_dues(id) ON DELETE CASCADE,
+  amount         NUMERIC(14,2) NOT NULL CHECK (amount >= 0),
+  paid_on        DATE NOT NULL,
+  method         TEXT,
+  reference      TEXT,
+  evidence_url   TEXT,
+  receipt_no     TEXT UNIQUE,
+  confirmed_by_user_id UUID REFERENCES users(id),
+  confirmed_at   TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX mdp_member_dues ON member_dues_payments (member_dues_id);
+
+-- Derived, not stored (ADR-012).
+CREATE VIEW member_dues_states AS
+SELECT m.id AS member_dues_id,
+       m.district_id,
+       m.rotary_year_id,
+       m.club_id,
+       m.person_id,
+       m.amount_due,
+       m.is_prepaid,
+       COALESCE(p.paid, 0) AS amount_paid,
+       GREATEST(m.amount_due - COALESCE(p.paid, 0), 0) AS amount_outstanding
+FROM member_dues m
+LEFT JOIN LATERAL (
+  SELECT SUM(amount) AS paid FROM member_dues_payments WHERE member_dues_id = m.id
+) p ON TRUE;
 
 CREATE TABLE trf_contributions (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -566,7 +780,7 @@ CREATE TABLE assessment_parameters (
   framework_id UUID NOT NULL REFERENCES assessment_frameworks(id) ON DELETE CASCADE,
   sequence     INT NOT NULL,
   name         TEXT NOT NULL,                      -- 'Service Projects','TRF','PLD'...
-  max_points   NUMERIC(6,2) NOT NULL,
+  max_points   NUMERIC(6,2) NOT NULL CHECK (max_points >= 0),
   description  TEXT,
   UNIQUE (framework_id, sequence)
 );
@@ -576,13 +790,18 @@ CREATE TABLE assessment_criteria (
   parameter_id     UUID NOT NULL REFERENCES assessment_parameters(id) ON DELETE CASCADE,
   sequence         INT NOT NULL,
   description      TEXT NOT NULL,
-  points           NUMERIC(6,2) NOT NULL,
+  points           NUMERIC(6,2) NOT NULL CHECK (points >= 0),
   evaluation_mode  evaluation_mode NOT NULL,
   resolver_key     TEXT,                            -- registry key; NULL for ASSESSOR mode
   rule             JSONB,                           -- see 06-Assessment-Engine.md
   applies_to_tiers club_tier[] NOT NULL DEFAULT '{T1,T2,IBC}',
   guidance         TEXT,
-  UNIQUE (parameter_id, sequence)
+  UNIQUE (parameter_id, sequence),
+  -- AUTO and HYBRID criteria are scored by a resolver, so they must name one.
+  -- An AUTO criterion with no resolver silently scores nothing. ASSESSOR
+  -- criteria MAY carry one, to show the assessor a computed number as guidance.
+  CONSTRAINT criterion_resolver_required
+    CHECK (evaluation_mode = 'ASSESSOR' OR resolver_key IS NOT NULL)
 );
 
 CREATE TABLE assessment_periods (
@@ -595,7 +814,13 @@ CREATE TABLE assessment_periods (
   submission_deadline TIMESTAMPTZ NOT NULL,
   dispute_closes_at  TIMESTAMPTZ,
   status             period_status NOT NULL DEFAULT 'SCHEDULED',
-  UNIQUE (framework_id, label)
+  UNIQUE (framework_id, label),
+  CONSTRAINT period_dates CHECK (ends_on >= starts_on),
+  CONSTRAINT period_dispute_window
+    CHECK (dispute_closes_at IS NULL OR dispute_closes_at >= submission_deadline)
+  -- submission_deadline >= ends_on is NOT expressible here: casting DATE to
+  -- TIMESTAMPTZ is stable, not immutable, so Postgres rejects it in a CHECK.
+  -- The assessment service validates it when a period is scheduled.
 );
 
 CREATE TABLE club_assessments (
@@ -605,9 +830,13 @@ CREATE TABLE club_assessments (
   club_id      UUID NOT NULL REFERENCES clubs(id),
   tier         club_tier NOT NULL,
   status       assessment_status NOT NULL DEFAULT 'PENDING',
-  total_score  NUMERIC(6,2),
-  max_possible NUMERIC(6,2),
-  rank_in_tier INT,
+  -- total_score, max_possible and rank_in_tier are NOT stored: they are sums
+  -- and a window function over assessment_scores. See club_assessment_states
+  -- below and ADR-012. A standings table that disagrees with the scorecard it
+  -- links to is precisely the argument this system exists to prevent.
+  --
+  -- is_stale REMAINS, and is not derived state: it records that the resolvers
+  -- need re-running, which is real work the nightly job schedules.
   is_stale     BOOLEAN NOT NULL DEFAULT TRUE,
   computed_at  TIMESTAMPTZ,
   finalised_at TIMESTAMPTZ,
@@ -627,8 +856,41 @@ CREATE TABLE assessment_scores (
   assessor_user_id   UUID REFERENCES users(id),
   comment            TEXT,
   scored_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (club_assessment_id, criterion_id)
+  UNIQUE (club_assessment_id, criterion_id),
+  -- A club cannot be awarded more than a criterion is worth. Without this, one
+  -- resolver bug or one assessor typo inflates a total and nothing contradicts
+  -- it. If bonus points are ever wanted, raise points_possible on the row.
+  CONSTRAINT score_within_bounds
+    CHECK (points_possible >= 0 AND points_awarded >= 0 AND points_awarded <= points_possible)
 );
+
+-- Scorecard totals and standings, derived (ADR-012). Ranking lives here too:
+-- it is a window function over the same numbers, so it cannot disagree with
+-- them. If standings ever become hot, this can be materialised behind the same
+-- name without changing a single caller.
+CREATE VIEW club_assessment_states AS
+SELECT ca.id           AS club_assessment_id,
+       ca.district_id,
+       ca.period_id,
+       ca.club_id,
+       ca.tier,
+       ca.status,
+       ca.is_stale,
+       COALESCE(s.total_score, 0)  AS total_score,
+       COALESCE(s.max_possible, 0) AS max_possible,
+       CASE WHEN COALESCE(s.max_possible, 0) > 0
+            THEN ROUND(100 * s.total_score / s.max_possible, 2)
+       END AS percentage,
+       COALESCE(s.scored_criteria, 0) AS scored_criteria,
+       RANK() OVER (PARTITION BY ca.period_id, ca.tier
+                    ORDER BY COALESCE(s.total_score, 0) DESC) AS rank_in_tier
+FROM club_assessments ca
+LEFT JOIN LATERAL (
+  SELECT SUM(points_awarded)  AS total_score,
+         SUM(points_possible) AS max_possible,
+         count(*)             AS scored_criteria
+  FROM assessment_scores WHERE club_assessment_id = ca.id
+) s ON TRUE;
 
 CREATE TABLE assessor_assignments (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -638,6 +900,40 @@ CREATE TABLE assessor_assignments (
   cluster_id   UUID REFERENCES clusters(id),        -- NULL = all clubs
   UNIQUE (period_id, parameter_id, person_id, cluster_id)
 );
+-- The UNIQUE above does not constrain the "all clubs" case, because NULLs are
+-- distinct: the same assessor could be assigned district-wide twice for one
+-- parameter. Fourth instance of this pattern in the schema.
+CREATE UNIQUE INDEX assessor_assignments_all_clubs
+  ON assessor_assignments (period_id, parameter_id, person_id) WHERE cluster_id IS NULL;
+
+-- Does the rubric add up? total_points, the sum of parameter weights and the
+-- sum of criterion points are three independent numbers in this design, and
+-- nothing forces agreement. Publishing a 103-point framework is silent until
+-- clubs compare scorecards. Not expressible as a CHECK (it spans rows), so the
+-- assessment service blocks the DRAFT -> PUBLISHED transition when is_balanced
+-- is false, and the rubric editor shows this live while the chair works.
+CREATE VIEW framework_point_totals AS
+SELECT f.id AS framework_id,
+       f.district_id,
+       f.rotary_year_id,
+       f.version,
+       f.status,
+       f.total_points                    AS declared_total,
+       COALESCE(p.parameter_total, 0)    AS parameter_total,
+       COALESCE(c.criterion_total, 0)    AS criterion_total,
+       (f.total_points = COALESCE(p.parameter_total, 0)
+        AND COALESCE(p.parameter_total, 0) = COALESCE(c.criterion_total, 0)) AS is_balanced
+FROM assessment_frameworks f
+LEFT JOIN LATERAL (
+  SELECT SUM(max_points) AS parameter_total
+  FROM assessment_parameters WHERE framework_id = f.id
+) p ON TRUE
+LEFT JOIN LATERAL (
+  SELECT SUM(cr.points) AS criterion_total
+  FROM assessment_parameters pa
+  JOIN assessment_criteria cr ON cr.parameter_id = pa.id
+  WHERE pa.framework_id = f.id
+) c ON TRUE;
 
 -- The feedback loop the incumbent system never had.
 CREATE TABLE assessment_comments (
@@ -650,6 +946,11 @@ CREATE TABLE assessment_comments (
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- NOTE: unlike assessment_comments, this does NOT cascade from
+-- club_assessments, and that is deliberate: a dispute is the record of a
+-- contest and must survive tidy-up of the assessment it contests. Deleting an
+-- assessment with a dispute raises a foreign key error; the service turns that
+-- into a domain message rather than letting it reach a client raw.
 CREATE TABLE assessment_disputes (
   id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   club_assessment_id UUID NOT NULL REFERENCES club_assessments(id),
@@ -697,36 +998,57 @@ CREATE TABLE goal_snapshots (
 -- 9. DOCUMENTS
 -- =====================================================================
 
+-- A lookup table, not free text: a criterion like "club has a valid URSB
+-- certificate" resolves by matching doc_type, so a typo at upload silently
+-- costs a club points. A district adds a type without a deployment (the file's
+-- own convention), which is why this is a table rather than an enum.
+CREATE TABLE document_types (
+  code        TEXT PRIMARY KEY,                     -- URSB_CERT, AUDITED_ACCOUNTS, ...
+  name        TEXT NOT NULL,
+  description TEXT,
+  is_active   BOOLEAN NOT NULL DEFAULT TRUE
+);
+
 CREATE TABLE documents (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   district_id      UUID NOT NULL REFERENCES districts(id),
   owner_scope_type org_scope NOT NULL,
   owner_scope_id   UUID NOT NULL,
-  doc_type         TEXT NOT NULL,                   -- URSB_CERT, AUDITED_ACCOUNTS, CONSTITUTION, MOU
+  doc_type         TEXT NOT NULL REFERENCES document_types(code),
   title            TEXT NOT NULL,
   storage_key      TEXT NOT NULL,
   mime_type        TEXT,
-  size_bytes       BIGINT,
+  size_bytes       BIGINT CHECK (size_bytes >= 0),
   issued_on        DATE,
   expires_on       DATE,
   verification     verification_state NOT NULL DEFAULT 'UNVERIFIED',
   verified_by_user_id UUID REFERENCES users(id),
   uploaded_by_user_id UUID REFERENCES users(id),
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at       TIMESTAMPTZ
+  deleted_at       TIMESTAMPTZ,
+  CONSTRAINT document_dates CHECK (expires_on IS NULL OR issued_on IS NULL OR expires_on >= issued_on)
 );
+CREATE INDEX documents_owner ON documents (owner_scope_type, owner_scope_id, doc_type);
 
 -- =====================================================================
 -- 10. PUBLIC IMAGE
 -- =====================================================================
+
+-- Lookup, not free text: platform is part of the unique key below, so
+-- 'Instagram' and 'INSTAGRAM' would be two accounts for one club on one
+-- network. New platforms appear faster than deployments, hence a table.
+CREATE TABLE social_platforms (
+  code      TEXT PRIMARY KEY,                       -- X, INSTAGRAM, FACEBOOK, TIKTOK,
+  name      TEXT NOT NULL,                          -- LINKEDIN, YOUTUBE, OTHER
+  is_active BOOLEAN NOT NULL DEFAULT TRUE
+);
 
 CREATE TABLE social_accounts (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   district_id      UUID NOT NULL REFERENCES districts(id),
   owner_scope_type org_scope NOT NULL,
   owner_scope_id   UUID NOT NULL,
-  platform         TEXT NOT NULL,                   -- X, INSTAGRAM, FACEBOOK, TIKTOK,
-                                                    -- LINKEDIN, YOUTUBE, OTHER
+  platform         TEXT NOT NULL REFERENCES social_platforms(code),
   handle           TEXT,
   url              TEXT NOT NULL,
   is_active        BOOLEAN NOT NULL DEFAULT TRUE,
@@ -737,8 +1059,8 @@ CREATE TABLE social_snapshots (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   social_account_id UUID NOT NULL REFERENCES social_accounts(id) ON DELETE CASCADE,
   captured_on       DATE NOT NULL,
-  follower_count    INT,
-  post_count_30d    INT,
+  follower_count    INT CHECK (follower_count >= 0),
+  post_count_30d    INT CHECK (post_count_30d >= 0),
   UNIQUE (social_account_id, captured_on)
 );
 
@@ -775,6 +1097,25 @@ CREATE TABLE audit_log (
 CREATE INDEX audit_entity ON audit_log (entity_type, entity_id, occurred_at DESC);
 CREATE INDEX audit_actor  ON audit_log (actor_user_id, occurred_at DESC);
 
+-- Append-only, enforced (ADR-012). An audit log that the application can edit
+-- is not an audit log — it is a table of claims. This is the record that makes
+-- a contested award reconstructable, so it gets the same treatment as
+-- membership_events, with no exception column.
+--
+-- Retention is indefinite by design. If a retention policy is ever adopted,
+-- purging means dropping this trigger deliberately, in a migration, on the
+-- record — which is the correct amount of friction for deleting an audit trail.
+CREATE FUNCTION audit_log_immutable() RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'audit_log is append-only: % is not permitted', TG_OP
+    USING ERRCODE = 'DIS02';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER audit_log_no_mutate
+  BEFORE UPDATE OR DELETE ON audit_log
+  FOR EACH ROW EXECUTE FUNCTION audit_log_immutable();
+
 CREATE TABLE notification_templates (
   code       TEXT PRIMARY KEY,
   channel    notification_channel NOT NULL,
@@ -803,11 +1144,11 @@ CREATE TABLE export_jobs (
   district_id    UUID NOT NULL REFERENCES districts(id),
   requested_by_user_id UUID NOT NULL REFERENCES users(id),
   resource       TEXT NOT NULL,
-  format         TEXT NOT NULL DEFAULT 'XLSX',
+  format         export_format NOT NULL DEFAULT 'XLSX',
   filters        JSONB NOT NULL DEFAULT '{}',
-  status         TEXT NOT NULL DEFAULT 'QUEUED',
+  status         export_status NOT NULL DEFAULT 'QUEUED',
   storage_key    TEXT,
-  row_count      INT,
+  row_count      INT CHECK (row_count >= 0),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   completed_at   TIMESTAMPTZ,
   expires_at     TIMESTAMPTZ

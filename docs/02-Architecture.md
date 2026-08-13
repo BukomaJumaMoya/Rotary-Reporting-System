@@ -92,6 +92,33 @@ Each decision is recorded with its reasoning, because in eighteen months you wil
 **Decision.** `district_id` on every tenant-scoped table from the first migration, enforced by a data access layer that requires an explicit district context. Postgres Row-Level Security as a defence-in-depth backstop.
 **Why.** This is the decision that cannot be cheaply reversed. Retrofitting tenancy means touching every table, every query and every test. Adding it now costs one column and one middleware. **But tenant *features* — per-district branding, tenant admin consoles, configurable everything — are explicitly deferred until a second district actually signs.** Isolation now; features never, until paid for.
 
+### ADR-012 — Where an invariant lives
+**Decision.** Every rule the data must obey is placed by a three-tier test, applied in order:
+
+1. **Declarative constraint** — `NOT NULL`, `CHECK`, `UNIQUE`, foreign keys, partial indexes, generated columns. If the rule can be expressed this way, it is, always.
+2. **Derived state is a view, never a stored column.** No trigger maintains a denormalised value. If a number can be computed from other rows, it is computed — `dues_invoice_states`, `member_dues_states`, `club_rosters`.
+3. **A trigger only as a guard.** Reserved for invariants that no writer may violate and that tiers 1 and 2 cannot express. Each guard raises a stable `SQLSTATE`, appears in the guard registry below, and has a conformance test that attempts the violation and asserts the failure.
+
+Everything else — workflow, authorisation, orchestration, anything needing to know *who* or *why* — is application code, in the owning module's service.
+
+**Why.** A trigger that maintains a column creates two failures at once. The ORM presents a writable field that the database silently overwrites, so `prisma.duesInvoice.update({ status })` appears to work and does nothing. And the rule is invisible: someone reading `schema.prisma` sees a column, not a mechanism. Derived state as a view has neither problem — the column does not exist, so it cannot be written, and the derivation is one definition instead of a trigger plus a backfill plus a nightly reconciliation job to catch the drift.
+
+Guards are a different kind of thing and the distinction is worth holding. A guard protects against *the application being wrong*, which is precisely what cannot be done from inside the application. Append-only means append-only even when a future developer, a migration script, or an operator at 2am has a good reason.
+
+There is a third benefit specific to this system. A stored status answers "is this club paid up *now*". A view answers "was this club paid up *at the close of the March period*", which is the question the assessment engine actually asks. Stored derived state cannot be asked about the past.
+
+**Guard registry.** Every database-side guard, its SQLSTATE, and its domain error code:
+
+| Guard | Table | SQLSTATE | Domain code |
+|---|---|---|---|
+| `membership_events_no_mutate` | `membership_events` | `DIS01` | `MEMBERSHIP_IMMUTABLE` |
+| `audit_log_no_mutate` | `audit_log` | `DIS02` | `AUDIT_IMMUTABLE` |
+| `persons_visibility_ins` | `persons` | — (inserts, never raises) | — |
+
+`platform/errors` maps SQLSTATE to the domain code so a guard violation arrives at the client as `{ error: { code: "MEMBERSHIP_IMMUTABLE", … } }` rather than a driver exception.
+
+**Consequence.** Reads of derived state join. At 140 clubs and a few thousand members this is not measurable; if a view ever becomes hot, it can be materialised behind the same name without changing a caller. Adding a guard requires amending this ADR and writing its conformance test — deliberately more friction than adding a service function.
+
 ### ADR-011 — Deployment
 **Decision.** Application on Fly.io or Railway; database on Neon or Supabase; storage on R2. Europe or nearest available region to East Africa.
 **Why.** Managed Postgres with point-in-time recovery and automated backups is worth far more than the saving from self-hosting, and a solo maintainer must not also be a DBA. Target cost at launch scale is under USD 30/month, which the district can absorb or a corporate partner can sponsor.
