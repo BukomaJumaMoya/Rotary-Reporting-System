@@ -14,13 +14,51 @@ export const passwordSchema = z
 
 export const emailSchema = z.string().trim().toLowerCase().email().max(320);
 
+/** Six digits from an authenticator app. */
+export const totpCodeSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{6}$/, 'Enter the 6-digit code from your authenticator app');
+
 export const loginRequestSchema = z.object({
   email: emailSchema,
   // Not `passwordSchema`: an existing password set under older rules must still be
   // able to log in. Validating length here would lock those people out.
   password: z.string().min(1).max(200),
+  /**
+   * Required only for accounts with MFA enabled. The client learns it is needed from a
+   * first attempt answered with MFA_REQUIRED, then resends with the code.
+   *
+   * One step rather than a half-authenticated session: a session that exists but is not
+   * yet trusted is a state every downstream check must remember to consider, and one
+   * that forgets is an authentication bypass.
+   */
+  totpCode: totpCodeSchema.optional(),
 });
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
+
+/** Response to POST /auth/mfa/enrol — shown once, as a QR code and as text. */
+export const mfaEnrolResponseSchema = z.object({
+  data: z.object({
+    /** otpauth:// URI for the QR code. */
+    otpauthUri: z.string(),
+    /** The same secret in base32, for entering by hand when a camera will not cooperate. */
+    secret: z.string(),
+  }),
+});
+export type MfaEnrolResponse = z.infer<typeof mfaEnrolResponseSchema>;
+
+export const mfaVerifyRequestSchema = z.object({
+  code: totpCodeSchema,
+});
+export type MfaVerifyRequest = z.infer<typeof mfaVerifyRequestSchema>;
+
+/** Turning MFA off requires the password AND a current code — either alone is not enough. */
+export const mfaDisableRequestSchema = z.object({
+  password: z.string().min(1).max(200),
+  code: totpCodeSchema,
+});
+export type MfaDisableRequest = z.infer<typeof mfaDisableRequestSchema>;
 
 export const forgotPasswordRequestSchema = z.object({
   email: emailSchema,

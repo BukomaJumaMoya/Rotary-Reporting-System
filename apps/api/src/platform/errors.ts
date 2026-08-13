@@ -15,6 +15,11 @@ export const ErrorCode = {
   ACCOUNT_NOT_ACTIVE: 'ACCOUNT_NOT_ACTIVE',
   RATE_LIMITED: 'RATE_LIMITED',
   TOKEN_INVALID: 'TOKEN_INVALID',
+  // The password was correct; the client must now supply a second factor.
+  MFA_REQUIRED: 'MFA_REQUIRED',
+  MFA_INVALID: 'MFA_INVALID',
+  MFA_ALREADY_ENABLED: 'MFA_ALREADY_ENABLED',
+  MFA_NOT_ENROLLED: 'MFA_NOT_ENROLLED',
   NOT_FOUND: 'NOT_FOUND',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   // Database guards (ADR-012). Mapped from SQLSTATE below.

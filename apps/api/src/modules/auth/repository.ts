@@ -8,10 +8,25 @@ export type AuthUser = {
   passwordHash: string | null;
   status: 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'DISABLED';
   mfaEnabled: boolean;
+  mfaSecret: string | null;
+  mfaLastUsedStep: bigint | null;
   failedAttempts: number;
   lockedUntil: Date | null;
-  person: { id: string; firstName: string; lastName: string };
+  person: { id: string; firstName: string; lastName: string; email: string | null };
 };
+
+const AUTH_USER_SELECT = {
+  id: true,
+  personId: true,
+  passwordHash: true,
+  status: true,
+  mfaEnabled: true,
+  mfaSecret: true,
+  mfaLastUsedStep: true,
+  failedAttempts: true,
+  lockedUntil: true,
+  person: { select: { id: true, firstName: true, lastName: true, email: true } },
+} as const;
 
 /**
  * Email lives on `persons`, not `users`, so authentication looks the account up through
@@ -19,35 +34,53 @@ export type AuthUser = {
  * log in.
  */
 export async function findUserByEmail(email: string): Promise<AuthUser | null> {
-  const user = await prisma.user.findFirst({
+  return prisma.user.findFirst({
     where: { person: { email, deletedAt: null } },
-    select: {
-      id: true,
-      personId: true,
-      passwordHash: true,
-      status: true,
-      mfaEnabled: true,
-      failedAttempts: true,
-      lockedUntil: true,
-      person: { select: { id: true, firstName: true, lastName: true } },
-    },
+    select: AUTH_USER_SELECT,
   });
-  return user;
 }
 
 export async function findUserById(id: string): Promise<AuthUser | null> {
   return prisma.user.findFirst({
     where: { id, person: { deletedAt: null } },
-    select: {
-      id: true,
-      personId: true,
-      passwordHash: true,
-      status: true,
-      mfaEnabled: true,
-      failedAttempts: true,
-      lockedUntil: true,
-      person: { select: { id: true, firstName: true, lastName: true } },
+    select: AUTH_USER_SELECT,
+  });
+}
+
+/** Stores a pending secret. MFA stays OFF until a code proves the app is set up. */
+export async function stageMfaSecret(userId: string, secret: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { mfaSecret: secret, mfaEnabled: false, mfaLastUsedStep: null },
+  });
+}
+
+/**
+ * Records a consumed TOTP step, and enables MFA if this was the confirming code.
+ *
+ * The `mfaLastUsedStep: { lt: step }` guard is what makes replay impossible: two requests
+ * carrying the same code both verify, but only one updates a row, and the loser is
+ * rejected by its caller. OR null covers the first use, where no step is recorded yet.
+ */
+export async function consumeMfaStep(
+  userId: string,
+  step: bigint,
+  options: { enable?: boolean } = {},
+): Promise<boolean> {
+  const result = await prisma.user.updateMany({
+    where: {
+      id: userId,
+      OR: [{ mfaLastUsedStep: null }, { mfaLastUsedStep: { lt: step } }],
     },
+    data: { mfaLastUsedStep: step, ...(options.enable ? { mfaEnabled: true } : {}) },
+  });
+  return result.count === 1;
+}
+
+export async function disableMfa(userId: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { mfaEnabled: false, mfaSecret: null, mfaLastUsedStep: null },
   });
 }
 

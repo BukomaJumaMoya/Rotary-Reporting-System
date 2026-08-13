@@ -1,6 +1,9 @@
 -- =====================================================================
 -- Rotaract District Information System (DIS)
--- Authoritative PostgreSQL 16 schema — design baseline v1.4
+-- Authoritative PostgreSQL 16 schema — design baseline v1.5
+--
+-- v1.5 (auth): users.mfa_last_used_step, so a TOTP code cannot be replayed within its
+-- validity window.
 --
 -- v1.4 (platform): audit_log made append-only by trigger; document types and
 -- social platforms became lookup tables rather than free text a scoring rule
@@ -263,8 +266,15 @@ CREATE TABLE users (
   person_id       UUID NOT NULL UNIQUE REFERENCES persons(id),
   password_hash   TEXT,                             -- Argon2id
   status          user_status NOT NULL DEFAULT 'INVITED',
+  -- TOTP shared secret, base32. Stored in clear: encrypting it needs a key management
+  -- story the project does not have yet. Raised for the M9 security review, because a
+  -- database leak otherwise hands over the second factor along with the first.
   mfa_secret      TEXT,
   mfa_enabled     BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Highest TOTP step already accepted. A code stays valid for its 30-second step plus
+  -- the tolerance window either side; without this, anyone who sees a code once — over a
+  -- shoulder, in a screenshot, through a phishing page — can replay it until it expires.
+  mfa_last_used_step BIGINT,
   last_login_at   TIMESTAMPTZ,
   failed_attempts INT NOT NULL DEFAULT 0,
   locked_until    TIMESTAMPTZ,

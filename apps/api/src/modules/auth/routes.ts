@@ -2,6 +2,8 @@ import {
   forgotPasswordRequestSchema,
   inviteAcceptRequestSchema,
   loginRequestSchema,
+  mfaDisableRequestSchema,
+  mfaVerifyRequestSchema,
   resetPasswordRequestSchema,
 } from '@dis/contracts';
 import { Router } from 'express';
@@ -62,11 +64,39 @@ const loginRateLimit = rateLimit({
   },
 });
 
+/** Reads the caller's user id from the session, or refuses. */
+function requireSession(req: Request): string {
+  const userId = req.session.userId;
+  if (!userId) throw unauthenticated();
+  return userId;
+}
+
+/**
+ * MFA endpoints are authenticated, so the session identifies the account and the limiter
+ * keys on it rather than on a body field. Same budget as login: a six-digit code has a
+ * million possibilities, which only matters if guesses are counted.
+ */
+const mfaRateLimit = rateLimit({
+  windowMs: config.LOGIN_RATE_WINDOW_MINUTES * 60 * 1000,
+  limit: config.LOGIN_RATE_MAX_ATTEMPTS,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req: Request) =>
+    `mfa:${ipKeyGenerator(req.ip ?? 'unknown')}:${req.session.userId ?? 'anonymous'}`,
+  handler: (_req, _res, next) => {
+    next(
+      new AppError(429, ErrorCode.RATE_LIMITED, 'Too many attempts. Try again later.', {
+        retryAfterSeconds: config.LOGIN_RATE_WINDOW_MINUTES * 60,
+      }),
+    );
+  },
+});
+
 authRouter.post(
   '/login',
   loginRateLimit,
   ...withBody(loginRequestSchema, async ({ body, req, res }) => {
-    const user = await service.login(body.email, body.password);
+    const user = await service.login(body.email, body.password, body.totpCode);
 
     // Session fixation: a session id issued before authentication must not survive it.
     await promisify((cb) => req.session.regenerate(cb));
@@ -131,6 +161,41 @@ authRouter.post(
   '/invite/accept',
   ...withBody(inviteAcceptRequestSchema, async ({ body, req, res }) => {
     await service.acceptInvite(body.token, body.password, req.ip ?? null);
+    res.status(204).end();
+  }),
+);
+
+/**
+ * MFA. All three require an existing session: enrolling, confirming and disabling are
+ * things a signed-in member does to their own account.
+ *
+ * The same rate limiter guards them as guards login, keyed on IP + email — a six-digit
+ * code is only out of reach while guesses are counted.
+ */
+authRouter.post(
+  '/mfa/enrol',
+  asyncHandler(async (req, res) => {
+    const enrolment = await service.beginMfaEnrolment(requireSession(req));
+    // Shown once. The secret is not retrievable afterwards: a member who loses it
+    // restarts enrolment.
+    res.status(200).json({ data: enrolment });
+  }),
+);
+
+authRouter.post(
+  '/mfa/verify',
+  mfaRateLimit,
+  ...withBody(mfaVerifyRequestSchema, async ({ body, req, res }) => {
+    await service.confirmMfaEnrolment(requireSession(req), body.code);
+    res.status(204).end();
+  }),
+);
+
+authRouter.post(
+  '/mfa/disable',
+  mfaRateLimit,
+  ...withBody(mfaDisableRequestSchema, async ({ body, req, res }) => {
+    await service.disableMfa(requireSession(req), body.password, body.code);
     res.status(204).end();
   }),
 );

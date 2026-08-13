@@ -69,9 +69,25 @@ Handlers never read `districtId` or `rotaryYearId` from user input. Both come fr
 | `POST` | `/auth/password/forgot` | Always `204`, regardless of whether the email exists |
 | `POST` | `/auth/password/reset` | Consumes token |
 | `POST` | `/auth/invite/accept` | Sets password, records consent |
-| `POST` | `/auth/mfa/enrol` · `/auth/mfa/verify` | District-scope roles |
+| `POST` | `/auth/mfa/enrol` · `/auth/mfa/verify` · `/auth/mfa/disable` | Authenticated; recommended for district-scope roles |
 
 `GET /auth/me` is the client's source of truth for what to render. It must never be the security boundary — every endpoint re-checks server-side.
+
+### Sign-in with a second factor
+
+Login is **one step, attempted twice** — not a half-authenticated session. A session that exists but is not yet trusted is a state every later check must remember to consider, and the one that forgets is an authentication bypass.
+
+1. `POST /auth/login` with email and password.
+2. If the account has MFA enabled, the response is `401` with code `MFA_REQUIRED`. **No cookie is issued.**
+3. The client prompts for the code and posts the same credentials again with `totpCode`.
+
+A correct password with no code is not a failed attempt — counting it would lock out every member on every sign-in. A *wrong* code is, because six digits is a million possibilities and that is only out of reach while guesses are counted.
+
+Enrolment stores the secret but leaves MFA **off** until a code proves the authenticator works, so a member who loses the QR code mid-setup is not locked out of their own account. Disabling requires the password *and* a current code: a hijacked session alone must not be able to strip the second factor. A member who has lost their authenticator entirely needs an administrator — that path arrives with permissions in M1.
+
+Codes are single use. A code is valid for its 30-second step plus one step either way for clock drift, and `users.mfa_last_used_step` stops it being replayed inside that window.
+
+**Auth error codes:** `INVALID_CREDENTIALS` · `ACCOUNT_LOCKED` (423, with `retryAfterSeconds`) · `ACCOUNT_NOT_ACTIVE` · `RATE_LIMITED` (429) · `TOKEN_INVALID` · `MFA_REQUIRED` · `MFA_INVALID` · `MFA_ALREADY_ENABLED` · `MFA_NOT_ENROLLED`
 
 ---
 

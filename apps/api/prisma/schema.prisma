@@ -365,8 +365,11 @@ model User {
   /// Argon2id.
   passwordHash   String?    @map("password_hash")
   status         UserStatus @default(INVITED)
+  /// TOTP shared secret, base32. Plaintext — flagged for the M9 security review.
   mfaSecret      String?    @map("mfa_secret")
   mfaEnabled     Boolean    @default(false) @map("mfa_enabled")
+  /// Highest TOTP step already accepted, so a code cannot be replayed inside its window.
+  mfaLastUsedStep BigInt?   @map("mfa_last_used_step")
   lastLoginAt    DateTime?  @map("last_login_at") @db.Timestamptz(6)
   failedAttempts Int        @default(0) @map("failed_attempts")
   lockedUntil    DateTime?  @map("locked_until") @db.Timestamptz(6)

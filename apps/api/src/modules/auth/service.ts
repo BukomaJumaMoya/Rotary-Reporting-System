@@ -1,8 +1,15 @@
 import type { MeResponse } from '@dis/contracts';
 import { config } from '../../platform/config.js';
-import { AppError, ErrorCode, invalidCredentials, invalidToken } from '../../platform/errors.js';
+import {
+  AppError,
+  ErrorCode,
+  invalidCredentials,
+  invalidToken,
+  unauthenticated,
+} from '../../platform/errors.js';
 import { notify } from '../notifications/service.js';
 import { NotificationTemplate } from '../notifications/templates.js';
+import { createEnrolment, verifyCode, type Enrolment } from './mfa.js';
 import { consumeTimingBudget, hashPassword, verifyPassword } from './passwords.js';
 import * as repository from './repository.js';
 import type { AuthUser } from './repository.js';
@@ -31,7 +38,26 @@ function lockedError(lockedUntil: Date): AppError {
   });
 }
 
-export async function login(email: string, password: string): Promise<AuthUser> {
+/**
+ * Records a failed attempt and throws — either the ordinary rejection, or the lockout if
+ * this failure crossed the threshold.
+ *
+ * Used for a wrong password AND a wrong TOTP code. A six-digit code is a million
+ * possibilities, which is only out of reach if guesses are counted.
+ */
+async function rejectAttempt(userId: string, error: AppError): Promise<never> {
+  const attempts = await repository.recordFailedAttempt(userId, null);
+  const duration = lockoutDuration(attempts);
+
+  if (duration !== null) {
+    const lockedUntil = new Date(Date.now() + duration);
+    await repository.recordFailedAttempt(userId, lockedUntil);
+    throw lockedError(lockedUntil);
+  }
+  throw error;
+}
+
+export async function login(email: string, password: string, totpCode?: string): Promise<AuthUser> {
   const user = await repository.findUserByEmail(email);
 
   if (!user || !user.passwordHash) {
@@ -48,15 +74,34 @@ export async function login(email: string, password: string): Promise<AuthUser> 
   const ok = await verifyPassword(user.passwordHash, password);
 
   if (!ok) {
-    // Increment first: the new count decides whether this failure starts a lockout.
-    const attempts = await repository.recordFailedAttempt(user.id, null);
-    const duration = lockoutDuration(attempts);
-    if (duration !== null) {
-      const lockedUntil = new Date(Date.now() + duration);
-      await repository.recordFailedAttempt(user.id, lockedUntil);
-      throw lockedError(lockedUntil);
+    await rejectAttempt(user.id, invalidCredentials());
+  }
+
+  if (user.mfaEnabled && user.mfaSecret) {
+    if (!totpCode) {
+      // Not a failed attempt: the password was right, and the client simply has not been
+      // asked for a code yet. Counting this would lock out every correct login.
+      throw new AppError(401, ErrorCode.MFA_REQUIRED, 'A second factor is required');
     }
-    throw invalidCredentials();
+
+    const label = user.person.email ?? user.id;
+    const result = verifyCode(user.mfaSecret, label, totpCode);
+
+    if (!result.valid) {
+      await rejectAttempt(
+        user.id,
+        new AppError(401, ErrorCode.MFA_INVALID, 'That code is not valid'),
+      );
+    }
+
+    // Replay guard: a code already used cannot be used again inside its window.
+    const consumed = await repository.consumeMfaStep(user.id, BigInt(result.step));
+    if (!consumed) {
+      await rejectAttempt(
+        user.id,
+        new AppError(401, ErrorCode.MFA_INVALID, 'That code has already been used'),
+      );
+    }
   }
 
   if (user.status === 'SUSPENDED' || user.status === 'DISABLED') {
@@ -230,4 +275,85 @@ export function toMeResponse(user: AuthUser): MeResponse {
 
 export async function currentUser(userId: string): Promise<AuthUser | null> {
   return repository.findUserById(userId);
+}
+
+/**
+ * Starts MFA enrolment: generates a secret and stores it WITHOUT enabling anything.
+ *
+ * Enabling here would lock a member out of their own account the moment they lost the QR
+ * code — they must prove the authenticator works first, via /auth/mfa/verify.
+ *
+ * Re-enrolling is allowed while MFA is off (a scan that did not take), and refused once
+ * it is on, where replacing the secret would be an account takeover from a hijacked
+ * session.
+ */
+export async function beginMfaEnrolment(userId: string): Promise<Enrolment> {
+  const user = await repository.findUserById(userId);
+  if (!user) throw unauthenticated();
+
+  if (user.mfaEnabled) {
+    throw new AppError(409, ErrorCode.MFA_ALREADY_ENABLED, 'Two-factor sign-in is already on');
+  }
+
+  const enrolment = createEnrolment(user.person.email ?? user.id);
+  await repository.stageMfaSecret(user.id, enrolment.secret);
+  return enrolment;
+}
+
+/** Confirms enrolment. Only a working code turns MFA on. */
+export async function confirmMfaEnrolment(userId: string, code: string): Promise<void> {
+  const user = await repository.findUserById(userId);
+  if (!user) throw unauthenticated();
+
+  if (user.mfaEnabled) {
+    throw new AppError(409, ErrorCode.MFA_ALREADY_ENABLED, 'Two-factor sign-in is already on');
+  }
+  if (!user.mfaSecret) {
+    throw new AppError(409, ErrorCode.MFA_NOT_ENROLLED, 'Start enrolment before verifying a code');
+  }
+
+  const label = user.person.email ?? user.id;
+  const result = verifyCode(user.mfaSecret, label, code);
+  if (!result.valid) {
+    await rejectAttempt(
+      user.id,
+      new AppError(401, ErrorCode.MFA_INVALID, 'That code is not valid'),
+    );
+  }
+
+  const consumed = await repository.consumeMfaStep(user.id, BigInt(result.step), { enable: true });
+  if (!consumed) {
+    throw new AppError(401, ErrorCode.MFA_INVALID, 'That code has already been used');
+  }
+}
+
+/**
+ * Turns MFA off. Requires the password AND a current code.
+ *
+ * A hijacked session alone must not be able to strip the second factor — that would make
+ * MFA worth nothing precisely when it matters. A member who has lost their authenticator
+ * cannot pass this and needs an administrator, which arrives with permissions in M1.
+ */
+export async function disableMfa(userId: string, password: string, code: string): Promise<void> {
+  const user = await repository.findUserById(userId);
+  if (!user?.passwordHash) throw unauthenticated();
+
+  if (!user.mfaEnabled || !user.mfaSecret) {
+    throw new AppError(409, ErrorCode.MFA_NOT_ENROLLED, 'Two-factor sign-in is not on');
+  }
+
+  const passwordOk = await verifyPassword(user.passwordHash, password);
+  if (!passwordOk) {
+    await rejectAttempt(user.id, invalidCredentials());
+  }
+
+  const result = verifyCode(user.mfaSecret, user.person.email ?? user.id, code);
+  if (!result.valid) {
+    await rejectAttempt(
+      user.id,
+      new AppError(401, ErrorCode.MFA_INVALID, 'That code is not valid'),
+    );
+  }
+
+  await repository.disableMfa(user.id);
 }
