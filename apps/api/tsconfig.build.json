@@ -1,0 +1,6 @@
+{
+  // Emitting build. tsconfig.json covers the same sources plus tests, for typecheck
+  // and lint; tests must not end up in dist.
+  "extends": "./tsconfig.json",
+  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts"]
+}

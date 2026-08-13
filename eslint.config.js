@@ -1,0 +1,49 @@
+import js from '@eslint/js';
+import globals from 'globals';
+import tseslint from 'typescript-eslint';
+import reactHooks from 'eslint-plugin-react-hooks';
+import reactRefresh from 'eslint-plugin-react-refresh';
+import prettier from 'eslint-config-prettier';
+
+export default tseslint.config(
+  {
+    ignores: ['**/dist/**', '**/coverage/**', '**/node_modules/**', 'docs/**'],
+  },
+
+  js.configs.recommended,
+  tseslint.configs.recommended,
+
+  // Server and shared code get type-aware linting. no-floating-promises alone earns
+  // the extra seconds in an Express codebase; misused-promises catches the async
+  // handler bugs that otherwise surface as a silently hanging request.
+  {
+    files: ['apps/api/src/**/*.ts', 'packages/contracts/src/**/*.ts'],
+    extends: [tseslint.configs.recommendedTypeChecked],
+    languageOptions: {
+      globals: globals.node,
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+
+  {
+    files: ['apps/web/src/**/*.{ts,tsx}'],
+    extends: [reactHooks.configs.flat['recommended-latest'], reactRefresh.configs.vite],
+    languageOptions: {
+      globals: globals.browser,
+    },
+  },
+
+  // Config files run under Node and are not part of any app's tsconfig.
+  {
+    files: ['**/*.config.{js,ts}', 'eslint.config.js'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+
+  // Prettier owns formatting; ESLint must never report it. Keep this last.
+  prettier,
+);

@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    // Composite: apps/api references this project, so it must emit declarations.
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+
+    // Contracts is imported by both the API (Node) and the web app (browser).
+    // It must not depend on the types of either.
+    "types": []
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+package-lock.json
+
+# Design documentation is hand-formatted; Prettier reflows tables and breaks the
+# ASCII diagrams in docs/02-Architecture.md and docs/04-Diagrams.md.
+docs/
+CLAUDE.md

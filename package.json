@@ -1,0 +1,43 @@
+{
+  "name": "rotaract-dis",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Rotaract District Information System — Rotaract District 9218",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "^20.19.0 || ^22.13.0 || >=24"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run build:contracts && concurrently -k -n contracts,api,web -c blue,green,magenta \"npm:dev:contracts\" \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:contracts": "npm run dev --workspace @dis/contracts",
+    "dev:api": "npm run dev --workspace @dis/api",
+    "dev:web": "npm run dev --workspace @dis/web",
+    "build": "npm run build:contracts && npm run build --workspace @dis/api && npm run build --workspace @dis/web",
+    "build:contracts": "npm run build --workspace @dis/contracts",
+    "typecheck": "npm run build:contracts && npm run typecheck --workspace @dis/api --workspace @dis/web",
+    "test": "npm run build:contracts && npm run test --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "npm run clean --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^20.19.43",
+    "concurrently": "^10.0.4",
+    "eslint": "^10.8.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.4",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0"
+  }
+}

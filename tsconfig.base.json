@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+
+    // Strictness. These are the settings the project is built on — do not relax them
+    // per-workspace. noUncheckedIndexedAccess in particular is what stops an array or
+    // record lookup being silently treated as non-null.
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "useUnknownInCatchVariables": true,
+
+    // Module hygiene. Each workspace sets its own module/moduleResolution: the API
+    // resolves as Node ESM, the web app resolves as a bundler would.
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+
+    "skipLibCheck": true,
+    // Windows development, Linux CI. Without this, an import whose casing is wrong
+    // works locally and fails only in the pipeline.
+    "forceConsistentCasingInFileNames": true
+  }
+}
