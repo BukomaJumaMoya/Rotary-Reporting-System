@@ -46,7 +46,40 @@ const environmentSchema = z.object({
   LOCKOUT_MAX_MINUTES: z.coerce.number().int().positive().default(1440),
 
   TOKEN_TTL_MINUTES: z.coerce.number().int().positive().default(60),
+  // Invitations are sent to people who may not check email daily, and a club secretary
+  // chasing an expired invitation is a support burden. Seven days.
+  INVITE_TTL_MINUTES: z.coerce.number().int().positive().default(10080),
   PRIVACY_POLICY_VERSION: z.string().default('2027-07-01'),
+
+  /**
+   * Where the web client is served. Password reset and invitation links are built from
+   * this, so it must be the address a member actually reaches — never a request header,
+   * which an attacker controls and could use to point a reset link at their own host.
+   */
+  APP_BASE_URL: z.string().url().default('http://localhost:5173'),
+
+  // Mail. `log` prints instead of sending (development); `capture` keeps messages in
+  // memory (tests); `smtp` delivers.
+  MAIL_TRANSPORT: z.enum(['smtp', 'log', 'capture']).default('log'),
+  MAIL_FROM: z.string().default('Rotaract District 9218 <noreply@example.org>'),
+  SMTP_HOST: z.string().default('localhost'),
+  SMTP_PORT: z.coerce.number().int().positive().max(65535).default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  SMTP_SECURE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  /**
+   * Require the STARTTLS upgrade on a plaintext port. True by default: without it the
+   * upgrade is merely opportunistic, and a downgrade puts password-reset links on the
+   * wire in clear. Set false only for a local catch-all like Mailpit, which offers no
+   * TLS at all.
+   */
+  SMTP_REQUIRE_TLS: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
 });
 
 const parsed = environmentSchema.safeParse(process.env);

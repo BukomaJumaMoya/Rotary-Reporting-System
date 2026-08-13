@@ -1,6 +1,8 @@
 import type { MeResponse } from '@dis/contracts';
-import { config, isProduction } from '../../platform/config.js';
+import { config } from '../../platform/config.js';
 import { AppError, ErrorCode, invalidCredentials, invalidToken } from '../../platform/errors.js';
+import { notify } from '../notifications/service.js';
+import { NotificationTemplate } from '../notifications/templates.js';
 import { consumeTimingBudget, hashPassword, verifyPassword } from './passwords.js';
 import * as repository from './repository.js';
 import type { AuthUser } from './repository.js';
@@ -76,6 +78,18 @@ export async function login(email: string, password: string): Promise<AuthUser> 
 }
 
 /**
+ * Builds a link into the web client. The base comes from configuration, never from a
+ * request header: Host and X-Forwarded-Host are attacker-controlled, and a reset link
+ * built from them can be pointed at somebody else's server — a classic account takeover
+ * that looks like a legitimate email to the member who receives it.
+ */
+function clientLink(path: string, token: string): string {
+  const url = new URL(path, config.APP_BASE_URL);
+  url.searchParams.set('token', token);
+  return url.toString();
+}
+
+/**
  * Always succeeds from the caller's point of view. An unknown address does the same
  * work and returns the same 204, because an endpoint that answers "no such account"
  * is an account-existence oracle open to the internet.
@@ -92,12 +106,47 @@ export async function requestPasswordReset(email: string): Promise<void> {
     expiresAt: token.expiresAt,
   });
 
-  // TODO(M0 s6 / notifications): enqueue the email. No mail transport exists yet, so in
-  // development the link is logged and in production nothing is delivered — the endpoint
-  // is complete but not yet useful to a real member.
-  if (!isProduction) {
-    console.log(`[auth] password reset token for ${email}: ${token.plaintext}`);
-  }
+  // Delivery failure is recorded on the notification row, never raised: the token is
+  // already stored and the member can simply ask again.
+  await notify({
+    personId: user.personId,
+    templateCode: NotificationTemplate.AUTH_PASSWORD_RESET,
+    payload: {
+      firstName: user.person.firstName,
+      resetUrl: clientLink('/auth/reset', token.plaintext),
+      ttlMinutes: String(config.TOKEN_TTL_MINUTES),
+    },
+  });
+}
+
+/**
+ * Issues an invitation and emails it.
+ *
+ * Exported for the governance module (M1), which creates accounts for officers, and for
+ * the seed. There is deliberately no HTTP endpoint yet: who may invite whom is a
+ * permission question, and permissions do not exist until session 4.
+ */
+export async function issueInvite(userId: string): Promise<void> {
+  const user = await repository.findUserById(userId);
+  if (!user) return;
+
+  const token = issueToken(config.INVITE_TTL_MINUTES);
+  await repository.createToken({
+    userId: user.id,
+    purpose: TokenPurpose.INVITE,
+    tokenHash: token.hash,
+    expiresAt: token.expiresAt,
+  });
+
+  await notify({
+    personId: user.personId,
+    templateCode: NotificationTemplate.AUTH_INVITE,
+    payload: {
+      firstName: user.person.firstName,
+      inviteUrl: clientLink('/auth/accept-invite', token.plaintext),
+      ttlMinutes: String(config.INVITE_TTL_MINUTES),
+    },
+  });
 }
 
 async function consumeToken(

@@ -29,6 +29,9 @@ export default defineConfig({
       // Lets tests vary the client address via X-Forwarded-For, which is the only way
       // to exercise per-IP behaviour over loopback.
       TRUST_PROXY_HOPS: '1',
+      // Mail is captured in memory so tests can assert on what would have been sent.
+      MAIL_TRANSPORT: 'capture',
+      APP_BASE_URL: 'https://dis.example.org',
     },
   },
 });

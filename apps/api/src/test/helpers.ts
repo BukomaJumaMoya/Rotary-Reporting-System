@@ -6,6 +6,7 @@ import {
   type MeResponse,
 } from '@dis/contracts';
 import { prisma } from '../platform/db.js';
+import { CaptureTransport, mailTransport } from '../platform/mail.js';
 import { hashPassword } from '../modules/auth/passwords.js';
 import { hashToken, issueToken, TokenPurpose } from '../modules/auth/tokens.js';
 import type { TokenPurposeValue } from '../modules/auth/tokens.js';
@@ -17,16 +18,38 @@ import type { TokenPurposeValue } from '../modules/auth/tokens.js';
  * maintained by hand as the schema grows. `_prisma_migrations` is excluded — dropping it
  * would make the next run reapply everything.
  */
+/**
+ * Reference data inserted by migrations rather than by a test. Truncating these would
+ * delete rows no test creates and every subsequent test depends on — notification
+ * templates are the reason password reset can send anything at all.
+ */
+const PRESERVED_TABLES = ['_prisma_migrations', 'notification_templates'];
+
 export async function resetDatabase(): Promise<void> {
   const tables = await prisma.$queryRaw<{ tablename: string }[]>`
-    SELECT tablename FROM pg_tables
-    WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'
+    SELECT tablename FROM pg_tables WHERE schemaname = 'public'
   `;
 
-  const list = tables.map((t) => `"public"."${t.tablename}"`).join(', ');
+  const list = tables
+    .map((t) => t.tablename)
+    .filter((name) => !PRESERVED_TABLES.includes(name))
+    .map((name) => `"public"."${name}"`)
+    .join(', ');
+
   if (list.length > 0) {
     await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
   }
+
+  capturedMail().clear();
+}
+
+/** The in-memory transport tests assert against (MAIL_TRANSPORT=capture in vitest.config). */
+export function capturedMail(): CaptureTransport {
+  const transport = mailTransport();
+  if (!(transport instanceof CaptureTransport)) {
+    throw new Error('Tests must run with MAIL_TRANSPORT=capture');
+  }
+  return transport;
 }
 
 export interface SeededUser {

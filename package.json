@@ -41,5 +41,9 @@
     "prettier": "^3.9.6",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.67.0"
+  },
+  "optionalDependencies": {
+    "@esbuild/linux-x64": "^0.28.2",
+    "@esbuild/win32-x64": "^0.28.2"
   }
 }

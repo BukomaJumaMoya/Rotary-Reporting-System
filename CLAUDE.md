@@ -129,11 +129,22 @@ CRUD does not need exhaustive coverage. Do not chase a coverage number.
 npm run dev              # api + web
 npm run db:migrate       # prisma migrate dev
 npm run db:seed          # reset to realistic fixtures
-npm run test             # vitest
+npm run test             # vitest — needs PostgreSQL and TEST_DATABASE_URL
 npm run typecheck
 npm run lint
 npm run worker           # pg-boss worker process
 ```
+
+**Tests need a database.** `TEST_DATABASE_URL` must name a database containing "test"; the
+suite truncates every table between cases and refuses to run otherwise.
+
+**npm quirk worth knowing.** This npm does not persist *transitive* optional platform
+binaries (`@esbuild/*`) in `package-lock.json`, so a workspace-scoped
+`npm install -w <pkg> <dep>` prunes them and `tsx` — and therefore `npm run dev` —
+stops working with "could not be found, and is needed by esbuild". The binaries are
+therefore declared explicitly in the root `optionalDependencies`, and **their version must
+be bumped together with esbuild's**, or esbuild rejects the mismatch. The same trap will
+apply to `sharp` when image processing lands.
 
 ## Current phase
 
