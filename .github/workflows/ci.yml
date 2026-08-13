@@ -18,6 +18,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    # Integration tests run against a real PostgreSQL. The alternative — mocking the
+    # repository — would leave the lockout, the single-use token index and the guard
+    # triggers untested, which is most of what this milestone is for.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dis_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/dis_test
+
     steps:
       - uses: actions/checkout@v4
 

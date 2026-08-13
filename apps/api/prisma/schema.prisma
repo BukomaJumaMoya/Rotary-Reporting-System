@@ -1597,6 +1597,24 @@ model Notification {
   @@map("notifications")
 }
 
+/// The express-session store, written and read by connect-pg-simple — but declared
+/// here because Prisma must OWN it. A table Prisma can represent and does not know
+/// about is proposed for dropping on the next migrate dev (see session 2).
+///
+/// Column names are the library's and cannot change. `expire` deviates from its
+/// reference DDL, which uses a naive `timestamp`: connect-pg-simple compares that
+/// column against to_timestamp(), which yields timestamptz, so with a naive column
+/// the comparison resolves through the server's timezone — and this server is not
+/// UTC. Timestamptz makes session expiry exact, and matches the project-wide rule.
+model Session {
+  sid    String   @id @db.VarChar
+  sess   Json     @db.Json
+  expire DateTime @db.Timestamptz(6)
+
+  @@index([expire], map: "IDX_session_expire")
+  @@map("session")
+}
+
 model ExportJob {
   id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   districtId         String    @map("district_id") @db.Uuid

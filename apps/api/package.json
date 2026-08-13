@@ -19,13 +19,22 @@
   },
   "dependencies": {
     "@dis/contracts": "*",
+    "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
+    "argon2": "^0.45.1",
+    "connect-pg-simple": "^10.0.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.6.2",
+    "express-session": "^1.19.0",
+    "pg": "^8.23.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/connect-pg-simple": "^7.0.3",
     "@types/express": "^5.0.6",
+    "@types/express-session": "^1.19.0",
+    "@types/pg": "^8.21.0",
     "@types/supertest": "^7.2.1",
     "prisma": "^7.9.1",
     "supertest": "^7.2.2",

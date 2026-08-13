@@ -33,6 +33,14 @@ export default tseslint.config(
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    rules: {
+      // Express identifies error handlers by arity, so the error middleware must
+      // declare `next` whether or not it uses it. Leading underscore = deliberate.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'all' },
+      ],
+    },
   },
 
   {
