@@ -25,6 +25,14 @@ export const ErrorCode = {
   INSUFFICIENT_SCOPE: 'INSUFFICIENT_SCOPE',
   /** The context year is read-only: the district_year is locked, or `?year=` was used. */
   YEAR_LOCKED: 'YEAR_LOCKED',
+  /** A position cannot be deactivated while people still hold it. */
+  POSITION_IN_USE: 'POSITION_IN_USE',
+  /** A system-wide template row is readable by every district and writable by none. */
+  TEMPLATE_IMMUTABLE: 'TEMPLATE_IMMUTABLE',
+  /** A permission code that is not in the seeded catalogue. */
+  UNKNOWN_PERMISSION: 'UNKNOWN_PERMISSION',
+  /** A code or name that must be unique within the district is already taken. */
+  DUPLICATE_CODE: 'DUPLICATE_CODE',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   // Database guards (ADR-012). Mapped from SQLSTATE below.
   MEMBERSHIP_IMMUTABLE: 'MEMBERSHIP_IMMUTABLE',

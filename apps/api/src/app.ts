@@ -1,6 +1,7 @@
 import express, { type Express, type Router } from 'express';
 import { adminRouter } from './modules/admin/routes.js';
 import { authRouter } from './modules/auth/routes.js';
+import { governanceRouter } from './modules/governance/routes.js';
 import { auditActorMiddleware } from './platform/audit.js';
 import { resolveRequestContext } from './platform/context.js';
 import { errorHandler, notFoundHandler } from './platform/errors.js';
@@ -72,6 +73,7 @@ export function createApp(mountExtra?: (mount: MountFn) => void): Express {
 
   mount('/api/v1/admin', adminRouter);
   mount('/api/v1/auth', authRouter);
+  mount('/api/v1', governanceRouter);
 
   mountExtra?.(mount);
 

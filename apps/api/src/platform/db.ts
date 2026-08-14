@@ -166,6 +166,20 @@ type OpArgs<M extends ContextBoundModelName, Op extends string> =
 type OpResult<M extends ContextBoundModelName, Op extends string> =
   ModelOperations<M> extends Record<Op, { result: infer R }> ? R : never;
 
+/**
+ * A model's scalar columns, as the row type a create returns.
+ *
+ * NOT `operations.create.result`, which is `PayloadToResult<$Payload>` without its second
+ * type argument and therefore hands back every field as `string | undefined`. That types a
+ * freshly created row as though its primary key might be missing, and pushes every caller
+ * into a needless check. The payload's own `scalars` is the honest shape.
+ */
+type ModelScalars<M extends ContextBoundModelName> = Prisma.TypeMap['model'][M]['payload'] extends {
+  scalars: infer S;
+}
+  ? S
+  : never;
+
 /** The columns `db(ctx)` fills in, for one model, as key names in Prisma's input types. */
 type StampedKeys<M extends ContextBoundModelName> =
   | ((typeof CONTEXT_BOUND_MODELS)[M] extends { district: string }
@@ -225,7 +239,7 @@ type ScopedWriteOperations<D, M extends ContextBoundModelName> = D extends {
   create: unknown;
 }
   ? {
-      create(args: ScopedCreateArgs<M>): Promise<OpResult<M, 'create'>>;
+      create(args: ScopedCreateArgs<M>): Promise<ModelScalars<M>>;
       createMany(args: ScopedCreateManyArgs<M>): Promise<OpResult<M, 'createMany'>>;
       updateMany(args: ScopedUpdateManyArgs<M>): Promise<OpResult<M, 'updateMany'>>;
     }

@@ -61,6 +61,38 @@ export function withBody<T>(
   ];
 }
 
+/**
+ * Validates `req.query` against a schema and returns it typed.
+ *
+ * Express types query values as `string | string[] | ParsedQs`, so every filter read
+ * straight off it is unchecked — and `?pageSize=99999` would reach the database as a
+ * number nobody chose. Parsing through the contract makes the defaults and the ceiling
+ * one definition, in `packages/contracts`.
+ */
+export function parseQuery<T>(schema: ZodType<T>, req: Request): T {
+  const result = schema.safeParse(req.query);
+
+  if (!result.success) {
+    const fields = result.error.issues.map((issue) => ({
+      path: issue.path.join('.'),
+      message: issue.message,
+    }));
+    throw new AppError(400, ErrorCode.VALIDATION_ERROR, 'Request validation failed', { fields });
+  }
+  return result.data;
+}
+
+/**
+ * A path parameter, as a string.
+ *
+ * Express 5 types these as `string | string[]`. Only the first form can be an identifier,
+ * and a malformed one simply matches nothing, which is the 404 the caller should get.
+ */
+export function pathParam(req: Request, name: string): string {
+  const raw = req.params[name];
+  return typeof raw === 'string' ? raw : '';
+}
+
 /** Reads a string field from an unvalidated body — for middleware that runs before validation. */
 export function rawStringField(body: unknown, field: string): string | undefined {
   if (typeof body !== 'object' || body === null) return undefined;
