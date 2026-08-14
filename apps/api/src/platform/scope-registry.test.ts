@@ -26,6 +26,7 @@ const SCHEMA = readFileSync(new URL('../../prisma/schema.prisma', import.meta.ur
 interface SchemaBlock {
   kind: 'model' | 'view';
   name: string;
+  body: string;
   hasDistrict: boolean;
   hasYear: boolean;
   hasDeletedAt: boolean;
@@ -42,6 +43,7 @@ function parseSchema(source: string): SchemaBlock[] {
     blocks.push({
       kind: kind as 'model' | 'view',
       name,
+      body,
       // Matched on the mapped COLUMN name rather than the Prisma field: the column is
       // what the where clause has to carry, and a field renamed in TypeScript is still
       // the same scope.
@@ -64,18 +66,76 @@ describe('the scope registry', () => {
     expect(blocks.filter((b) => b.kind === 'view').map((b) => b.name)).toContain('ClubRoster');
   });
 
-  it('classifies every table carrying a district or a Rotary Year', () => {
+  it('classifies EVERY table, not only the ones with a scope column', () => {
     const unclassified = blocks
-      .filter((block) => block.hasDistrict || block.hasYear)
-      .filter((block) => !(block.name in CONTEXT_BOUND_MODELS))
+      .filter((block) => !(block.name in rules))
       .filter((block) => !(block.name in UNSCOPED_BY_DESIGN))
       .map((block) => block.name);
 
+    // Deliberately every table, not just those carrying a district_id. A table with no
+    // scope column is the EASIER mistake: `assessment_scores` has no district of its own,
+    // and reading it unscoped returns every district's marks. Those tables inherit a
+    // scope through `via`; the ones that genuinely have none say so in writing.
     expect(
       unclassified,
-      'Add these to CONTEXT_BOUND_MODELS in scope.ts, or to UNSCOPED_BY_DESIGN with the ' +
-        'reason. An unregistered scoped table is a query that returns every district.',
+      'Add these to CONTEXT_BOUND_MODELS in scope.ts — with `via` if they reach a district ' +
+        'through a relation — or to UNSCOPED_BY_DESIGN with the reason.',
     ).toEqual([]);
+  });
+
+  it('points every `via` at a registered parent, through a real relation field', () => {
+    const bodies = new Map(blocks.map((block) => [block.name, block.body]));
+    const problems: string[] = [];
+
+    for (const [name, rule] of Object.entries(CONTEXT_BOUND_MODELS) as [string, ScopeRule][]) {
+      if (!rule.via) continue;
+
+      if (!(rule.via.model in CONTEXT_BOUND_MODELS)) {
+        problems.push(`${name}.via.model → ${rule.via.model} is not registered`);
+      }
+      // The relation field has to exist, or Prisma reports "Unknown argument" on whichever
+      // endpoint touches the table first — which could be months from now.
+      const body = bodies.get(name) ?? '';
+      const declared = new RegExp(`^\\s+${rule.via.relation}\\s+\\w+\\??\\s+@relation`, 'm');
+      if (!declared.test(body)) {
+        problems.push(`${name}.${rule.via.relation} is not a relation field on ${name}`);
+      }
+    }
+
+    expect(problems).toEqual([]);
+  });
+
+  it('terminates every `via` chain at a table with a real scope column', () => {
+    const problems: string[] = [];
+
+    for (const name of Object.keys(CONTEXT_BOUND_MODELS)) {
+      const seen: string[] = [];
+      let current: string | undefined = name;
+
+      while (current) {
+        if (seen.includes(current)) {
+          problems.push(`cycle: ${[...seen, current].join(' → ')}`);
+          break;
+        }
+        seen.push(current);
+
+        const rule: ScopeRule | undefined = (
+          CONTEXT_BOUND_MODELS as Record<string, ScopeRule | undefined>
+        )[current];
+        if (!rule) break;
+        // Reached a table that scopes itself.
+        if (rule.district || rule.year) break;
+        if (!rule.via) {
+          // A rule with neither a column nor a parent filters nothing at all, which is
+          // the same as not being registered — but looks registered.
+          problems.push(`${current} has no scope column and no via`);
+          break;
+        }
+        current = rule.via.model;
+      }
+    }
+
+    expect(problems).toEqual([]);
   });
 
   it('filters deleted_at on every table that has it', () => {

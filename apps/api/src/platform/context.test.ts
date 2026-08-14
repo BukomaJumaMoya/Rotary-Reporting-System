@@ -373,6 +373,42 @@ describe('a member with no authority', () => {
   });
 });
 
+describe('POST /auth/login', () => {
+  it('returns the resolved context, not the empty shape a member without one gets', async () => {
+    const org = await createOrg();
+    const { user, club } = await seedClubSecretary(org);
+
+    const response = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password: user.password });
+
+    expect(response.status).toBe(200);
+    const me = meBody(response);
+
+    // The context middleware runs before the session exists on this one request, so
+    // without the login handler resolving it explicitly the response reports nulls —
+    // indistinguishable from "you hold no appointment", and a client that renders
+    // straight from the login response would tell an officer they have no authority.
+    expect(me.context.districtId).toBe(org.districtId);
+    expect(me.context.rotaryYearLabel).toBe(org.currentYearLabel);
+    expect(me.context.permissions).toContain('activity:create:club');
+    expect(me.context.scopes.clubIds).toEqual([club.id]);
+    expect(me.appointments).toHaveLength(1);
+  });
+
+  it('is identical to what the next call to /auth/me reports', async () => {
+    const org = await createOrg();
+    const { user } = await seedClubSecretary(org);
+
+    const agent = await signIn(app, user);
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password: user.password });
+
+    expect(meBody(login).context).toEqual(meBody(await agent.get('/api/v1/auth/me')).context);
+  });
+});
+
 describe('GET /auth/me', () => {
   it('returns the resolved context and the appointments behind it', async () => {
     const org = await createOrg();

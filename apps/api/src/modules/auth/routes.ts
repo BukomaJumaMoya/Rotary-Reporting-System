@@ -104,7 +104,11 @@ authRouter.post(
     req.session.userId = user.id;
     await promisify((cb) => req.session.save(cb));
 
-    res.status(200).json(await service.toMeResponse(user));
+    // Resolved here rather than left to the client's first /auth/me: the context
+    // middleware ran before this session existed, so without this the login response
+    // reports no district and no permissions — the same shape as a member who holds no
+    // appointment at all.
+    res.status(200).json(await service.toMeResponse(user, await service.contextFor(user)));
   }),
 );
 

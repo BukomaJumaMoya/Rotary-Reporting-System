@@ -8,11 +8,14 @@ import { yearLocked } from './errors.js';
  * rewrites every query; nothing else in the codebase decides this, and no handler is
  * asked to remember it (docs/02-Architecture.md §4.1, axiom 1).
  *
- * `scope-registry.test.ts` parses `prisma/schema.prisma` and fails the build if a model
- * carrying `district_id`, `rotary_year_id` or `deleted_at` appears in neither this file's
- * registries nor `UNSCOPED_BY_DESIGN`. Adding such a table therefore forces a decision
- * rather than allowing an omission — which is the whole failure mode this layer exists
- * to prevent, since an unscoped query looks exactly like a correct one.
+ * `scope-registry.test.ts` parses `prisma/schema.prisma` and fails the build if ANY model
+ * or view appears in neither this file's registries nor `UNSCOPED_BY_DESIGN`. Every table
+ * therefore forces a decision — not just the ones with a `district_id`, because a table
+ * without one is the easier mistake to make and not the safer one: `assessment_scores`
+ * has no district column and holds every district's marks.
+ *
+ * Three answers are available. Scope it by its own columns; inherit a scope through a
+ * relation with `via`; or write down why it has none.
  */
 
 /** How a model's `district_id` relates to the caller's district. */
@@ -27,12 +30,33 @@ export type DistrictRule =
    */
   | 'sharedWhenNull';
 
+/**
+ * A table with no scope column of its own, inheriting one through a relation.
+ *
+ * `assessment_scores` has no `district_id`; it belongs to a `club_assessment` that does.
+ * Without this the scope stops at the parent and every child table is readable across
+ * districts — which is most of the assessment domain, and it is the domain where a leak
+ * matters most.
+ *
+ * `model` is named as well as `relation` because a relation field name does not give the
+ * model back: `invoice` is a `DuesInvoice` and `parameter` is an `AssessmentParameter`.
+ * Chains are followed to their end, so a two-hop child scopes correctly.
+ */
+export interface ScopeVia {
+  /** The relation field on THIS model that points at the parent. */
+  readonly relation: string;
+  /** The parent's model name, which must itself be registered. */
+  readonly model: string;
+}
+
 export interface ScopeRule {
   readonly district?: DistrictRule;
   /** Filter and inject `rotary_year_id` from the context. */
   readonly year?: boolean;
   /** Filter out rows with a `deleted_at`. */
   readonly softDelete?: boolean;
+  /** Inherit the parent's scope through a relation. */
+  readonly via?: ScopeVia;
 }
 
 /**
@@ -53,8 +77,10 @@ export const CONTEXT_BOUND_MODELS = {
 
   // --- Governance -----------------------------------------------------------
   Position: { district: 'sharedWhenNull' },
+  PositionPermission: { via: { relation: 'position', model: 'Position' } },
   Appointment: { district: 'required', year: true },
   Committee: { district: 'required', year: true },
+  CommitteeMember: { via: { relation: 'committee', model: 'Committee' } },
 
   // --- Membership -----------------------------------------------------------
   MembershipEvent: { district: 'required', year: true },
@@ -64,28 +90,59 @@ export const CONTEXT_BOUND_MODELS = {
   // --- Activity -------------------------------------------------------------
   ActivityType: { district: 'sharedWhenNull' },
   Activity: { district: 'required', year: true, softDelete: true },
+  // Children of an activity inherit its district, its year AND its soft delete, so the
+  // attendees of a deleted activity disappear with it rather than outliving it.
+  ActivityAreaOfFocus: { via: { relation: 'activity', model: 'Activity' } },
+  ActivityPartner: { via: { relation: 'activity', model: 'Activity' } },
+  ActivityMedia: { via: { relation: 'activity', model: 'Activity' } },
+  ActivityAttendee: { via: { relation: 'activity', model: 'Activity' } },
 
   // --- Finance --------------------------------------------------------------
   FinanceCategory: { district: 'sharedWhenNull' },
   Budget: { district: 'required', year: true },
+  BudgetLine: { via: { relation: 'budget', model: 'Budget' } },
   FinancialTransaction: { district: 'required', year: true, softDelete: true },
   DuesInvoice: { district: 'required', year: true },
   DuesInvoiceState: { district: 'required', year: true },
+  DuesPayment: { via: { relation: 'invoice', model: 'DuesInvoice' } },
   MemberDues: { district: 'required', year: true },
   MemberDuesState: { district: 'required', year: true },
+  MemberDuesPayment: { via: { relation: 'memberDues', model: 'MemberDues' } },
   TrfContribution: { district: 'required', year: true },
 
   // --- Assessment -----------------------------------------------------------
+  //
+  // The whole domain hangs off one framework, and only the framework carries the year.
+  // Every table below reaches it through a relation chain, which is what stops a
+  // current-year scorecard read from returning last year's scores as well.
   AssessmentFramework: { district: 'required', year: true },
-  // The year reaches these through the period's framework, not through a column.
-  ClubAssessment: { district: 'required' },
+  AssessmentParameter: { via: { relation: 'framework', model: 'AssessmentFramework' } },
+  AssessmentCriterion: { via: { relation: 'parameter', model: 'AssessmentParameter' } },
+  AssessmentPeriod: { via: { relation: 'framework', model: 'AssessmentFramework' } },
+  // districtId of its own AND the year through the period: club_assessments has no
+  // rotary_year_id, and district scoping alone let a current-year context see every
+  // year's assessments.
+  ClubAssessment: {
+    district: 'required',
+    via: { relation: 'period', model: 'AssessmentPeriod' },
+  },
+  AssessmentScore: { via: { relation: 'clubAssessment', model: 'ClubAssessment' } },
+  AssessorAssignment: { via: { relation: 'period', model: 'AssessmentPeriod' } },
+  AssessmentComment: { via: { relation: 'clubAssessment', model: 'ClubAssessment' } },
+  AssessmentDispute: { via: { relation: 'clubAssessment', model: 'ClubAssessment' } },
+  // A VIEW, and Prisma views carry no relation fields, so `via` cannot reach the period
+  // from here. District-scoped only: standings are always read for a named period, and
+  // the assessment module supplies that periodId. Revisit if the view ever grows a
+  // rotary_year_id.
   ClubAssessmentState: { district: 'required' },
   FrameworkPointTotal: { district: 'required', year: true },
 
   // --- Goals, documents, public image, platform -----------------------------
   Goal: { district: 'required', year: true },
+  GoalSnapshot: { via: { relation: 'goal', model: 'Goal' } },
   Document: { district: 'required', softDelete: true },
   SocialAccount: { district: 'required' },
+  SocialSnapshot: { via: { relation: 'socialAccount', model: 'SocialAccount' } },
   MediaAppearance: { district: 'required', year: true },
   ExportJob: { district: 'required' },
 } as const satisfies Record<string, ScopeRule>;
@@ -104,12 +161,49 @@ export const SOFT_DELETE_ONLY_MODELS = {
 } as const satisfies Record<string, ScopeRule>;
 
 /**
- * Tables that carry a `district_id` and are deliberately NOT scoped, with the reason.
+ * Tables deliberately NOT scoped, each with the reason.
  *
- * The registry test requires an entry here for anything it finds unregistered, so an
- * exemption is a sentence someone wrote on purpose rather than a gap nobody noticed.
+ * The registry test requires EVERY model and view in `schema.prisma` to appear in one of
+ * the three registries — not merely those carrying a `district_id`. A table with no scope
+ * column looks innocent and is the easier mistake: `assessment_scores` has no district of
+ * its own, and reading it unscoped returns every district's marks.
+ *
+ * So an exemption is a sentence someone wrote on purpose, and the absence of one fails
+ * the build.
  */
 export const UNSCOPED_BY_DESIGN: Record<string, string> = {
+  // --- Genuinely global entities -------------------------------------------
+  District:
+    'The tenant itself. A caller reads their own district through the context; listing ' +
+    'districts is an administrative act, not district data.',
+  RotaryYear:
+    'Global: 1 July to 30 June is the same everywhere. Lock state is per district and ' +
+    'lives on district_years, which IS scoped.',
+
+  // --- Reference data, identical for every district -------------------------
+  Permission: 'The permission catalogue. Reference data, seeded, the same for everyone.',
+  AreaOfFocus: "Rotary's seven areas of focus. Reference data, defined by RI, not by us.",
+  DocumentType: 'Lookup table. Reference data, seeded, shared by every district.',
+  SocialPlatform: 'Lookup table, and part of the social_accounts unique key. Reference data.',
+  NotificationTemplate:
+    'Message templates, inserted by migration because authentication depends on them ' +
+    'existing before any district does.',
+
+  // --- Identity: keyed to a person or a user, never to a district -----------
+  User: 'An account belongs to a person, not to a district. Authority comes from appointments.',
+  PersonVisibility:
+    'One row per person, created by a database trigger on insert. A person is global ' +
+    '(axiom 2 applies to clubs, and people move between them), so this is too.',
+  Consent:
+    'A lawful-basis record belonging to the person who gave it. It must survive every ' +
+    'redistricting, so it is deliberately not scoped to one.',
+  MfaRecoveryCode: 'Second-factor material for one account. Read only by that account.',
+  UserToken:
+    'Password reset and invitation tokens, looked up by HASH during unauthenticated ' +
+    'flows where no context can exist.',
+  Session: 'The express-session store, written and read by connect-pg-simple, not by us.',
+
+  // --- Written before a context can exist -----------------------------------
   Notification:
     'Written during UNAUTHENTICATED flows — password reset and invitation both queue a ' +
     'message before any session exists, so there is no context to scope by. district_id ' +
@@ -201,21 +295,39 @@ function asRecord(value: unknown): ArgsRecord {
  * with whatever the caller wrote rather than merged into it — a caller's top-level `OR`
  * merged naively would widen the scope instead of narrowing it.
  */
-function scopeClauses(rule: ScopeRule, ctx: RequestContext | null): ArgsRecord[] {
+function scopeClauses(model: string, ctx: RequestContext, depth = 0): ArgsRecord[] {
+  const rule = CONTEXT_BOUND_MODELS[model as ContextBoundModelName] as ScopeRule | undefined;
+  if (!rule) return [];
+
+  // The registry test proves the chains are acyclic, so this only ever fires if someone
+  // edits the registry and runs the server before running the suite.
+  if (depth > MAX_VIA_DEPTH) {
+    throw new Error(`Scope rule for ${model} exceeds ${MAX_VIA_DEPTH} relation hops — a cycle?`);
+  }
+
   const clauses: ArgsRecord[] = [];
 
-  if (rule.district && ctx) {
+  if (rule.district) {
     clauses.push(
       rule.district === 'sharedWhenNull'
         ? { OR: [{ districtId: ctx.districtId }, { districtId: null }] }
         : { districtId: ctx.districtId },
     );
   }
-  if (rule.year && ctx) clauses.push({ rotaryYearId: ctx.rotaryYearId });
+  if (rule.year) clauses.push({ rotaryYearId: ctx.rotaryYearId });
   if (rule.softDelete) clauses.push({ deletedAt: null });
+
+  if (rule.via) {
+    const parent = scopeClauses(rule.via.model, ctx, depth + 1);
+    // A parent with no clauses of its own contributes no filter, rather than an empty
+    // relation predicate that would match every row with a parent and none without.
+    if (parent.length > 0) clauses.push({ [rule.via.relation]: { AND: parent } });
+  }
 
   return clauses;
 }
+
+const MAX_VIA_DEPTH = 5;
 
 function withScopedWhere(args: unknown, clauses: ArgsRecord[]): ArgsRecord {
   const next = { ...asRecord(args) };
@@ -276,9 +388,14 @@ export const softDeleteExtension = {
  *  * **Nested writes are not stamped.** `create({ data: { activities: { create: [...] } } })`
  *    reaches `activities` through a nested writer the extension never sees. Create
  *    scoped rows at the top level.
- *  * **Relations are not scoped.** The filter applies to the model being queried, not to
- *    what an `include` traverses. The module boundary rule — no module reads another's
- *    tables — is what keeps that from mattering in practice.
+ *  * **Relations traversed by `include` are not scoped.** The filter applies to the model
+ *    being queried. `via` scopes a child BY its parent, which is the opposite direction
+ *    and is applied; an `include` reading down from a scoped parent is inherently within
+ *    scope anyway.
+ *  * **A `via` child's create is not checked.** There is nothing to stamp — the parent is
+ *    named by a foreign key the caller supplies — so creating a child under another
+ *    district's parent would succeed. Read the parent through `db(ctx)` first; a service
+ *    that has done so has already proved the parent is in scope.
  */
 export function createScopeExtension(ctx: RequestContext) {
   return {
@@ -308,7 +425,7 @@ export function createScopeExtension(ctx: RequestContext) {
           }
 
           if (FILTERED_OPERATIONS.has(operation)) {
-            return query(withScopedWhere(args, scopeClauses(rule, ctx)));
+            return query(withScopedWhere(args, scopeClauses(model, ctx)));
           }
 
           return query(args);

@@ -6,7 +6,7 @@ import {
 } from '@dis/contracts';
 import { insufficientScope, notFound } from '../../platform/errors.js';
 import * as repository from './repository.js';
-import type { ActiveAppointment, DistrictYearRow } from './repository.js';
+import type { ActiveAppointment, ContextUser, DistrictYearRow } from './repository.js';
 
 /**
  * Context resolution — the governance module's one job for M0.
@@ -36,7 +36,15 @@ export interface ResolvedContext {
   isYearLocked: boolean;
   isYearWritable: boolean;
   permissions: string[];
-  appointments: AppointmentSummary[];
+  /**
+   * The appointments behind the context, resolved ON DEMAND.
+   *
+   * A function rather than an array because naming the polymorphic scopes costs up to
+   * four more queries — one per kind of org unit — and only `/auth/me` displays them.
+   * Paying for that on every authenticated request would be roughly half the cost of
+   * resolving a context, spent on something almost nothing reads.
+   */
+  listAppointments(): Promise<AppointmentSummary[]>;
 }
 
 const EMPTY: ResolvedContext = {
@@ -48,7 +56,7 @@ const EMPTY: ResolvedContext = {
   isYearLocked: false,
   isYearWritable: false,
   permissions: [],
-  appointments: [],
+  listAppointments: () => Promise.resolve([]),
 };
 
 function isoDate(value: Date): string {
@@ -100,7 +108,6 @@ export async function resolveContext(input: {
   });
 
   const scopes = await resolveScopes(held, districtYear.rotaryYearId);
-  const summaries = await summarise(held, districtYear.districtName);
 
   // A `?year=` override is a READ door: the permission that opens it is named
   // `year:read:historical`, and nothing grants a right to write into a closed year. A
@@ -124,7 +131,7 @@ export async function resolveContext(input: {
     isYearLocked: year.isLocked,
     isYearWritable,
     permissions: [...permissions].sort(),
-    appointments: summaries,
+    listAppointments: () => summarise(held, districtYear.districtName),
   };
 }
 
@@ -241,6 +248,6 @@ async function summarise(
 }
 
 /** The account behind a session, for the context middleware. */
-export async function findContextUser(userId: string) {
+export async function findContextUser(userId: string): Promise<ContextUser | null> {
   return repository.findContextUser(userId);
 }

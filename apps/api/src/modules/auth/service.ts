@@ -8,7 +8,7 @@ import {
   unauthenticated,
 } from '../../platform/errors.js';
 import { serialiseScopes } from '../../platform/context.js';
-import type { ResolvedContext } from '../governance/service.js';
+import { resolveContext, type ResolvedContext } from '../governance/service.js';
 import { notify } from '../notifications/service.js';
 import { NotificationTemplate } from '../notifications/templates.js';
 import { decryptSecret, encryptSecret, mfaContext } from '../../platform/crypto.js';
@@ -327,9 +327,22 @@ export async function toMeResponse(user: AuthUser, detail?: ResolvedContext): Pr
           ? serialiseScopes(detail.context.scopes)
           : { clubIds: [], clusterIds: [], isDistrictWide: false },
       },
-      appointments: detail?.appointments ?? [],
+      appointments: detail ? await detail.listAppointments() : [],
     },
   };
+}
+
+/**
+ * Resolves the caller's context for a response that needs one but has no middleware
+ * behind it — which is login, where the session is created in the very response being
+ * built.
+ *
+ * Without this, login answers with a context of nulls that is indistinguishable from
+ * "you hold no appointment", and a client rendering straight from the login response
+ * shows a member with real authority a page saying they have none.
+ */
+export async function contextFor(user: AuthUser): Promise<ResolvedContext> {
+  return resolveContext({ userId: user.id, personId: user.personId });
 }
 
 export async function currentUser(userId: string): Promise<AuthUser | null> {

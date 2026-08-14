@@ -186,15 +186,48 @@ export type UnscopedClient = Omit<BaseClient, ContextBoundDelegateKey> & {
 
 export const prisma: UnscopedClient = baseClient;
 
-/**
- * The scoped client: every context-bound model, with district, year and soft-delete
- * filters already applied and every create already stamped.
- */
-export type ScopedClient = Omit<BaseClient, ContextBoundDelegateKey> & {
+type ScopedModels = {
   readonly [K in ContextBoundDelegateKey]: ContextBoundDelegate<
     BaseClient[K],
     Capitalize<K> & ContextBoundModelName
   >;
+};
+
+type ScopedBase = Omit<BaseClient, ContextBoundDelegateKey | '$transaction'> & ScopedModels;
+
+/**
+ * The client inside `db(ctx).$transaction(...)`.
+ *
+ * Declared, rather than inherited, because Prisma's own transaction client type comes
+ * from the UNextended client and would hand back full delegates — `tx.activity.update()`
+ * would compile inside a transaction while failing to compile outside one. The runtime
+ * extension does apply inside a transaction (there is a test), so this was never a data
+ * leak; it was a hole in the compile-time guarantee, and repositories that need a
+ * transaction are exactly where that guarantee is worth most.
+ */
+export type ScopedTransactionClient = Omit<
+  ScopedBase,
+  '$connect' | '$disconnect' | '$on' | '$extends' | '$use'
+>;
+
+/**
+ * The scoped client: every context-bound model, with district, year and soft-delete
+ * filters already applied and every create already stamped.
+ *
+ * Only the interactive (callback) form of `$transaction` is offered. The array form takes
+ * `PrismaPromise[]`, and the re-declared write operations return plain promises, so a
+ * batch mixing reads and writes would not compile anyway — better to have one form that
+ * works than two where one silently does not.
+ */
+export type ScopedClient = ScopedBase & {
+  $transaction<R>(
+    fn: (tx: ScopedTransactionClient) => Promise<R>,
+    options?: {
+      maxWait?: number;
+      timeout?: number;
+      isolationLevel?: Prisma.TransactionIsolationLevel;
+    },
+  ): Promise<R>;
 };
 
 /**

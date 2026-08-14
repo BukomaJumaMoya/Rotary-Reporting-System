@@ -205,6 +205,138 @@ describe('reads', () => {
   });
 });
 
+describe('tables with no scope column of their own', () => {
+  /** A framework with one period, one criterion and one club assessment, for a year. */
+  async function seedAssessment(org: OrgFixture, rotaryYearId: string, label: string) {
+    const club = await createClub();
+    const framework = await unscopedPrisma.assessmentFramework.create({
+      data: {
+        districtId: org.districtId,
+        rotaryYearId,
+        name: `Rubric ${label}`,
+        version: 1,
+        totalPoints: 100,
+      },
+      select: { id: true },
+    });
+    const parameter = await unscopedPrisma.assessmentParameter.create({
+      data: { frameworkId: framework.id, sequence: 1, name: 'Service', maxPoints: 100 },
+      select: { id: true },
+    });
+    const criterion = await unscopedPrisma.assessmentCriterion.create({
+      data: {
+        parameterId: parameter.id,
+        sequence: 1,
+        description: 'Service projects held',
+        points: 10,
+        // ASSESSOR, not AUTO: the criterion_resolver_required guard insists an AUTO
+        // criterion names a resolver, and this fixture is about scoping, not scoring.
+        evaluationMode: 'ASSESSOR',
+      },
+      select: { id: true },
+    });
+    const period = await unscopedPrisma.assessmentPeriod.create({
+      data: {
+        frameworkId: framework.id,
+        periodType: 'MONTHLY',
+        label,
+        startsOn: new Date(),
+        endsOn: new Date(),
+        submissionDeadline: new Date(),
+      },
+      select: { id: true },
+    });
+    const assessment = await unscopedPrisma.clubAssessment.create({
+      data: { districtId: org.districtId, periodId: period.id, clubId: club.id, tier: 'T1' },
+      select: { id: true },
+    });
+    const score = await unscopedPrisma.assessmentScore.create({
+      data: {
+        clubAssessmentId: assessment.id,
+        criterionId: criterion.id,
+        pointsAwarded: 8,
+        pointsPossible: 10,
+        source: 'AUTO',
+      },
+      select: { id: true },
+    });
+    return { club, framework, parameter, criterion, period, assessment, score };
+  }
+
+  it('scopes a child by its parent, across districts', async () => {
+    const mine = await createOrg();
+    const theirs = await createOrg();
+    await seedAssessment(theirs, theirs.currentYearId, 'AUG');
+
+    const ctx = contextFor(mine);
+
+    // None of these tables has a district_id. Every one of them is another district's
+    // assessment data, and every one of them used to be readable without a context.
+    expect(await db(ctx).assessmentPeriod.findMany()).toEqual([]);
+    expect(await db(ctx).assessmentParameter.findMany()).toEqual([]);
+    expect(await db(ctx).assessmentScore.findMany()).toEqual([]);
+    expect(await db(ctx).clubAssessment.findMany()).toEqual([]);
+  });
+
+  it('follows a two-hop chain to the framework', async () => {
+    const mine = await createOrg();
+    const theirs = await createOrg();
+    await seedAssessment(theirs, theirs.currentYearId, 'AUG');
+    const ours = await seedAssessment(mine, mine.currentYearId, 'SEP');
+
+    // criterion → parameter → framework → (district, year). Two hops from a table whose
+    // only column is a foreign key.
+    const criteria = await db(contextFor(mine)).assessmentCriterion.findMany({
+      select: { id: true },
+    });
+
+    expect(criteria.map((c) => c.id)).toEqual([ours.criterion.id]);
+  });
+
+  it('scopes club assessments by YEAR, through the period', async () => {
+    const org = await createOrg();
+    const lastYear = await seedAssessment(org, org.previousYearId, 'AUG-26');
+    const thisYear = await seedAssessment(org, org.currentYearId, 'AUG-27');
+
+    const found = await db(contextFor(org)).clubAssessment.findMany({ select: { id: true } });
+
+    // club_assessments has no rotary_year_id — the year reaches it through
+    // period → framework. Scoped by district alone, a current-year scorecard read
+    // returned every year ever assessed, which in an award system is the difference
+    // between a standing and an argument.
+    expect(found.map((a) => a.id)).toEqual([thisYear.assessment.id]);
+    expect(found.map((a) => a.id)).not.toContain(lastYear.assessment.id);
+  });
+
+  it('hides the children of a soft-deleted parent', async () => {
+    const org = await createOrg();
+    const club = await createClub();
+    const type = await createActivityType(org.districtId);
+    const activity = await createActivity({
+      districtId: org.districtId,
+      rotaryYearId: org.currentYearId,
+      activityTypeId: type.id,
+      hostScopeId: club.id,
+      deletedAt: new Date(),
+    });
+    await unscopedPrisma.activityMedia.create({
+      data: { activityId: activity.id, storageKey: 'k', mediaType: 'PHOTO' },
+    });
+
+    // The parent's deleted_at reaches the child through the same chain, so an attendee
+    // list or a photo gallery cannot outlive the activity it belonged to.
+    expect(await db(contextFor(org)).activityMedia.findMany()).toEqual([]);
+  });
+
+  it('is a compile error to reach a child table without a context', () => {
+    // @ts-expect-error — assessment_scores has no district_id, and is scoped all the same.
+    void prisma.assessmentScore;
+    // @ts-expect-error — as is every other child of a scoped parent.
+    void prisma.assessmentPeriod;
+    expect(typeof unscopedPrisma.assessmentScore.findMany).toBe('function');
+  });
+});
+
 describe('writes', () => {
   it('stamps the district and year onto a create', async () => {
     const org = await createOrg();
@@ -378,6 +510,34 @@ describe('a query without a context', () => {
 
     // An empty scope would match nothing silently, which is worse than failing.
     expect(() => db(empty)).toThrow(/requires a resolved RequestContext/);
+  });
+
+  it('holds inside a transaction, in the types and at runtime', async () => {
+    const mine = await createOrg();
+    const theirs = await createOrg();
+    const club = await createClub();
+    const theirType = await createActivityType(theirs.districtId);
+
+    await createActivity({
+      districtId: theirs.districtId,
+      rotaryYearId: theirs.currentYearId,
+      activityTypeId: theirType.id,
+      hostScopeId: club.id,
+      title: 'Theirs',
+    });
+
+    const ctx = contextFor(mine);
+    const rows = await db(ctx).$transaction(async (tx) => {
+      // @ts-expect-error — the transaction client is scoped too, so findUnique is absent.
+      void tx.activity.findUnique;
+      // @ts-expect-error — and update, exactly as outside the transaction.
+      void tx.activity.update;
+      return tx.activity.findMany();
+    });
+
+    // Prisma applies a query extension inside an interactive transaction started from
+    // the extended client, so the filter is there as well as the type.
+    expect(rows).toEqual([]);
   });
 
   it('throws if an unscopable operation is reached by casting', async () => {

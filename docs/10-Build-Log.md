@@ -129,12 +129,32 @@ extension that injects `districtId`, `rotaryYearId` and `deletedAt: null`. There
 `where: { rotaryYearId }` to forget because there is no way to write one that matters.
 
 **`platform/scope.ts` holds the registry** — the one statement of which table is scoped
-how. `scope-registry.test.ts` parses `schema.prisma` and fails the build if a model
-carrying `district_id`, `rotary_year_id` or `deleted_at` is neither registered nor listed
-in `UNSCOPED_BY_DESIGN` with a reason. **Adding a scoped table therefore forces a
-decision.** Two exemptions exist today, both because they are written before any context
-can exist: `Notification` (password reset and invitations are unauthenticated) and
-`AuditLogEntry` (LOGIN).
+how. `scope-registry.test.ts` parses `schema.prisma` and fails the build if **any** model
+or view is neither registered nor listed in `UNSCOPED_BY_DESIGN` with a reason. **Adding a
+table therefore forces a decision.** Fifteen exemptions today: global entities, reference
+data, identity tables keyed to a person rather than a district, and the two written before
+a context can exist (`Notification` for password reset, `AuditLogEntry` for LOGIN).
+
+**A child table with no scope column inherits one through `via`.** `assessment_scores` has
+no `district_id`; it belongs to a `club_assessment` that does, so its rule is
+`{ via: { relation: 'clubAssessment', model: 'ClubAssessment' } }` and the layer emits a
+nested relation filter. Chains are followed to their end —
+`AssessmentCriterion → AssessmentParameter → AssessmentFramework` is two hops — and the
+registry test proves every chain terminates at a real column and that none of them cycles.
+
+This is the half of the problem that does not announce itself. A table without a
+`district_id` looks like it has nothing to scope; eighteen of them are the entire
+assessment, activity-detail and finance-detail surface, and unscoped they return every
+district's rows. `club_assessments` was the sharpest case: district-scoped alone, a
+current-year scorecard read returned every year ever assessed, because its year lives
+behind `period → framework` rather than in a column.
+
+**What `via` does not do:** it cannot check a create, because there is nothing to stamp —
+the parent is named by a foreign key the caller supplies. A service creating a child must
+read the parent through `db(ctx)` first, which proves it is in scope. And
+`ClubAssessmentState` is a view, and Prisma views carry no relation fields, so it stays
+district-scoped; standings are always read for a named period, so the module supplies the
+`periodId`.
 
 **Scoped delegates drop `findUnique`, `findUniqueOrThrow`, `update`, `delete` and
 `upsert`.** Their `where` takes unique fields only and cannot carry the injected filter,
@@ -143,6 +163,14 @@ so offering them would be a silent way out of the scope. Repositories use
 404-not-403 behaviour for free, since an out-of-scope row comes back as null or as a zero
 count. `createManyAndReturn` and `updateManyAndReturn` are dropped too; both carry a
 `select` whose result narrowing would have to be hand-rolled, and nothing needs them yet.
+
+**`$transaction` is re-declared too**, so the transaction client is scoped in the types as
+well as at runtime. Prisma's own transaction client type derives from the *unextended*
+client, which meant `tx.activity.update()` compiled inside a transaction while failing to
+compile outside one — never a data leak, since the runtime extension does apply inside a
+transaction, but a hole in the compile-time guarantee exactly where repositories that need
+one will land. Only the interactive (callback) form is offered; the array form takes
+`PrismaPromise[]`, which the re-declared writes are not.
 
 **Create and update signatures are re-declared** with the stamped columns removed, so a
 handler cannot name them — being forced to name them is being forced to source them.
@@ -173,6 +201,16 @@ a record-level check is an array lookup rather than a graph walk. A district-wid
 gets `isDistrictWide: true` and an EMPTY `clubIds` — enumerating 140 clubs to answer a
 boolean is work done 140 times to no purpose.
 
+**Cost per authenticated request is three queries** for a club secretary, four for an
+ADRR: the account, the active appointments, the district's current year, and the cluster
+expansion where there is one. Naming the polymorphic appointment scopes costs up to four
+more, so `ResolvedContext.listAppointments()` is a function and only `/auth/me` calls it.
+
+**Login resolves its own context.** The middleware runs before the session exists on that
+one request, so without this the login response carries nulls — the same shape a member
+with no appointment gets, which would tell a real officer they have no authority. There is
+a test asserting the login body and the next `/auth/me` agree.
+
 **Two judgement calls worth knowing, neither of them in the session prompt:**
 
 * **`?year=` is a read door.** The permission is named `year:read:historical`, so the
@@ -202,7 +240,10 @@ assembled its own app would prove the stack the test built, not the one that shi
 | Web app is a placeholder | — | M2 onwards |
 | Audit log table exists and is append-only, but nothing writes to it | — | session 5 |
 | Positions, permissions and appointments have no CRUD — they are fixtures and, from session 6, seed rows | context resolution READS them; editing them is a governance feature | M1 |
-| `requireScope` answers DISTRICT, CLUSTER and CLUB; REGION and COMMITTEE return false | nothing owns records at those scopes yet | M1 |
+| `requireScope` answers DISTRICT, CLUSTER and CLUB; REGION and COMMITTEE return **false** | `RequestScopes` carries no `regionIds`/`committeeIds`, so an LDRR fails their own region's check. It fails CLOSED, which is the safe direction, but `documents.owner_scope_type` can already be REGION | M1, with governance |
+| A `via` child's **create** is unchecked — nothing to stamp, so a child can be created under another district's parent | the parent arrives as a foreign key; services must read it through `db(ctx)` first, which proves scope | M1 convention, enforced by review |
+| `ClubAssessmentState` is district-scoped but not year-scoped | it is a view, and Prisma views carry no relation fields for `via` to follow | M4, or give the view a `rotary_year_id` |
+| A malformed or unauthorised `?year=` fails EVERY authenticated route, including `/auth/logout` | context resolution is global and eager; sending `?year=` to logout is a client bug | not planned |
 | Appointment term dates compare against UTC, not district-local, midnight | the boundary is three hours wide in Kampala and matters on 1 July | M1, with governance |
 | Permission codes match exactly — no `club:read:*` wildcard | a matcher would turn a typo in a seeded row into a silent grant | not planned |
 
@@ -231,10 +272,11 @@ delete rows nothing recreates.
 non-interactive shell. Use `migrate deploy` where a prompt would be wrong, and note that
 `migrate reset` requires explicit human consent.
 
-**A new scoped table needs a registry entry.** `scope-registry.test.ts` will fail the
-build if it does not get one, which is the intent — but the failure arrives at
-`npm run test`, not at `migrate dev`, so it can surprise you a commit later than you
-expect. Add the `CONTEXT_BOUND_MODELS` row in the same change as the model.
+**Every new table needs a registry entry — not just the scoped ones.**
+`scope-registry.test.ts` will fail the build if it does not get one, which is the intent —
+but the failure arrives at `npm run test`, not at `migrate dev`, so it can surprise you a
+commit later than you expect. Add the row in the same change as the model: a real scope
+rule, a `via` pointing at the parent that carries one, or an `UNSCOPED_BY_DESIGN` reason.
 
 **`prisma.<scopedModel>` does not exist and that is not a broken import.** If a delegate
 you expect is missing from `prisma`, the model is context-bound: use `db(ctx)`. Likewise

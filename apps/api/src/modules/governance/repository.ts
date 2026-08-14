@@ -231,10 +231,14 @@ export async function findScopeNames(
   return names;
 }
 
+export interface ContextUser {
+  id: string;
+  personId: string;
+  status: 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'DISABLED';
+}
+
 /** The account behind a session, and whether it is still allowed to hold a context. */
-export async function findContextUser(
-  userId: string,
-): Promise<{ id: string; personId: string; status: string } | null> {
+export async function findContextUser(userId: string): Promise<ContextUser | null> {
   return unscopedPrisma.user.findFirst({
     where: { id: userId, person: { deletedAt: null } },
     select: { id: true, personId: true, status: true },
