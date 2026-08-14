@@ -1,13 +1,18 @@
 import {
+  appointmentListQuerySchema,
+  createAppointmentRequestSchema,
   createPositionRequestSchema,
   paginationQuerySchema,
   positionListQuerySchema,
   replacePermissionsRequestSchema,
+  updateAppointmentRequestSchema,
   updatePositionRequestSchema,
 } from '@dis/contracts';
 import { Router } from 'express';
 import { requireContext, requirePermission } from '../../platform/context.js';
+import { insufficientScope } from '../../platform/errors.js';
 import { asyncHandler, parseQuery, pathParam, withBody } from '../../platform/validate.js';
+import * as appointments from './appointments.service.js';
 import * as positions from './positions.service.js';
 
 /**
@@ -100,5 +105,80 @@ governanceRouter.put(
     const ctx = requireContext(req);
     const updated = await positions.replacePermissions(ctx, pathParam(req, 'id'), body.permissions);
     res.status(200).json({ data: updated });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Appointments
+// ---------------------------------------------------------------------------
+
+governanceRouter.get(
+  '/appointments',
+  requirePermission('appointment:read:district'),
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    const query = parseQuery(appointmentListQuerySchema, req);
+    res.status(200).json(await appointments.list(ctx, query));
+  }),
+);
+
+governanceRouter.get(
+  '/appointments/:id',
+  requirePermission('appointment:read:district'),
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    res.status(200).json({ data: await appointments.get(ctx, pathParam(req, 'id')) });
+  }),
+);
+
+governanceRouter.post(
+  '/appointments',
+  requirePermission('appointment:manage:district'),
+  ...withBody(createAppointmentRequestSchema, async ({ body, req, res }) => {
+    const ctx = requireContext(req);
+    res.status(201).json({ data: await appointments.create(ctx, body) });
+  }),
+);
+
+/** End a term, or revoke. Never re-point at a different person — that is a new appointment. */
+governanceRouter.patch(
+  '/appointments/:id',
+  requirePermission('appointment:manage:district'),
+  ...withBody(updateAppointmentRequestSchema, async ({ body, req, res }) => {
+    const ctx = requireContext(req);
+    res.status(200).json({ data: await appointments.update(ctx, pathParam(req, 'id'), body) });
+  }),
+);
+
+governanceRouter.delete(
+  '/appointments/:id',
+  requirePermission('appointment:manage:district'),
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    res.status(200).json({ data: await appointments.revoke(ctx, pathParam(req, 'id')) });
+  }),
+);
+
+/**
+ * A person's own appointment history.
+ *
+ * Readable by the person themselves without any permission — "what do I hold" is not a
+ * question anybody needs authority to ask about their own record — and by anyone who may
+ * read appointments across the district.
+ */
+governanceRouter.get(
+  '/persons/:id/appointments',
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    const personId = pathParam(req, 'id');
+
+    if (personId !== ctx.personId && !ctx.permissions.has('appointment:read:district')) {
+      throw insufficientScope('You may only read your own appointments', {
+        required: 'appointment:read:district',
+      });
+    }
+
+    const query = parseQuery(paginationQuerySchema, req);
+    res.status(200).json(await appointments.listForPerson(ctx, personId, query));
   }),
 );

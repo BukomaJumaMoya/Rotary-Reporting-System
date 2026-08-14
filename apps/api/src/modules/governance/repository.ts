@@ -3,6 +3,7 @@ import type { OrgScopeValue } from '@dis/contracts';
 // one place that cannot already hold one. ESLint's no-restricted-imports rule exempts
 // `modules/governance` for exactly this reason and refuses the import everywhere else.
 import { unscopedPrisma } from '../../platform/db.js';
+import { isTermCurrent } from '../../platform/time.js';
 
 export interface ActiveAppointment {
   id: string;
@@ -18,37 +19,22 @@ export interface ActiveAppointment {
 }
 
 /**
- * Midnight UTC today, for comparing against `DATE` columns.
- *
- * Districts carry a timezone and one day the boundary will matter — an appointment
- * starting "1 July" in Kampala begins three hours before UTC midnight. It does not
- * matter yet, and guessing at it now would be a rule nobody asked for; when the
- * governance module lands in M1 this becomes district-local.
- */
-export function today(): Date {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-}
-
-/**
  * Every appointment the person currently holds, in any district and any year, with the
  * permissions its position carries.
  *
- * "Currently" means `is_active` AND the date falls inside the term. Both matter:
- * `is_active` is how an appointment is revoked mid-year, and the dates are how it
- * expires without anyone doing anything — which is what makes year rollover automatic
- * rather than a job that must remember to strip last year's officers.
+ * "Currently" means `is_active` AND the date falls inside the term, compared against
+ * midnight in the DISTRICT'S timezone. Both parts matter: `is_active` is how an
+ * appointment is revoked mid-year, and the dates are how it expires without anyone doing
+ * anything — which is what makes rollover automatic rather than a job that has to
+ * remember to strip last year's officers.
+ *
+ * The term filter is applied in TypeScript rather than in SQL, because the comparison
+ * needs each row's own district timezone and a person may hold appointments in more than
+ * one district. `is_active` and the person narrow it to a handful of rows first.
  */
 export async function findActiveAppointments(personId: string): Promise<ActiveAppointment[]> {
-  const now = today();
-
   const rows = await unscopedPrisma.appointment.findMany({
-    where: {
-      personId,
-      isActive: true,
-      startsOn: { lte: now },
-      OR: [{ endsOn: null }, { endsOn: { gte: now } }],
-    },
+    where: { personId, isActive: true },
     select: {
       id: true,
       districtId: true,
@@ -57,6 +43,7 @@ export async function findActiveAppointments(personId: string): Promise<ActiveAp
       scopeId: true,
       startsOn: true,
       endsOn: true,
+      district: { select: { timezone: true } },
       position: {
         select: {
           code: true,
@@ -71,6 +58,7 @@ export async function findActiveAppointments(personId: string): Promise<ActiveAp
 
   return rows
     .filter((row) => row.position.isActive)
+    .filter((row) => isTermCurrent(row, row.district.timezone))
     .map((row) => ({
       id: row.id,
       districtId: row.districtId,

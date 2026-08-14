@@ -263,6 +263,29 @@ lets the scoping tests mount probe routes INSIDE the real middleware stack — a
 assembled its own app would prove the stack the test built, not the one that ships.
 `tsconfig.build.json` excludes `src/test`, so none of it reaches `dist`.
 
+### M1 session 2 — district-local term boundaries
+
+**The deferred item from §5 is closed.** Appointment terms are compared against midnight
+in the DISTRICT's timezone, not UTC, in `platform/time.ts` — and in both places that ask:
+context resolution and appointment validation. They share one helper, because if they
+disagreed an appointment could be creatable and not yet effective for reasons nobody
+could see.
+
+Compared against UTC the boundary in Kampala is three hours wide. Between 21:00 and
+midnight EAT on 30 June an incoming officer is already authorised; on 1 July between
+midnight and 03:00 EAT they are not. Rollover happens on exactly that boundary, once a
+year. Three tests pin the clock to it.
+
+**The term filter moved out of SQL.** `findActiveAppointments` can no longer express the
+comparison in a `where` clause, because it needs each row's own district timezone and a
+person may hold appointments in more than one district. `is_active` and the person narrow
+it to a handful of rows first, and the date check runs in TypeScript.
+
+**`isCurrent` is distinct from `isActive` on the appointment contract.** Active means not
+revoked; current means the term covers today where the district is. An appointment created
+in June for a term starting 1 July is the first and not the second, and a screen showing
+one number for both would be lying for a month.
+
 ### Session 5 — audit log and the unauthenticated-PII guard
 
 **The audit extension is applied LAST, so it runs innermost.** Prisma nests query
@@ -431,7 +454,6 @@ tested directly.
 | Positions, permissions and appointments have no CRUD — they are fixtures and, from session 6, seed rows | context resolution READS them; editing them is a governance feature | M1 |
 | A malformed or unauthorised `?year=` fails EVERY authenticated route, including `/auth/logout` | context resolution is global and eager; sending `?year=` to logout is a client bug | not planned |
 | A nested create of a parent alongside its child is not scope-checked | there is no parent id to check; the parent's own write is stamped, so the child lands under a stamped row | not planned |
-| Appointment term dates compare against UTC, not district-local, midnight | the boundary is three hours wide in Kampala and matters on 1 July | M1, with governance |
 | Permission codes match exactly — no `club:read:*` wildcard | a matcher would turn a typo in a seeded row into a silent grant | not planned |
 
 

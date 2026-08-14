@@ -33,6 +33,12 @@ export const ErrorCode = {
   UNKNOWN_PERMISSION: 'UNKNOWN_PERMISSION',
   /** A code or name that must be unique within the district is already taken. */
   DUPLICATE_CODE: 'DUPLICATE_CODE',
+  /** The position is `is_unique_per_scope` and somebody already holds it here this year. */
+  POSITION_ALREADY_HELD: 'POSITION_ALREADY_HELD',
+  /** `scope_id` names no record of the kind `scope_type` implies. */
+  INVALID_SCOPE_REFERENCE: 'INVALID_SCOPE_REFERENCE',
+  /** The appointment's scope type does not match the position's own scope. */
+  SCOPE_TYPE_MISMATCH: 'SCOPE_TYPE_MISMATCH',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   // Database guards (ADR-012). Mapped from SQLSTATE below.
   MEMBERSHIP_IMMUTABLE: 'MEMBERSHIP_IMMUTABLE',

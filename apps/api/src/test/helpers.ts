@@ -261,6 +261,43 @@ export async function createClub(name = `Rotaract Club of ${randomUUID().slice(0
   });
 }
 
+/**
+ * Affiliates a club to a district for a year.
+ *
+ * The row that makes a club part of the district at all. Clubs are GLOBAL entities —
+ * `createClub` makes one that belongs to nobody — and affiliation is the dated
+ * relationship that puts it in D9218 for 2027-28 (axiom 2).
+ */
+export async function affiliateClub(input: {
+  clubId: string;
+  districtId: string;
+  rotaryYearId: string;
+  tier?: 'T1' | 'T2' | 'IBC';
+  isConfirmed?: boolean;
+}) {
+  return unscopedPrisma.clubDistrictAffiliation.create({
+    data: {
+      clubId: input.clubId,
+      districtId: input.districtId,
+      rotaryYearId: input.rotaryYearId,
+      tier: input.tier ?? 'T1',
+      isConfirmed: input.isConfirmed ?? true,
+    },
+    select: { id: true },
+  });
+}
+
+/** A club that is this district's for the current year — the common case. */
+export async function createClubIn(org: OrgFixture, name?: string) {
+  const club = await createClub(name);
+  await affiliateClub({
+    clubId: club.id,
+    districtId: org.districtId,
+    rotaryYearId: org.currentYearId,
+  });
+  return club;
+}
+
 export async function createRegion(
   districtId: string,
   name = `Region ${randomUUID().slice(0, 6)}`,
