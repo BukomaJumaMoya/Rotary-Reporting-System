@@ -11,6 +11,8 @@ import {
 import { config, isTest } from './config.js';
 import {
   createScopeExtension,
+  isViaModel,
+  rewriteArgs,
   softDeleteExtension,
   CONTEXT_BOUND_MODELS,
   type ContextBoundDelegateKey,
@@ -385,6 +387,88 @@ const countInScope: ScopedCounter = (delegateKey, where) => {
   if (!delegate) throw new Error(`Scope rule names an unknown model delegate: ${delegateKey}`);
   return delegate.count({ where });
 };
+
+/**
+ * One transaction, several scoped clients.
+ *
+ * Prisma's transaction client cannot be `$extends`-ed, so `db(a)` and `db(b)` can never
+ * share a transaction — and year rollover needs exactly that: it deactivates LAST year's
+ * appointments and writes NEXT year's affiliations, atomically, with the dry run rolling
+ * the whole thing back.
+ *
+ * The alternative was `unscopedPrisma`, and a job that skips the scope is a job that will
+ * one day run against the wrong district. So the scope is applied by hand here, through
+ * `rewriteArgs` — the same function the extension uses, not a second copy of it.
+ *
+ * Two things it does not do, both refused loudly rather than half-done:
+ *  * `via` models, whose parent check needs a query of its own;
+ *  * auditing, because the audit extension cannot be applied either. A caller that needs
+ *    an audit row inside a transaction writes one explicitly, as rollover does.
+ */
+export type ScopedTxClient = Omit<
+  ScopedTransactionClient,
+  ContextBoundDelegateKey | SoftDeleteOnlyDelegateKey
+> & {
+  readonly [K in ContextBoundDelegateKey]: ContextBoundDelegate<
+    BaseClient[K],
+    Capitalize<K> & ContextBoundModelName
+  >;
+};
+
+type RawDelegate = Record<string, (args: unknown) => Promise<unknown>>;
+
+function scopeTxClient(raw: unknown, ctx: RequestContext): ScopedTxClient {
+  const delegates = raw as Record<string, RawDelegate>;
+
+  return new Proxy(
+    {},
+    {
+      get(_target, property: string) {
+        const delegate = delegates[property];
+        if (!delegate) return undefined;
+
+        const model = property.charAt(0).toUpperCase() + property.slice(1);
+        if (isViaModel(model)) {
+          throw new Error(
+            `${model} inherits its scope through a relation, which a transaction cannot ` +
+              `check. Read its parent through db(ctx) first, outside the transaction.`,
+          );
+        }
+
+        return new Proxy(
+          {},
+          {
+            get(_inner, operation: string) {
+              const method = delegate[operation];
+              if (typeof method !== 'function') return undefined;
+              return (args: unknown) =>
+                method.call(delegate, rewriteArgs(model, operation, args, ctx));
+            },
+          },
+        );
+      },
+    },
+  ) as ScopedTxClient;
+}
+
+/**
+ * Runs `fn` inside ONE transaction, handing it a scoped client per context.
+ *
+ * `scopedFor(ctx)` returns a client scoped to that context over the SAME transaction, so
+ * a rollover can read and write across two Rotary Years and still roll the whole thing
+ * back — which is what makes a dry run a dry run rather than a promise.
+ */
+export async function scopedTransaction<T>(
+  fn: (scopedFor: (ctx: RequestContext) => ScopedTxClient) => Promise<T>,
+  options: { timeout?: number } = {},
+): Promise<T> {
+  return baseClient.$transaction(
+    async (tx) => fn((ctx) => scopeTxClient(tx, ctx)),
+    // Rollover touches every club and every appointment. The default 5s is a timeout
+    // tuned for a web request, and this is not one.
+    { timeout: options.timeout ?? 120_000 },
+  );
+}
 
 export async function disconnect(): Promise<void> {
   await unscopedPrisma.$disconnect();

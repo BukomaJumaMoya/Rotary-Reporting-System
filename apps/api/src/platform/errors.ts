@@ -41,6 +41,10 @@ export const ErrorCode = {
   SCOPE_TYPE_MISMATCH: 'SCOPE_TYPE_MISMATCH',
   /** Committees nest at most three deep; deeper is a maze nobody can navigate. */
   COMMITTEE_TOO_DEEP: 'COMMITTEE_TOO_DEEP',
+  /** A rollover commit without a valid, unexpired confirmation token from a dry run. */
+  ROLLOVER_NOT_CONFIRMED: 'ROLLOVER_NOT_CONFIRMED',
+  /** An assessment period is still OPEN for the year being closed. */
+  PERIOD_OPEN: 'PERIOD_OPEN',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   // Database guards (ADR-012). Mapped from SQLSTATE below.
   MEMBERSHIP_IMMUTABLE: 'MEMBERSHIP_IMMUTABLE',

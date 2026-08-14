@@ -120,3 +120,49 @@ export const mfaResetResponseSchema = z.object({
     personNotified: z.boolean(),
   }),
 });
+
+// ─── Year rollover ───────────────────────────────────────────────────────────
+
+/**
+ * The riskiest operation in the system: once a year, every club and every appointment.
+ *
+ * `dryRun` has NO default and must be sent explicitly. A default of true would be
+ * ignored by a client that forgot it; a default of false would be a catastrophe. Making
+ * it required means the caller has said which one they meant.
+ */
+export const rolloverRequestSchema = z.object({
+  targetYearLabel: z.string().regex(/^\d{4}-\d{2}$/, 'A Rotary Year looks like 2028-29'),
+  dryRun: z.boolean(),
+  /** Required to commit. Issued by the most recent dry run, expiring after 30 minutes. */
+  confirmToken: z.uuid().optional(),
+});
+export type RolloverRequest = z.infer<typeof rolloverRequestSchema>;
+
+export const rolloverReportSchema = z.object({
+  dryRun: z.boolean(),
+  fromYearLabel: z.string(),
+  toYearLabel: z.string(),
+  clubsCarriedForward: z.number().int().nonnegative(),
+  clusterAssignmentsCarried: z.number().int().nonnegative(),
+  appointmentsExpired: z.number().int().nonnegative(),
+  expiringByPosition: z.array(
+    z.object({ position: z.string(), count: z.number().int().nonnegative() }),
+  ),
+  /** Tier recalculated from the closing roster: what moved, and why. */
+  tierChanges: z.array(
+    z.object({
+      clubId: z.uuid(),
+      clubName: z.string(),
+      from: z.string(),
+      to: z.string(),
+      rosterSize: z.number().int().nonnegative(),
+    }),
+  ),
+  /** Clubs the district should look at before confirming — a zero roster, above all. */
+  flaggedClubs: z.array(z.object({ clubId: z.uuid(), clubName: z.string(), reason: z.string() })),
+  /** Present on a dry run only. Pass it back to commit the same diff. */
+  confirmToken: z.string().nullable(),
+});
+export type RolloverReport = z.infer<typeof rolloverReportSchema>;
+
+export const rolloverResponseSchema = z.object({ data: rolloverReportSchema });

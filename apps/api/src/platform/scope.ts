@@ -449,6 +449,52 @@ function delegateKeyOf(model: string): string {
  *    and is applied; an `include` reading down from a scoped parent is inherently within
  *    scope anyway.
  */
+/**
+ * Rewrites one operation's arguments for a context, or refuses it.
+ *
+ * The scoping rules, extracted from the extension so that a TRANSACTION can use them too.
+ * Prisma's transaction client cannot be `$extends`-ed — measured, not assumed — so two
+ * differently-scoped clients cannot share one transaction, and year rollover needs
+ * exactly that: it deactivates last year's appointments and writes next year's
+ * affiliations, atomically. `scopedTransaction` in `db.ts` applies these rules by hand
+ * over a raw transaction client, which is only safe because it is these rules and not a
+ * second copy of them.
+ *
+ * The `via` parent check is NOT applied here: it needs a query of its own, which is the
+ * extension's job. `scopedTransaction` refuses a `via` model rather than scoping it
+ * halfway.
+ */
+export function rewriteArgs(
+  model: string,
+  operation: string,
+  args: unknown,
+  ctx: RequestContext,
+): unknown {
+  const rule = CONTEXT_BOUND_MODELS[model as ContextBoundModelName] as ScopeRule | undefined;
+  if (!rule) return args;
+
+  if (UNSCOPABLE.has(operation)) {
+    throw new Error(
+      `${model}.${operation}() cannot be scoped — its where clause takes only unique ` +
+        `fields. Use findFirst / updateMany / deleteMany instead.`,
+    );
+  }
+
+  if (WRITE_OPERATIONS.has(operation) && !ctx.isYearWritable) {
+    throw yearLocked('This Rotary Year is closed to changes');
+  }
+
+  if (CREATE_OPERATIONS.has(operation)) return withStampedData(args, createStamp(rule, ctx));
+  if (FILTERED_OPERATIONS.has(operation)) return withScopedWhere(args, scopeClauses(model, ctx));
+  return args;
+}
+
+/** Whether a model inherits its scope through a relation, which a transaction cannot check. */
+export function isViaModel(model: string): boolean {
+  const rule = CONTEXT_BOUND_MODELS[model as ContextBoundModelName] as ScopeRule | undefined;
+  return rule?.via !== undefined;
+}
+
 export function createScopeExtension(ctx: RequestContext, countInScope: ScopedCounter) {
   /**
    * Refuses a write that files a row under a parent the caller cannot see.
