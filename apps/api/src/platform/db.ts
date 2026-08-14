@@ -1,6 +1,13 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import type { RequestContext } from '@dis/contracts';
-import { PrismaClient, type Prisma } from '../generated/prisma/client.js';
+import { PrismaClient, Prisma } from '../generated/prisma/client.js';
+import {
+  createAuditExtension,
+  currentActor,
+  toJsonSafe,
+  type AuditActionValue,
+  type AuditPorts,
+} from './audit.js';
 import { config, isTest } from './config.js';
 import {
   createScopeExtension,
@@ -49,6 +56,77 @@ export const unscopedPrisma = new PrismaClient({
 const baseClient = unscopedPrisma.$extends(softDeleteExtension);
 
 type BaseClient = typeof baseClient;
+
+/**
+ * Reads and writes the audit extension needs, wired to the UNEXTENDED client.
+ *
+ * Deliberately unextended: the "before" read is issued with the filter the write itself
+ * carries — already scoped by the time audit sees it — so re-applying the scope would be
+ * harmless but re-entering the audit extension would not, and appending to `audit_log`
+ * through a client that audits `audit_log` is a loop.
+ */
+const auditPorts: AuditPorts = {
+  findAffected: async (delegateKey, where) => {
+    const delegates = unscopedPrisma as unknown as Record<
+      string,
+      { findMany(args: { where: unknown }): Promise<Record<string, unknown>[]> }
+    >;
+    const delegate = delegates[delegateKey];
+    if (!delegate) return [];
+    return delegate.findMany({ where: where ?? {} });
+  },
+  write: async (entries) => {
+    await unscopedPrisma.auditLogEntry.createMany({
+      data: entries.map((entry) => ({
+        districtId: entry.districtId,
+        actorUserId: entry.actorUserId,
+        entityType: entry.entityType,
+        entityId: entry.entityId,
+        action: entry.action,
+        before: entry.before === null ? Prisma.DbNull : (entry.before as Prisma.InputJsonValue),
+        after: entry.after === null ? Prisma.DbNull : (entry.after as Prisma.InputJsonValue),
+        ipAddress: entry.ipAddress,
+        userAgent: entry.userAgent,
+      })),
+    });
+  },
+};
+
+const auditExtension = createAuditExtension(auditPorts);
+
+/**
+ * Records an action that is not a row change — LOGIN, LOGOUT, EXPORT.
+ *
+ * These leave no diff and would otherwise be invisible, which matters most for the one
+ * question an audit log is asked after an incident: who was in the system, and when.
+ *
+ * Never throws. A failed audit write must not fail the sign-in that caused it.
+ */
+export async function recordAction(
+  action: AuditActionValue,
+  entity: { entityType: string; entityId?: string | null; details?: unknown } = {
+    entityType: 'users',
+  },
+): Promise<void> {
+  const actor = currentActor();
+  try {
+    await auditPorts.write([
+      {
+        districtId: actor?.districtId ?? null,
+        actorUserId: actor?.userId ?? null,
+        entityType: entity.entityType,
+        entityId: entity.entityId ?? actor?.userId ?? null,
+        action,
+        before: null,
+        after: entity.details === undefined ? null : toJsonSafe(entity.details),
+        ipAddress: actor?.ipAddress ?? null,
+        userAgent: actor?.userAgent ?? null,
+      },
+    ]);
+  } catch (error) {
+    console.error('[audit] failed to record', action, error);
+  }
+}
 
 type UnscopableOperation = (typeof UNSCOPABLE_OPERATIONS)[number];
 
@@ -185,7 +263,11 @@ export type UnscopedClient = Omit<BaseClient, ContextBoundDelegateKey> & {
   readonly [K in SoftDeleteOnlyDelegateKey]: ScopedDelegate<BaseClient[K]>;
 };
 
-export const prisma: UnscopedClient = baseClient;
+// Audit is applied LAST so it runs innermost and sees the arguments that reach the
+// database. Prisma nests query extensions with the first-applied outermost — proven,
+// not assumed — so an audit extension added earlier would read its "before" state with
+// the caller's unscoped filter.
+export const prisma: UnscopedClient = baseClient.$extends(auditExtension);
 
 type ScopedModels = {
   readonly [K in ContextBoundDelegateKey]: ContextBoundDelegate<
@@ -264,9 +346,11 @@ export function db(ctx: RequestContext): ScopedClient {
   // The one cast in this layer. A `query` extension changes behaviour, never result
   // types, so the extended client is structurally the base client — narrowed here to
   // the delegate surface that can actually honour the scope.
-  const scoped = baseClient.$extends(
-    createScopeExtension(ctx, countInScope),
-  ) as unknown as ScopedClient;
+  // Scope first, then audit — so the audit extension is innermost and its before/after
+  // reads carry the district and year filters the write itself carries.
+  const scoped = baseClient
+    .$extends(createScopeExtension(ctx, countInScope))
+    .$extends(auditExtension) as unknown as ScopedClient;
   clientsByContext.set(ctx, scoped);
   return scoped;
 }

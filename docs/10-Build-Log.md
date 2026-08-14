@@ -15,9 +15,9 @@ Last updated: 14 August 2026, after M0 session 4.
 | 1 — Monorepo scaffold and CI | **done**, CI green | `b5149b5` |
 | 2 — Prisma schema translation and migrations | **done** | `2a2f7e3`, `f799317` |
 | 3 — Authentication | **done**, plus mail, MFA, encryption | `2de1dfb`, `e527b8d`, `d1f62aa`, `7525705` |
-| 4 — Request context and scoped data access | **done** | this commit |
-| 5 — Audit log and no-PII harness | **next** | — |
-| 6 — Seed and staging deployment | pending | — |
+| 4 — Request context and scoped data access | **done** | `5b9076d`, `a4a62f7`, `d34f024` |
+| 5 — Audit log and no-PII harness | **done** | this commit |
+| 6 — Seed and staging deployment | **next** | — |
 
 CI runs typecheck → lint → format:check → test → build → `npm audit` against a
 `postgres:17` service container, and is green on `main`.
@@ -59,6 +59,7 @@ packages/contracts/src/
 
 apps/api/src/
   platform/
+    audit.ts     actor store (AsyncLocalStorage), governed models, JSON-safe diffs
     config.ts    every env var, validated with Zod at startup; process exits if invalid
     context.ts   context middleware, requireContext, requirePermission, requireScope
     db.ts        prisma (scoped models removed from its TYPE) · db(ctx) · unscopedPrisma
@@ -77,11 +78,15 @@ apps/api/src/
     global-setup.ts  applies migrations to TEST_DATABASE_URL
     helpers.ts       resetDatabase, org/position/appointment fixtures, signIn
     probe-routes.ts  routes mounted INTO the real app by the scoping tests only
+    routes.ts        route discovery for the unauthenticated-PII harness
 ```
 
 `apps/web` is still the session-1 placeholder page. Nothing has been built on it.
 
-**103 tests**, all integration-style against real PostgreSQL.
+**150 tests**, all integration-style against real PostgreSQL. The suites that are load
+bearing rather than incidental: `no-pii.test.ts` (walks every route unauthenticated),
+`invariants.test.ts` (37 ADR-012 guards), `scope*.test.ts` (the data access layer) and
+`audit.test.ts`.
 
 ---
 
@@ -247,6 +252,85 @@ lets the scoping tests mount probe routes INSIDE the real middleware stack — a
 assembled its own app would prove the stack the test built, not the one that ships.
 `tsconfig.build.json` excludes `src/test`, so none of it reaches `dist`.
 
+### Session 5 — audit log and the unauthenticated-PII guard
+
+**The audit extension is applied LAST, so it runs innermost.** Prisma nests query
+extensions with the first-applied outermost — measured, not assumed — so an audit
+extension added before the scope extension would issue its "before" read with the
+caller's unscoped filter, matching rows in other districts that the write never touched.
+That is a wrong diff and a leak into `audit_log` at once. Both clients therefore end their
+chain with it: `prisma = base.$extends(audit)` and
+`db(ctx) = base.$extends(scope).$extends(audit)`.
+
+**`unscopedPrisma` carries no audit extension**, which is what keeps the seed's thousands
+of rows out of the log. The test fixtures moved onto it for the same reason.
+
+**The actor travels in `AsyncLocalStorage`,** not down the call stack. A Prisma extension
+sits below every service and repository and cannot be handed a request; threading an actor
+through every write signature is the kind of parameter that gets dropped in one function
+out of forty, and that one is the function somebody later needs. The store is MUTABLE
+because a login writes its audit row while the session it is creating does not yet exist —
+`identifyActor()` names it on the way through.
+
+**`withAuditActor` requires its callback to await.** A Prisma promise is lazy, so returning
+one unawaited resolves it outside the store and the extension sees no actor. The signature
+is `() => Promise<T>` to make the mistake harder to write; the request path gets this free
+because the middleware wraps `next()`.
+
+**Updates store a diff, not two whole rows.** `audit_log` would otherwise become the
+largest table in the database within a year, with the one column that changed buried under
+forty that did not. `updatedAt` is excluded — it moves on every write and says nothing on
+its own. Creates keep the whole `after`, deletes the whole `before`.
+
+**BigInt and Decimal are serialised explicitly.** `JSON.stringify` throws on the first and
+mangles the second, and this schema is full of both — `ri_club_id` is a BigInt and every
+money column is a Decimal.
+
+**Appending never fails the operation that caused it.** A failed audit write is logged and
+swallowed. The alternative is a system that stops accepting activity reports when its
+logging breaks.
+
+#### The no-PII harness
+
+**Routes are discovered, not listed** — a list is a thing somebody has to remember to
+update, and this harness is worth exactly its coverage on the day someone adds a careless
+endpoint.
+
+**Express 5 does not keep a mount path as a string.** `layer.path` holds the path that last
+MATCHED a request, and the mount pattern survives only as a compiled matcher, so
+`/api/v1/auth/login` is not recoverable from the router tree. The first version of the
+walker silently produced `/login`, which 404s — every assertion passed and the harness was
+decoration. `createApp` now records its mounts through a `mount()` helper and stores them
+under `app.set('dis:mounts')`; `assertAllRoutersDiscovered` fails the build if a router
+reaches the stack around that helper, so the registry cannot quietly go stale.
+
+Three guard tests exist because of that near-miss: discovery must contain the routes that
+exist, every discovered path must resolve to something other than 404, and the mount
+registry must account for every router.
+
+**Verified the way the session prompt asks:** a temporary `/api/v1/admin/directory`
+returning names, emails, phones and cities was added, the harness failed naming the three
+leaked fields, and the route was removed.
+
+#### ADR-012 conformance in CI
+
+`invariants.sql` is now driven by a vitest suite over a raw `pg` connection, because the
+file reports through `RAISE NOTICE` and Prisma discards those. The SQL stays the source of
+truth — rewriting 37 checks in TypeScript would have produced a second, subtly different
+set, and the one that drifted would be the one nobody read. The suite asserts exactly 37
+passes, so deleting a check fails as loudly as breaking one, and it drops a trigger to
+prove it would notice a guard that stopped firing.
+
+#### A bug this session exposed
+
+**Guard SQLSTATEs were never reaching the error mapper.** Prisma 7 with `@prisma/adapter-pg`
+nests the driver error twice, so the code arrives at
+`meta.driverAdapterError.cause.code` — and `sqlStateOf()` checked only `error.code` and
+`error.meta.code`. Every guard violation had been surfacing as an opaque 500 instead of
+`MEMBERSHIP_IMMUTABLE` or `AUDIT_IMMUTABLE` since session 3. The conformance suite proved
+the guards fire; nothing proved the translation did. `domainErrorFor()` is now exported and
+tested directly.
+
 ---
 
 ## 5. Deliberately unfinished
@@ -258,7 +342,8 @@ assembled its own app would prove the stack the test built, not the one that shi
 | No worker process, no pg-boss | notifications deliver inline; the `notifications` row is already the queue | later |
 | No seed | — | session 6 |
 | Web app is a placeholder | — | M2 onwards |
-| Audit log table exists and is append-only, but nothing writes to it | — | session 5 |
+| No endpoint READS the audit log | who may read it is a permission question, and `audit:read:district` has no route yet | M1 |
+| `recordAction(EXPORT, …)` exists and is unused | there is no export module yet | M7 |
 | Positions, permissions and appointments have no CRUD — they are fixtures and, from session 6, seed rows | context resolution READS them; editing them is a governance feature | M1 |
 | A malformed or unauthorised `?year=` fails EVERY authenticated route, including `/auth/logout` | context resolution is global and eager; sending `?year=` to logout is a client bug | not planned |
 | A nested create of a parent alongside its child is not scope-checked | there is no parent id to check; the parent's own write is stamped, so the child lands under a stamped row | not planned |
@@ -305,6 +390,15 @@ are the replacements, and the zero-row case is your 404.
 soft-delete extension, so its transaction client is narrower than `Prisma.TransactionClient`.
 Let `tx` infer; annotating it discards the extension and fails to typecheck.
 
+**A test fixture must write through `unscopedPrisma`, not `prisma`.** `prisma` audits, so a
+fixture built on it seeds `audit_log` and any test counting audit rows sees the fixture's
+own writes. All fixtures in `src/test/helpers.ts` use the escape hatch.
+
+**Mount routers through the `mount()` helper in `createApp`, never `app.use()`.** Express 5
+keeps no mount-path string, so the unauthenticated-PII harness reads a registry instead.
+`assertAllRoutersDiscovered` fails the build if a router bypasses the helper — but the
+failure is in the PII suite, not where the router was added.
+
 **Prisma 7 differences from most documentation:** configuration lives in
 `prisma.config.ts`, the client generator is `prisma-client` emitting TypeScript into
 `src/generated/prisma` (gitignored, rebuilt by `postinstall`), and `PrismaClient` requires
@@ -321,10 +415,12 @@ npm run typecheck && npm run lint && npm run format:check && npm run test && npm
 cd apps/api && npx prisma migrate diff --from-migrations ./prisma/migrations \
   --to-schema prisma/schema.prisma --script
 
-# Database invariants — 37 checks, every line must read PASS
+# Database invariants — now a vitest suite, so `npm run test` covers them.
+# Still runnable by hand against a development database:
 psql "$DATABASE_URL" -f apps/api/prisma/checks/invariants.sql
 ```
 
 `apps/api/prisma/checks/invariants.sql` attempts every guard violation and asserts it
 fails. ADR-012 requires a check there for every database-side guard; adding a guard without
-one is incomplete work. It becomes a vitest suite in session 5.
+one is incomplete work. Since session 5 `src/platform/invariants.test.ts` runs the same
+file in CI over a raw `pg` connection and asserts exactly 37 passes.

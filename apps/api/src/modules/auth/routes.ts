@@ -10,7 +10,9 @@ import {
 import { Router } from 'express';
 import type { Request } from 'express';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
+import { AuditAction, identifyActor } from '../../platform/audit.js';
 import { config } from '../../platform/config.js';
+import { recordAction } from '../../platform/db.js';
 import { AppError, ErrorCode, unauthenticated } from '../../platform/errors.js';
 import { asyncHandler, rawStringField, withBody } from '../../platform/validate.js';
 import * as service from './service.js';
@@ -104,6 +106,11 @@ authRouter.post(
     req.session.userId = user.id;
     await promisify((cb) => req.session.save(cb));
 
+    // The request arrived with no session, so the actor store was opened anonymous.
+    // Naming it here is what puts a user id on the LOGIN row.
+    identifyActor({ userId: user.id });
+    await recordAction(AuditAction.LOGIN, { entityType: 'users', entityId: user.id });
+
     // Resolved here rather than left to the client's first /auth/me: the context
     // middleware ran before this session existed, so without this the login response
     // reports no district and no permissions — the same shape as a member who holds no
@@ -121,6 +128,11 @@ authRouter.post(
       return;
     }
 
+    // Recorded before the session is destroyed, while the actor is still identifiable.
+    await recordAction(AuditAction.LOGOUT, {
+      entityType: 'users',
+      entityId: req.session.userId,
+    });
     await promisify((cb) => req.session.destroy(cb));
     res.clearCookie(config.SESSION_COOKIE_NAME, { path: '/' });
     res.status(204).end();

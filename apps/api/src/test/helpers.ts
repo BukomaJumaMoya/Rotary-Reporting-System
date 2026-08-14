@@ -84,12 +84,12 @@ export async function createUser(
   const password = overrides.password ?? 'correct horse battery staple';
   const status = overrides.status ?? 'ACTIVE';
 
-  const person = await prisma.person.create({
+  const person = await unscopedPrisma.person.create({
     data: { firstName: 'Test', lastName: 'Member', email },
     select: { id: true },
   });
 
-  const user = await prisma.user.create({
+  const user = await unscopedPrisma.user.create({
     data: {
       personId: person.id,
       passwordHash: await hashPassword(password),
@@ -110,7 +110,7 @@ export async function createTokenFor(
   options: { expiresAt?: Date; consumedAt?: Date } = {},
 ): Promise<string> {
   const token = issueToken(60);
-  await prisma.userToken.create({
+  await unscopedPrisma.userToken.create({
     data: {
       userId,
       purpose,
@@ -123,7 +123,7 @@ export async function createTokenFor(
 }
 
 export async function tokenRow(plaintext: string) {
-  return prisma.userToken.findUnique({ where: { tokenHash: hashToken(plaintext) } });
+  return unscopedPrisma.userToken.findUnique({ where: { tokenHash: hashToken(plaintext) } });
 }
 
 /**

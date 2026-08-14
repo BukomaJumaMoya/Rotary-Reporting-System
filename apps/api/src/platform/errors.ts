@@ -104,17 +104,48 @@ const SQLSTATE_TO_ERROR: Record<string, { status: number; code: ErrorCodeValue; 
     },
   };
 
+/**
+ * Digs the driver's SQLSTATE out of whichever nesting Prisma used.
+ *
+ * Three places, because the shape depends on the error class AND on the driver adapter.
+ * Prisma 7 with `@prisma/adapter-pg` wraps the driver error twice, so the code arrives at
+ * `meta.driverAdapterError.cause.code` — and a mapping that only checked the two obvious
+ * places found nothing, which meant every guard violation reached the client as an opaque
+ * 500 instead of `MEMBERSHIP_IMMUTABLE`. Found by the audit tests in session 5; the
+ * conformance suite proved the guards fire, never that the mapping did.
+ */
 function sqlStateOf(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
-  // Prisma surfaces the driver's SQLSTATE in different places depending on the error
-  // class, so check both rather than assuming one shape.
-  const candidate = error as { code?: unknown; meta?: { code?: unknown } };
-  if (typeof candidate.code === 'string' && candidate.code in SQLSTATE_TO_ERROR) {
-    return candidate.code;
+
+  const candidate = error as {
+    code?: unknown;
+    meta?: { code?: unknown; driverAdapterError?: { cause?: { code?: unknown } } };
+  };
+
+  const candidates = [
+    candidate.code,
+    candidate.meta?.code,
+    candidate.meta?.driverAdapterError?.cause?.code,
+  ];
+
+  for (const value of candidates) {
+    if (typeof value === 'string' && value in SQLSTATE_TO_ERROR) return value;
   }
-  const metaCode = candidate.meta?.code;
-  if (typeof metaCode === 'string' && metaCode in SQLSTATE_TO_ERROR) return metaCode;
   return undefined;
+}
+
+/**
+ * The domain error a database guard violation maps to, or undefined for anything else.
+ *
+ * Exported so the mapping can be tested directly. It was wrong for two sessions without
+ * anything noticing, because every test that tripped a guard asserted the write failed —
+ * which it did — and none asserted what the client would have been told.
+ */
+export function domainErrorFor(
+  error: unknown,
+): { status: number; code: ErrorCodeValue; message: string } | undefined {
+  const sqlState = sqlStateOf(error);
+  return sqlState ? SQLSTATE_TO_ERROR[sqlState] : undefined;
 }
 
 function send(res: Response, status: number, body: AppError | { code: string; message: string }) {
@@ -142,13 +173,10 @@ export const errorHandler: ErrorRequestHandler = (error, req: Request, res: Resp
     return;
   }
 
-  const sqlState = sqlStateOf(error);
-  if (sqlState) {
-    const mapped = SQLSTATE_TO_ERROR[sqlState];
-    if (mapped) {
-      send(res, mapped.status, { code: mapped.code, message: mapped.message });
-      return;
-    }
+  const mapped = domainErrorFor(error);
+  if (mapped) {
+    send(res, mapped.status, { code: mapped.code, message: mapped.message });
+    return;
   }
 
   console.error('[error]', req.method, req.path, error);

@@ -1,6 +1,7 @@
 import { orgScopes } from '@dis/contracts';
-import { Router, type Express } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
+import type { MountFn } from '../app.js';
 import {
   clubScopeWhere,
   requireContext,
@@ -224,7 +225,7 @@ probeRouter.post(
   }),
 );
 
-/** Mounted by `createApp(mountProbeRoutes)`. */
-export function mountProbeRoutes(app: Express): void {
-  app.use('/api/v1/__probe', probeRouter);
+/** Mounted by `createApp(mountProbeRoutes)`, through the same helper the real routers use. */
+export function mountProbeRoutes(mount: MountFn): void {
+  mount('/api/v1/__probe', probeRouter);
 }

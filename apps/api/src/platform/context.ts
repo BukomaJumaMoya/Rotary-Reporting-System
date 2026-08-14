@@ -5,6 +5,7 @@ import {
   type RequestScopes,
 } from '@dis/contracts';
 import type { Request, RequestHandler } from 'express';
+import { identifyActor } from './audit.js';
 import { AppError, ErrorCode, insufficientScope, notFound, unauthenticated } from './errors.js';
 import * as governance from '../modules/governance/service.js';
 import type { ResolvedContext } from '../modules/governance/service.js';
@@ -62,6 +63,8 @@ export const resolveRequestContext: RequestHandler = (req, res, next) => {
 
     req.contextDetail = detail;
     if (detail.context) req.ctx = detail.context;
+    // Now that the district is known, audit rows written by this request can carry it.
+    identifyActor({ userId: user.id, districtId: detail.districtId });
     next();
   })().catch(next);
 };

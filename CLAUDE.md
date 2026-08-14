@@ -55,6 +55,8 @@ Scoped tables are reachable **only** through `db(ctx)` (`platform/db.ts`), which
 
 **Membership events are immutable.** No `PUT`, no `DELETE`. Nothing writes to `club_rosters` directly.
 
+**Audit.** Changes to a governed entity are captured automatically by an extension on `prisma` and `db(ctx)` — never call it by hand. `unscopedPrisma` is deliberately unaudited, which is what keeps the seed out of the log. Mount every router through the `mount()` helper in `createApp`, or the unauthenticated-PII harness will not walk it.
+
 **Assessment.** No SQL in `assessment_criteria.rule` — rules name a resolver from the code registry and supply config. Resolvers are pure: input `(ctx, config)`, output `{ value, evidence }`, no writes, no side effects. Every score persists its evidence.
 
 **Where an invariant lives (ADR-012).** Declarative constraints first — `CHECK`, `UNIQUE`, FK, partial index. **Derived state is a view, never a stored column maintained by a trigger.** Triggers only as guards, each raising a stable `SQLSTATE` mapped to a domain code in `platform/errors.ts`, listed in the ADR's registry, and exercised by `apps/api/prisma/checks/invariants.sql`. Adding a guard without a check there is incomplete work.
@@ -174,15 +176,15 @@ apply to `sharp` when image processing lands.
 
 ## Current phase
 
-**M0 — Foundations.** Sessions 1–4 are done: monorepo and CI, schema translated and
+**M0 — Foundations.** Sessions 1–5 are done: monorepo and CI, schema translated and
 migrated (`docs/schema.sql` is at v1.6), session authentication with lockout, mail
-delivery, TOTP two-factor with encrypted secrets and recovery codes, and the request
-context and scoped data access layer. `GET /auth/me` returns a real, appointment-derived
-context.
+delivery, TOTP two-factor with encrypted secrets and recovery codes, the request context
+and scoped data access layer, the audit log, and the unauthenticated-PII harness.
 
-**Next: session 5 — audit log and the no-PII harness.** Then session 6 (seed, staging
-deploy). The seed must now populate `permissions` and `position_permissions` as well —
-context resolution reads them, so without them every account resolves to no authority.
+**Next: session 6 — seed and staging deployment.** The seed must populate `permissions`
+and `position_permissions` as well as the lookups — context resolution reads them, so
+without them every account resolves to no authority. It must write through
+`unscopedPrisma`, which is also what keeps thousands of seeded rows out of `audit_log`.
 
 See `docs/09-ClaudeCode-M0-Sessions.md` for the session prompts, `docs/10-Build-Log.md`
 for current state, and `docs/07-Roadmap.md` for milestones beyond M0.

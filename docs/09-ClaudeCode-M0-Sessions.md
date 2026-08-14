@@ -14,7 +14,7 @@ Six sessions that take you from an empty repository to a deployed staging enviro
 | 2 | **done** | Translation surfaced real defects in the v1.0 baseline; `schema.sql` is now **v1.6** and ADR-012 was written. See below. |
 | 3 | **done** | Auth as specified, **plus** mail delivery, TOTP MFA, encrypted secrets and recovery codes. |
 | 4 | **done** | As specified. Scoping is enforced by the client's TYPE, not by a helper — see below. |
-| 5 | **next** | The test database harness already exists (session 3 built it). |
+| 5 | **done** | As specified. Exposed a two-session-old bug: guard SQLSTATEs never reached the error mapper. |
 | 6 | pending | Seed must also populate `document_types` and `social_platforms`, and now `permissions` + `position_permissions`, which context resolution reads. |
 
 `docs/10-Build-Log.md` is the current-state record: environment, decisions, what is
@@ -378,8 +378,8 @@ Never put real member data in seeds or on your laptop. Generate it.
 - [x] `GET /auth/me` returns a correct, appointment-derived context
 - [x] A club secretary receives 404 for another club's records
 - [x] Writes to a locked year rejected with `YEAR_LOCKED`
-- [ ] Audit log capturing mutations with before/after diffs
-- [ ] No-PII harness running in CI and demonstrably failing on a bad route
+- [x] Audit log capturing mutations with before/after diffs
+- [x] No-PII harness running in CI and demonstrably failing on a bad route
 - [ ] `npm run db:seed` gives a realistic dataset in one command
 - [ ] Staging deploying automatically from main
 - [ ] Repository under the district organisation with two admins
@@ -391,11 +391,15 @@ password reset by email, invitations, and two-factor sign-in all work end to end
 request context now resolves from active appointments, with a data access layer that
 makes an unscoped query on a scoped table a compile error. 103 tests.
 
-**Still open on this list:** the audit log and PII harness (session 5), the seed and
-staging deployment (session 6), and moving the repository to a district-owned
-organisation — it is currently on a personal account, which ADR-011 and
-`docs/08-Incumbent-Assessment.md` both say is the specific failure this project exists to
-correct.
+Session 5 added the audit log and the unauthenticated-PII harness, and ported the 37
+ADR-012 conformance checks into CI. It also found that guard SQLSTATEs had never reached
+the error mapper — Prisma 7's driver adapter nests them two levels deeper than the code
+looked — so every guard violation had been surfacing as an opaque 500 since session 3.
+
+**Still open on this list:** the seed and staging deployment (session 6), and moving the
+repository to a district-owned organisation — it is currently on a personal account, which
+ADR-011 and `docs/08-Incumbent-Assessment.md` both say is the specific failure this project
+exists to correct.
 
 **Next:** M1 governance core — positions and appointments CRUD, committees with sub-committees, and the year rollover job with dry-run. See `docs/07-Roadmap.md`.
 
