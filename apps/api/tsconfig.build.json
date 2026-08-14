@@ -1,6 +1,8 @@
 {
   // Emitting build. tsconfig.json covers the same sources plus tests, for typecheck
-  // and lint; tests must not end up in dist.
+  // and lint; tests must not end up in dist. src/test holds fixtures and the probe
+  // routes the scoping tests mount — support code, and specifically routes that must
+  // never exist in a deployed process.
   "extends": "./tsconfig.json",
-  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts"]
+  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts", "src/test/**"]
 }

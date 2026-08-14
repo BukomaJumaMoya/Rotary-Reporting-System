@@ -39,9 +39,13 @@ Every design decision derives from these. If a change conflicts with one, the ch
 
 **Scoping.** Never read `districtId` or `rotaryYearId` from request input. Both come from `RequestContext`, resolved by middleware from the session. A handler containing `where: { districtId: req.body.districtId }` is a security bug.
 
-**Authorisation.** Enforced server-side, per record, on every endpoint. Client-side hiding of controls is presentation only. Permissions derive from active appointments — `(person, position, org_unit, rotary_year)` — never from a role column on a user.
+Scoped tables are reachable **only** through `db(ctx)` (`platform/db.ts`), which injects district, year and `deletedAt: null`. They are absent from the type of the plain `prisma` export, so `prisma.activity` does not compile. Scoped delegates offer no `findUnique`, `update`, `delete` or `upsert` — a unique `where` cannot carry the filter; use `findFirst({ where: { id } })`, `updateMany`, `deleteMany`, and treat null or a zero count as the 404. Creates do not take `districtId`/`rotaryYearId`; the layer stamps them. A new table with a `district_id` or `rotary_year_id` needs a row in `CONTEXT_BOUND_MODELS` (`platform/scope.ts`) or an explicit reason in `UNSCOPED_BY_DESIGN` — `scope-registry.test.ts` fails the build otherwise. `unscopedPrisma` is the escape hatch and ESLint confines it to `platform/`, `modules/governance/` and `src/test/`.
 
-**Out-of-scope records return `404`, not `403`.** `403` confirms existence and leaks the dataset shape.
+**Authorisation.** Enforced server-side, per record, on every endpoint. Client-side hiding of controls is presentation only. Permissions derive from active appointments — `(person, position, org_unit, rotary_year)` — never from a role column on a user. `requirePermission(code)` answers "may you do this at all"; `requireScope(ctx, target)` answers "may you do it to THIS record". An endpoint touching a specific club needs both.
+
+**Out-of-scope records return `404`, not `403`.** `403` confirms existence and leaks the dataset shape. `requireScope` throws `notFound()` for this reason; `403 INSUFFICIENT_SCOPE` is for a missing permission, which describes the caller's own authority and reveals nothing.
+
+**The Rotary Year is read-only unless it is the district's current, unlocked one.** Writes are refused with `YEAR_LOCKED` when `district_years.is_locked`, and also under a `?year=` override — that permission is `year:read:historical`, a read door, and must never become a backdating permission.
 
 **Personal data.** Default every `person_visibility` contact field — `show_email`, `show_phone`, `show_city` — to `false`. `show_photo` and `show_occupation` default to `true` and are visible to **authenticated district users only**; no visibility flag ever affects an unauthenticated caller. A person row without a `person_visibility` row is treated as fully closed, and a database trigger creates one on insert so the case cannot arise. Strip EXIF from every uploaded image (phone photos carry GPS). No public directory endpoint exists — do not create one, even a reduced one, without an explicit design review.
 
@@ -68,7 +72,7 @@ Every design decision derives from these. If a change conflicts with one, the ch
 ```
 apps/api/src/
   modules/<name>/          routes.ts · service.ts · repository.ts · schemas.ts
-  platform/                context · auth · audit · errors · storage · db
+  platform/                context · scope · auth · audit · errors · storage · db
   jobs/                    pg-boss workers
 apps/web/src/
   features/<name>/         mirrors API modules
@@ -77,6 +81,8 @@ packages/contracts/        Zod schemas shared by both
 ```
 
 Modules: `org · people · governance · membership · activity · finance · assessment · goals · documents · notifications · exports · audit`.
+
+`governance` owns permission resolution and is the one module that reads the database without a context — it is what produces one.
 
 **Dependency rule:** `assessment` may call `activity`, `membership`, `finance`, `org`. Those must never call `assessment`. Dependencies point one way. When a criterion needs a number no module exposes, add a service function to the owning module — do not reach across the boundary.
 
@@ -164,15 +170,15 @@ apply to `sharp` when image processing lands.
 
 ## Current phase
 
-**M0 — Foundations.** Sessions 1–3 are done: monorepo and CI, schema translated and
+**M0 — Foundations.** Sessions 1–4 are done: monorepo and CI, schema translated and
 migrated (`docs/schema.sql` is at v1.6), session authentication with lockout, mail
-delivery, and TOTP two-factor with encrypted secrets and recovery codes.
+delivery, TOTP two-factor with encrypted secrets and recovery codes, and the request
+context and scoped data access layer. `GET /auth/me` returns a real, appointment-derived
+context.
 
-**Next: session 4 — request context and scoped data access.** Every feature afterwards
-inherits it, so it is built before any feature. `GET /auth/me` currently returns a stub
-context and permissions do not exist yet.
-
-Then session 5 (audit log, no-PII harness) and session 6 (seed, staging deploy).
+**Next: session 5 — audit log and the no-PII harness.** Then session 6 (seed, staging
+deploy). The seed must now populate `permissions` and `position_permissions` as well —
+context resolution reads them, so without them every account resolves to no authority.
 
 See `docs/09-ClaudeCode-M0-Sessions.md` for the session prompts, `docs/10-Build-Log.md`
 for current state, and `docs/07-Roadmap.md` for milestones beyond M0.

@@ -43,6 +43,37 @@ export default tseslint.config(
     },
   },
 
+  // The scoped data access layer is only as good as its escape hatch is narrow.
+  // `unscopedPrisma` skips district, year and soft-delete filtering entirely, which is
+  // correct in exactly three places: the governance module (it resolves the context, so
+  // it cannot already hold one), the test fixtures, and the seed. Anywhere else it is a
+  // silent breach of axiom 1 that will not look like one in review.
+  {
+    files: ['apps/api/src/**/*.ts'],
+    ignores: [
+      'apps/api/src/platform/**',
+      'apps/api/src/modules/governance/**',
+      'apps/api/src/test/**',
+      'apps/api/src/**/*.test.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/platform/db.js', './db.js'],
+              importNames: ['unscopedPrisma'],
+              message:
+                'Use db(ctx) instead. unscopedPrisma skips district, year and soft-delete ' +
+                'scoping; it is for context resolution, fixtures and the seed only.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   {
     files: ['apps/web/src/**/*.{ts,tsx}'],
     extends: [reactHooks.configs.flat['recommended-latest'], reactRefresh.configs.vite],

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { orgScopes } from './context.js';
 
 /**
  * Password policy, defined once. The client validates with this schema and so does
@@ -123,11 +124,38 @@ export const inviteAcceptRequestSchema = z.object({
 export type InviteAcceptRequest = z.infer<typeof inviteAcceptRequestSchema>;
 
 /**
- * The shape of GET /auth/me.
+ * One active appointment, as the client needs to render it: "Secretary — Rotaract Club
+ * of Kampala". The appointment is the unit of authorisation (docs/02-Architecture.md
+ * §4.2), so showing a member what they hold is also showing them why they can do what
+ * they can do.
  *
- * `context` is a STUB in M0 session 3 and is filled by the request-context work in
- * session 4. It is modelled here now so the client can be written against the final
- * shape rather than a temporary one.
+ * `scopeId` is polymorphic — a club, cluster, region or committee — which is why
+ * `scopeName` is resolved server-side rather than left to the client to look up against
+ * four different endpoints.
+ */
+export const appointmentSummarySchema = z.object({
+  id: z.uuid(),
+  positionCode: z.string(),
+  positionName: z.string(),
+  scopeType: z.enum(orgScopes),
+  scopeId: z.uuid().nullable(),
+  scopeName: z.string().nullable(),
+  /** ISO dates, `YYYY-MM-DD`. */
+  startsOn: z.string(),
+  endsOn: z.string().nullable(),
+});
+export type AppointmentSummary = z.infer<typeof appointmentSummarySchema>;
+
+/**
+ * The shape of GET /auth/me — the client's source of truth for what to render.
+ *
+ * It must never be the security boundary. Every endpoint re-checks server-side; hiding
+ * a button is presentation, and a client that hides nothing must still be refused by
+ * the server (docs/05-API-Spec.md §2).
+ *
+ * Every field is null or empty for a member who holds no active appointment in the
+ * district's current year. They are authenticated; they simply have no context, and
+ * every scoped endpoint will refuse them.
  *
  * Note what is absent: no email, phone, photo or any other contact field. This is the
  * caller's own record, so returning them would not breach axiom 6 — but /auth/me is
@@ -150,7 +178,19 @@ export const meResponseSchema = z.object({
     mfaRecoveryCodesRemaining: z.number().int().nonnegative(),
     context: z.object({
       districtId: z.uuid().nullable(),
+      districtName: z.string().nullable(),
       rotaryYearId: z.uuid().nullable(),
+      /** e.g. `2027-28`. What the client puts in the year selector and in `?year=`. */
+      rotaryYearLabel: z.string().nullable(),
+      /** A locked year is read-only; the client should present it as such. */
+      isYearLocked: z.boolean(),
+      /**
+       * False when this context may not be written to at all — a locked year, or a
+       * historical year reached through `?year=`. The client uses it to put the whole
+       * page in read-only mode rather than letting a member fill in a form that the
+       * server will refuse.
+       */
+      isYearWritable: z.boolean(),
       permissions: z.array(z.string()),
       scopes: z.object({
         clubIds: z.array(z.uuid()),
@@ -158,6 +198,7 @@ export const meResponseSchema = z.object({
         isDistrictWide: z.boolean(),
       }),
     }),
+    appointments: z.array(appointmentSummarySchema),
   }),
 });
 export type MeResponse = z.infer<typeof meResponseSchema>;

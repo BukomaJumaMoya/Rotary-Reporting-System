@@ -13,19 +13,26 @@ Six sessions that take you from an empty repository to a deployed staging enviro
 | 1 | **done** | As specified. CI green. |
 | 2 | **done** | Translation surfaced real defects in the v1.0 baseline; `schema.sql` is now **v1.6** and ADR-012 was written. See below. |
 | 3 | **done** | Auth as specified, **plus** mail delivery, TOTP MFA, encrypted secrets and recovery codes. |
-| 4 | **next** | — |
-| 5 | pending | The test database harness already exists (session 3 built it). |
-| 6 | pending | Seed must also populate `document_types` and `social_platforms`. |
+| 4 | **done** | As specified. Scoping is enforced by the client's TYPE, not by a helper — see below. |
+| 5 | **next** | The test database harness already exists (session 3 built it). |
+| 6 | pending | Seed must also populate `document_types` and `social_platforms`, and now `permissions` + `position_permissions`, which context resolution reads. |
 
 `docs/10-Build-Log.md` is the current-state record: environment, decisions, what is
 stubbed, and the traps. Read it before starting a session.
 
-**Sessions 2 and 3 diverged from these prompts in ways worth knowing.** Session 2 found
+**Sessions 2, 3 and 4 diverged from these prompts in ways worth knowing.** Session 2 found
 that `club_rosters` had its superseded-event predicate inverted — every correction was
 discarded while the row it corrected kept counting — and that scores could exceed the
 criterion they were awarded against. Session 3 was extended beyond its six endpoints
 because the password-reset flow stored tokens nobody could receive, and because MFA
 without encryption or recovery codes is a liability rather than a feature.
+
+Session 4 answered "make it a type error to query a scoped table without a context" by
+**removing scoped models from the type of the context-free client** rather than by adding
+a checked helper, and went two steps further than the prompt asked: scoped delegates also
+drop `findUnique` and `update`, whose unique `where` cannot carry an injected filter, and
+a `?year=` override marks the context unwritable, because `year:read:historical` is a read
+permission and must not double as a backdating permission.
 
 ---
 
@@ -368,9 +375,9 @@ Never put real member data in seeds or on your laptop. Generate it.
 - [ ] CI green: typecheck, lint, tests, audit
 - [ ] Schema migrated; generated SQL diffed against `docs/schema.sql`
 - [ ] Login works on staging
-- [ ] `GET /auth/me` returns a correct, appointment-derived context
-- [ ] A club secretary receives 404 for another club's records
-- [ ] Writes to a locked year rejected with `YEAR_LOCKED`
+- [x] `GET /auth/me` returns a correct, appointment-derived context
+- [x] A club secretary receives 404 for another club's records
+- [x] Writes to a locked year rejected with `YEAR_LOCKED`
 - [ ] Audit log capturing mutations with before/after diffs
 - [ ] No-PII harness running in CI and demonstrably failing on a bad route
 - [ ] `npm run db:seed` gives a realistic dataset in one command
@@ -380,12 +387,13 @@ Never put real member data in seeds or on your laptop. Generate it.
 **Done so far:** CI green including a PostgreSQL service; schema migrated and verified by
 building it twice — from migrations and from `schema.sql` — and comparing catalogs;
 `prisma migrate diff` reports no drift; 37 database invariants pass; login, lockout,
-password reset by email, invitations, and two-factor sign-in all work end to end.
+password reset by email, invitations, and two-factor sign-in all work end to end; and the
+request context now resolves from active appointments, with a data access layer that
+makes an unscoped query on a scoped table a compile error. 103 tests.
 
-**Still open on this list:** the appointment-derived context (session 4), the club
-secretary 404 and `YEAR_LOCKED` tests (session 4), the audit log and PII harness
-(session 5), the seed and staging deployment (session 6), and moving the repository to a
-district-owned organisation — it is currently on a personal account, which ADR-011 and
+**Still open on this list:** the audit log and PII harness (session 5), the seed and
+staging deployment (session 6), and moving the repository to a district-owned
+organisation — it is currently on a personal account, which ADR-011 and
 `docs/08-Incumbent-Assessment.md` both say is the specific failure this project exists to
 correct.
 

@@ -137,7 +137,10 @@ authRouter.get(
       throw unauthenticated();
     }
 
-    res.status(200).json(await service.toMeResponse(user));
+    // Resolved by the context middleware, and absent for a member who holds no active
+    // appointment — which is not an error. They sign in, they see their own account, and
+    // every scoped endpoint refuses them.
+    res.status(200).json(await service.toMeResponse(user, req.contextDetail));
   }),
 );
 

@@ -21,6 +21,10 @@ export const ErrorCode = {
   MFA_ALREADY_ENABLED: 'MFA_ALREADY_ENABLED',
   MFA_NOT_ENROLLED: 'MFA_NOT_ENROLLED',
   NOT_FOUND: 'NOT_FOUND',
+  /** The caller holds no permission, no appointment, or asked for a year they may not read. */
+  INSUFFICIENT_SCOPE: 'INSUFFICIENT_SCOPE',
+  /** The context year is read-only: the district_year is locked, or `?year=` was used. */
+  YEAR_LOCKED: 'YEAR_LOCKED',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   // Database guards (ADR-012). Mapped from SQLSTATE below.
   MEMBERSHIP_IMMUTABLE: 'MEMBERSHIP_IMMUTABLE',
@@ -60,6 +64,27 @@ export const invalidToken = (): AppError =>
   // Also deliberately undifferentiated: unknown, already used and expired tokens are
   // one response, so a probe cannot learn which tokens were ever real.
   new AppError(400, ErrorCode.TOKEN_INVALID, 'This link is invalid or has expired');
+
+/**
+ * The answer for a record that does not exist AND for one the caller may not see.
+ *
+ * 403 would confirm the record exists, which hands the shape of the dataset to anyone
+ * willing to walk a list of identifiers. One response for both cases means a probe
+ * learns nothing (docs/05-API-Spec.md §1).
+ */
+export const notFound = (): AppError => new AppError(404, ErrorCode.NOT_FOUND, 'Not found');
+
+/**
+ * The caller is authenticated and in scope, but does not hold the permission the action
+ * requires. Unlike an out-of-scope RECORD, this leaks nothing: it describes the caller's
+ * own authority, which they already know.
+ */
+export const insufficientScope = (message: string, details?: Record<string, unknown>): AppError =>
+  new AppError(403, ErrorCode.INSUFFICIENT_SCOPE, message, details);
+
+/** A write aimed at a year that is closed to writing. */
+export const yearLocked = (message: string): AppError =>
+  new AppError(422, ErrorCode.YEAR_LOCKED, message);
 
 /**
  * SQLSTATEs raised by the guard triggers (ADR-012, docs/02-Architecture.md). Mapping

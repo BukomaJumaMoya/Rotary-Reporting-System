@@ -7,6 +7,8 @@ import {
   invalidToken,
   unauthenticated,
 } from '../../platform/errors.js';
+import { serialiseScopes } from '../../platform/context.js';
+import type { ResolvedContext } from '../governance/service.js';
 import { notify } from '../notifications/service.js';
 import { NotificationTemplate } from '../notifications/templates.js';
 import { decryptSecret, encryptSecret, mfaContext } from '../../platform/crypto.js';
@@ -293,11 +295,15 @@ export async function acceptInvite(
 }
 
 /**
- * The stub context. Session 4 replaces the nulls and empty arrays with values derived
- * from the caller's active appointments — this shape is already the final one so the
- * client can be built against it now.
+ * The account and its context, as `/auth/me` returns it.
+ *
+ * `detail` is resolved by the context middleware for an authenticated request. Login
+ * passes none — the session is created in that same response, so no middleware has run
+ * against it yet — and the client gets the context on its first call to `/auth/me`.
+ * Resolving it twice inside one login would be two extra round trips to say what the
+ * next request says anyway.
  */
-export async function toMeResponse(user: AuthUser): Promise<MeResponse> {
+export async function toMeResponse(user: AuthUser, detail?: ResolvedContext): Promise<MeResponse> {
   return {
     data: {
       userId: user.id,
@@ -310,11 +316,18 @@ export async function toMeResponse(user: AuthUser): Promise<MeResponse> {
         ? await repository.countUnusedRecoveryCodes(user.id)
         : 0,
       context: {
-        districtId: null,
-        rotaryYearId: null,
-        permissions: [],
-        scopes: { clubIds: [], clusterIds: [], isDistrictWide: false },
+        districtId: detail?.districtId ?? null,
+        districtName: detail?.districtName ?? null,
+        rotaryYearId: detail?.rotaryYearId ?? null,
+        rotaryYearLabel: detail?.rotaryYearLabel ?? null,
+        isYearLocked: detail?.isYearLocked ?? false,
+        isYearWritable: detail?.isYearWritable ?? false,
+        permissions: detail?.permissions ?? [],
+        scopes: detail?.context
+          ? serialiseScopes(detail.context.scopes)
+          : { clubIds: [], clusterIds: [], isDistrictWide: false },
       },
+      appointments: detail?.appointments ?? [],
     },
   };
 }

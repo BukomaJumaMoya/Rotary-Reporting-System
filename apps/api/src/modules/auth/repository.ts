@@ -1,4 +1,3 @@
-import type { Prisma } from '../../generated/prisma/client.js';
 import { prisma } from '../../platform/db.js';
 import type { TokenPurposeValue } from './tokens.js';
 
@@ -188,7 +187,10 @@ export async function consumeTokenAndSetPassword(input: {
   consent?: { policyVersion: string; sourceIp: string | null; personId: string };
 }): Promise<boolean> {
   try {
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // `tx` is inferred rather than annotated: the client carries the soft-delete
+    // extension, so its transaction client is a narrower type than the bare
+    // Prisma.TransactionClient — and annotating it would discard the extension.
+    await prisma.$transaction(async (tx) => {
       const consumed = await tx.userToken.updateMany({
         where: { id: input.tokenId, consumedAt: null },
         data: { consumedAt: new Date() },
