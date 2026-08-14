@@ -24,12 +24,12 @@ A complete design baseline sufficient to begin implementation immediately, writt
 | 07 | `07-Roadmap.md` | Build sequence, milestones, definition of done, pilot plan |
 | 08 | `08-Incumbent-Assessment.md` | What the predecessor system does, and why several rules exist |
 | 09 | `09-ClaudeCode-M0-Sessions.md` | Session-by-session prompts for M0, with progress |
-| 10 | `15-Build-Log.md` | **What has actually been built** — state, decisions, traps, what is stubbed |
+| 10 | `10-Build-Log.md` | **What has actually been built** — state, decisions, traps, what is stubbed |
 | — | `CLAUDE.md` | Project context file for Claude Code — drop at repository root |
 
 ## Reading order
 
-**If you are picking up the build:** `CLAUDE.md` → `15-Build-Log.md` → the session prompt in `09-ClaudeCode-M0-Sessions.md`. The design documents describe the intended system; `15-Build-Log.md` describes the one that exists.
+**If you are picking up the build:** `CLAUDE.md` → `10-Build-Log.md` → the session prompt in `09-ClaudeCode-M0-Sessions.md`. The design documents describe the intended system; `10-Build-Log.md` describes the one that exists.
 
 **If you are starting from scratch:** `CLAUDE.md` → `02-Architecture.md` → `schema.sql` → `07-Roadmap.md`.
 

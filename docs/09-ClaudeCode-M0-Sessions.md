@@ -17,7 +17,7 @@ Six sessions that take you from an empty repository to a deployed staging enviro
 | 5 | **done** | As specified. Exposed a two-session-old bug: guard SQLSTATEs never reached the error mapper. |
 | 6 | **done** | Seed is deterministic and synthetic, without faker — see the note below. Staging is configured but not yet deployed: the district org does not exist. |
 
-`docs/15-Build-Log.md` is the current-state record: environment, decisions, what is
+`docs/10-Build-Log.md` is the current-state record: environment, decisions, what is
 stubbed, and the traps. Read it before starting a session.
 
 **Sessions 2, 3 and 4 diverged from these prompts in ways worth knowing.** Session 2 found
@@ -218,7 +218,7 @@ Plan first.
 **The most important session in M0.** Every feature you build afterwards inherits this. Get it wrong and you will be retrofitting scoping into forty endpoints.
 
 ```
-Read CLAUDE.md, docs/15-Build-Log.md, and docs/02-Architecture.md §4.1, §4.2
+Read CLAUDE.md, docs/10-Build-Log.md, and docs/02-Architecture.md §4.1, §4.2
 and ADR-012 before starting.
 
 Build the request context and scoped data access layer.

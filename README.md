@@ -11,7 +11,7 @@ why that is not a detail.
 |                                               |                                                                        |
 | --------------------------------------------- | ---------------------------------------------------------------------- |
 | **Design**                                    | [`docs/`](docs/) — start with [`docs/00-README.md`](docs/00-README.md) |
-| **What is actually built**                    | [`docs/15-Build-Log.md`](docs/15-Build-Log.md)                         |
+| **What is actually built**                    | [`docs/10-Build-Log.md`](docs/10-Build-Log.md)                         |
 | **Working rules for contributors and agents** | [`CLAUDE.md`](CLAUDE.md)                                               |
 
 ---
@@ -194,7 +194,7 @@ docs/              The design baseline, and the build log
 
 Read [`CLAUDE.md`](CLAUDE.md) first: it holds the six axioms, the non-negotiable rules and
 the conventions, and it is short. Then read
-[`docs/15-Build-Log.md`](docs/15-Build-Log.md), which describes the system that exists
+[`docs/10-Build-Log.md`](docs/10-Build-Log.md), which describes the system that exists
 rather than the one that was designed.
 
 The two things most likely to be got wrong by someone moving fast:

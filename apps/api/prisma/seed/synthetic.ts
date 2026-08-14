@@ -9,7 +9,7 @@
  *    the club names anyway, which faker could never have produced.
  *  * it is one more dependency in a repository that is district property and has one
  *    part-time maintainer, and this npm has a documented habit of pruning platform
- *    binaries on a workspace-scoped install (see docs/15-Build-Log.md §6).
+ *    binaries on a workspace-scoped install (see docs/10-Build-Log.md §6).
  *
  * Deterministic, from a fixed seed: the same command produces the same database, so a
  * bug reproduced on one laptop reproduces on another and a screenshot keeps matching the

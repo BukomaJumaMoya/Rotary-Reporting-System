@@ -12,7 +12,7 @@ Launch: **1 July 2027**, the district's charter date. Built by one part-time dev
 
 Full design documentation is in `docs/`. Read `docs/00-README.md` first. When a decision here conflicts with `docs/`, `docs/` wins and this file should be updated.
 
-**`docs/15-Build-Log.md` records what has actually been built, the decisions taken during implementation, and what is deliberately unfinished. Read it before writing code** — the other documents describe the design, not the current state.
+**`docs/10-Build-Log.md` records what has actually been built, the decisions taken during implementation, and what is deliberately unfinished. Read it before writing code** — the other documents describe the design, not the current state.
 
 ## Stack
 
@@ -161,7 +161,7 @@ npm run worker           # pg-boss worker process             (not built yet)
 **PostgreSQL runs locally as the `dis-postgres` service on port 5433** (data directory
 `C:\Users\HP\.dis-pgdata`), separate from the install on 5432. Databases:
 `rotaract_dis_dev`, `rotaract_dis_dev_shadow`, `dis_test`, `dis_schema_check`.
-See `docs/15-Build-Log.md` §2.
+See `docs/10-Build-Log.md` §2.
 
 **Tests need a database.** `TEST_DATABASE_URL` must name a database containing "test"; the
 suite truncates every table between cases and refuses to run otherwise.
@@ -191,5 +191,5 @@ then `fly launch` and add `FLY_API_TOKEN`.
 **Next: M1 — governance core.** Positions and appointments CRUD, committees with
 sub-committees, and the year rollover job with dry-run. See `docs/07-Roadmap.md`.
 
-See `docs/09-ClaudeCode-M0-Sessions.md` for the session prompts, `docs/15-Build-Log.md`
+See `docs/09-ClaudeCode-M0-Sessions.md` for the session prompts, `docs/10-Build-Log.md`
 for current state, and `docs/07-Roadmap.md` for milestones beyond M0.

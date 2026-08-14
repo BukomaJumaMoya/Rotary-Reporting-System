@@ -38,7 +38,7 @@ M2 is the real milestone. If December arrives and a club cannot submit a fellows
 > correction. Authentication done, with mail delivery, TOTP two-factor, encrypted secrets
 > and recovery codes. **Request context and scoping — the part this milestone exists for —
 > is next.** Not yet started: audit middleware, the no-PII harness, the seed, and staging
-> deployment. See `docs/15-Build-Log.md`.
+> deployment. See `docs/10-Build-Log.md`.
 
 
 Monorepo with `apps/api`, `apps/web`, `packages/contracts`. TypeScript strict everywhere. Prisma schema translated from `schema.sql`, first migration applied. Session auth, Argon2id, login and password reset. Request context middleware with district and year scoping wired in **before any feature is written** — retrofitting it is the mistake this whole architecture exists to avoid. Audit middleware. CI running lint, typecheck, tests, and `npm audit`. Deployed to staging on day one, not month six.

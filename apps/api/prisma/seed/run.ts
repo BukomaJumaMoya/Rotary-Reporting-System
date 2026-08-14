@@ -3,7 +3,7 @@ import { issueInvite } from '../../src/modules/auth/service.js';
 import { config, isProduction } from '../../src/platform/config.js';
 // The seed is one of the three sanctioned callers of the escape hatch. It writes across
 // every district and year on purpose, and — just as deliberately — is NOT audited: three
-// hundred seeded members are nobody's action (docs/15-Build-Log.md, session 5).
+// hundred seeded members are nobody's action (docs/10-Build-Log.md, session 5).
 import { unscopedPrisma } from '../../src/platform/db.js';
 import {
   ACTIVITY_TYPES,
