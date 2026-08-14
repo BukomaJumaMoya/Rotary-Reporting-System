@@ -6,6 +6,7 @@
 export const NotificationTemplate = {
   AUTH_PASSWORD_RESET: 'AUTH_PASSWORD_RESET',
   AUTH_INVITE: 'AUTH_INVITE',
+  AUTH_MFA_RESET: 'AUTH_MFA_RESET',
 } as const;
 
 export type NotificationTemplateCode =

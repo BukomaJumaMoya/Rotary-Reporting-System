@@ -19,6 +19,16 @@ export const PERMISSIONS: { code: string; description: string }[] = [
   { code: 'person:read:club', description: 'View members of clubs in your scope' },
   { code: 'person:create:club', description: 'Register a new member' },
   { code: 'person:update:club', description: 'Edit a member record in your scope' },
+  {
+    code: 'person:invite:district',
+    description: 'Invite anyone in the district to create an account',
+  },
+  {
+    code: 'person:invite:club',
+    // Safe to give a club secretary: it reaches their own roster and nobody else's.
+    description: "Invite members of your own club's roster",
+  },
+  { code: 'user:manage:district', description: "Reset a member's second factor on their behalf" },
   { code: 'position:manage:district', description: 'Create and edit district positions' },
   { code: 'appointment:read:district', description: 'View appointments across the district' },
   { code: 'appointment:manage:district', description: 'Appoint and revoke officers' },
@@ -122,6 +132,8 @@ export const POSITIONS: PositionSeed[] = [
       'appointment:read:district',
       'appointment:manage:district',
       'committee:manage:district',
+      'person:invite:district',
+      'user:manage:district',
       'membership:read:club',
       'activity:read:club',
       'activity:verify:district',
@@ -250,6 +262,7 @@ export const POSITIONS: PositionSeed[] = [
       'person:read:club',
       'person:create:club',
       'person:update:club',
+      'person:invite:club',
       'membership:read:club',
       'membership:write:club',
       'activity:read:club',

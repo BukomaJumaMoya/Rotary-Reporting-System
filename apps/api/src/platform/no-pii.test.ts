@@ -169,6 +169,50 @@ describe('every route, unauthenticated', () => {
     },
   );
 
+  /**
+   * The audit endpoint, specifically.
+   *
+   * It is the obvious hole and an easy one to miss: `audit_log` holds before/after diffs
+   * of governed entities, and `persons` is one of them — so an audit read that returned
+   * raw JSON would serve exactly the contact details the rest of the system protects. The
+   * walk above covers it unauthenticated; this covers the values it holds.
+   */
+  it('never serves a person contact value out of an audit diff', async () => {
+    const person = await unscopedPrisma.person.create({
+      data: {
+        firstName: 'Ann',
+        lastName: 'Nakato',
+        email: 'audit.leak.probe@example.org',
+        phone: '+256700111222',
+      },
+      select: { id: true },
+    });
+
+    await unscopedPrisma.auditLogEntry.create({
+      data: {
+        entityType: 'persons',
+        entityId: person.id,
+        action: 'UPDATE',
+        // Exactly what the audit extension would have written.
+        before: { email: 'audit.leak.probe@example.org', phone: '+256700111222' },
+        after: { email: 'audit.leak.new@example.org', phone: '+256700333444' },
+      },
+    });
+
+    const response = await request(app).get('/api/v1/audit');
+    const serialised = JSON.stringify(response.body);
+
+    expect(response.status).toBe(401);
+    for (const value of [
+      'audit.leak.probe@example.org',
+      'audit.leak.new@example.org',
+      '+256700111222',
+      '+256700333444',
+    ]) {
+      expect(serialised).not.toContain(value);
+    }
+  });
+
   it('answers 401 or a bodiless status on everything but the allowlist', () => {
     // Stated separately from the field check so the two failures read differently: this
     // one is "a route became reachable", not "a route leaked a field".

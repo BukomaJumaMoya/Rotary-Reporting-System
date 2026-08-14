@@ -106,16 +106,21 @@ authRouter.post(
     req.session.userId = user.id;
     await promisify((cb) => req.session.save(cb));
 
-    // The request arrived with no session, so the actor store was opened anonymous.
-    // Naming it here is what puts a user id on the LOGIN row.
-    identifyActor({ userId: user.id });
+    // Resolved BEFORE the audit row, and before the response.
+    //
+    // Before the response, because the context middleware ran while this session did not
+    // yet exist — without this the login body reports no district and no permissions, the
+    // same shape as a member who holds no appointment at all.
+    //
+    // Before the audit row, because the actor store was opened anonymous and a LOGIN
+    // written without a district is a LOGIN no district administrator can ever see. "Who
+    // was in the system, and when" is the first question asked after an incident.
+    const detail = await service.contextFor(user);
+    identifyActor({ userId: user.id, districtId: detail.districtId });
+
     await recordAction(AuditAction.LOGIN, { entityType: 'users', entityId: user.id });
 
-    // Resolved here rather than left to the client's first /auth/me: the context
-    // middleware ran before this session existed, so without this the login response
-    // reports no district and no permissions — the same shape as a member who holds no
-    // appointment at all.
-    res.status(200).json(await service.toMeResponse(user, await service.contextFor(user)));
+    res.status(200).json(await service.toMeResponse(user, detail));
   }),
 );
 

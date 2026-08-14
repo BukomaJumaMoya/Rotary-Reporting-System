@@ -1,5 +1,8 @@
 import {
   addCommitteeMemberRequestSchema,
+  auditListQuerySchema,
+  createInvitationsRequestSchema,
+  invitationListQuerySchema,
   appointmentListQuerySchema,
   committeeListQuerySchema,
   createAppointmentRequestSchema,
@@ -16,6 +19,7 @@ import { Router } from 'express';
 import { requireContext, requirePermission } from '../../platform/context.js';
 import { insufficientScope } from '../../platform/errors.js';
 import { asyncHandler, parseQuery, pathParam, withBody } from '../../platform/validate.js';
+import * as administration from './administration.service.js';
 import * as appointments from './appointments.service.js';
 import * as committees from './committees.service.js';
 import * as positions from './positions.service.js';
@@ -260,5 +264,77 @@ governanceRouter.delete(
     const ctx = requireContext(req);
     await committees.removeMember(ctx, pathParam(req, 'id'), pathParam(req, 'appointmentId'));
     res.status(204).end();
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Onboarding and administration
+//
+// Three items M0 deferred, each because it is a permission question.
+// ---------------------------------------------------------------------------
+
+governanceRouter.get(
+  '/invitations',
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    if (
+      !ctx.permissions.has('person:invite:district') &&
+      !ctx.permissions.has('person:invite:club')
+    ) {
+      throw insufficientScope('You may not issue invitations', {
+        required: 'person:invite:club',
+      });
+    }
+
+    const query = parseQuery(invitationListQuerySchema, req);
+    res.status(200).json(await administration.listInvitations(ctx, query));
+  }),
+);
+
+/**
+ * One person or many, capped at fifty and processed one at a time.
+ *
+ * 200 rather than 201 even when every one succeeds: the useful answer to "invite these
+ * forty" is a per-person report, and a batch that failed as a whole because one member
+ * already had an account is a batch nobody can act on.
+ */
+governanceRouter.post(
+  '/invitations',
+  ...withBody(createInvitationsRequestSchema, async ({ body, req, res }) => {
+    const ctx = requireContext(req);
+    res.status(200).json({ data: await administration.createInvitations(ctx, body.personIds) });
+  }),
+);
+
+governanceRouter.post(
+  '/invitations/:id/resend',
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    res
+      .status(200)
+      .json({ data: await administration.resendInvitation(ctx, pathParam(req, 'id')) });
+  }),
+);
+
+/**
+ * Clears a member's second factor on their behalf — for somebody who has lost both their
+ * authenticator and their recovery codes. Audited, and the account holder is told.
+ */
+governanceRouter.post(
+  '/users/:id/mfa/reset',
+  requirePermission('user:manage:district'),
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    res.status(200).json({ data: await administration.resetMfa(ctx, pathParam(req, 'id')) });
+  }),
+);
+
+governanceRouter.get(
+  '/audit',
+  requirePermission('audit:read:district'),
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    const query = parseQuery(auditListQuerySchema, req);
+    res.status(200).json(await administration.listAudit(ctx, query));
   }),
 );
