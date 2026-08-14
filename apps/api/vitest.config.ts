@@ -7,7 +7,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    // `prisma` as well as `src`: the seed lives outside src (docs put it at
+    // prisma/seed.ts) and is exercised end to end by prisma/seed.test.ts.
+    include: ['src/**/*.test.ts', 'prisma/**/*.test.ts'],
     restoreMocks: true,
     globalSetup: ['src/test/global-setup.ts'],
     // Tests share one database and truncate between cases, so they must not run in

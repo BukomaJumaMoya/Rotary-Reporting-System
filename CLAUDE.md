@@ -12,7 +12,7 @@ Launch: **1 July 2027**, the district's charter date. Built by one part-time dev
 
 Full design documentation is in `docs/`. Read `docs/00-README.md` first. When a decision here conflicts with `docs/`, `docs/` wins and this file should be updated.
 
-**`docs/10-Build-Log.md` records what has actually been built, the decisions taken during implementation, and what is deliberately unfinished. Read it before writing code** — the other documents describe the design, not the current state.
+**`docs/15-Build-Log.md` records what has actually been built, the decisions taken during implementation, and what is deliberately unfinished. Read it before writing code** — the other documents describe the design, not the current state.
 
 ## Stack
 
@@ -161,7 +161,7 @@ npm run worker           # pg-boss worker process             (not built yet)
 **PostgreSQL runs locally as the `dis-postgres` service on port 5433** (data directory
 `C:\Users\HP\.dis-pgdata`), separate from the install on 5432. Databases:
 `rotaract_dis_dev`, `rotaract_dis_dev_shadow`, `dis_test`, `dis_schema_check`.
-See `docs/10-Build-Log.md` §2.
+See `docs/15-Build-Log.md` §2.
 
 **Tests need a database.** `TEST_DATABASE_URL` must name a database containing "test"; the
 suite truncates every table between cases and refuses to run otherwise.
@@ -176,15 +176,20 @@ apply to `sharp` when image processing lands.
 
 ## Current phase
 
-**M0 — Foundations.** Sessions 1–5 are done: monorepo and CI, schema translated and
-migrated (`docs/schema.sql` is at v1.6), session authentication with lockout, mail
-delivery, TOTP two-factor with encrypted secrets and recovery codes, the request context
-and scoped data access layer, the audit log, and the unauthenticated-PII harness.
+**M0 — Foundations is complete.** Monorepo and CI, schema translated and migrated
+(`docs/schema.sql` is at v1.6), session authentication with lockout, mail delivery, TOTP
+two-factor with encrypted secrets and recovery codes, the request context and scoped data
+access layer, the audit log, the unauthenticated-PII harness, a one-command synthetic seed,
+and a staging deployment that is configured but not yet launched.
 
-**Next: session 6 — seed and staging deployment.** The seed must populate `permissions`
-and `position_permissions` as well as the lookups — context resolution reads them, so
-without them every account resolves to no authority. It must write through
-`unscopedPrisma`, which is also what keeps thousands of seeded rows out of `audit_log`.
+**One item remains, and it is organisational rather than technical:** the repository and
+the hosting accounts are on a personal account. ADR-011 and `docs/08-Incumbent-Assessment.md`
+both name that as the specific failure this project exists to correct. Create the
+district-owned GitHub and Fly organisations with two administrators, move the repository,
+then `fly launch` and add `FLY_API_TOKEN`.
 
-See `docs/09-ClaudeCode-M0-Sessions.md` for the session prompts, `docs/10-Build-Log.md`
+**Next: M1 — governance core.** Positions and appointments CRUD, committees with
+sub-committees, and the year rollover job with dry-run. See `docs/07-Roadmap.md`.
+
+See `docs/09-ClaudeCode-M0-Sessions.md` for the session prompts, `docs/15-Build-Log.md`
 for current state, and `docs/07-Roadmap.md` for milestones beyond M0.

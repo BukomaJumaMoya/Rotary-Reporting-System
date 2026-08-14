@@ -24,7 +24,7 @@ export default tseslint.config(
   // the extra seconds in an Express codebase; misused-promises catches the async
   // handler bugs that otherwise surface as a silently hanging request.
   {
-    files: ['apps/api/src/**/*.ts', 'packages/contracts/src/**/*.ts'],
+    files: ['apps/api/src/**/*.ts', 'apps/api/prisma/**/*.ts', 'packages/contracts/src/**/*.ts'],
     extends: [tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       globals: globals.node,

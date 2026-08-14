@@ -1,0 +1,97 @@
+name: Deploy staging
+
+# Gated on CI, not parallel to it. `workflow_run` fires only after the CI workflow has
+# finished, and the guard below refuses anything but a success on main — so a red
+# typecheck, a failing no-PII harness or a broken invariant stops the deployment rather
+# than racing it.
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+  # Re-deploying the current main without a new commit, for a configuration change.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  # Never cancel a deployment in flight: the release command runs migrations, and a
+  # cancelled migration is a schema nobody can describe.
+  cancel-in-progress: false
+
+jobs:
+  api:
+    name: API
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    environment:
+      name: staging
+      url: https://rotaract-dis-staging.fly.dev
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # workflow_run checks out the default branch by default, which is not
+          # necessarily the commit CI just passed on.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # Applies pending migrations as a release command, then rolls the machines.
+      - name: Deploy
+        run: flyctl deploy --remote-only --config fly.toml
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Confirm the health endpoint answers
+        run: |
+          for attempt in $(seq 1 10); do
+            if curl --fail --silent --show-error \
+                 https://rotaract-dis-staging.fly.dev/api/v1/admin/health; then
+              echo "\nstaging is up"
+              exit 0
+            fi
+            echo "attempt $attempt: not ready, retrying in 6s"
+            sleep 6
+          done
+          echo "staging did not answer /api/v1/admin/health"
+          exit 1
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build --workspace @dis/web
+        env:
+          VITE_API_BASE_URL: https://rotaract-dis-staging.fly.dev
+
+      # The web client is a static bundle — no server, no secrets in it. Uploaded as an
+      # artifact rather than pushed anywhere: the static host is not chosen yet, and
+      # choosing one in a workflow file is how it gets chosen by accident. Point the
+      # final step at Cloudflare Pages or Fly static once the district's account exists
+      # (ADR-011).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-staging
+          path: apps/web/dist
+          retention-days: 7

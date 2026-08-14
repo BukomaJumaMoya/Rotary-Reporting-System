@@ -15,9 +15,9 @@ Six sessions that take you from an empty repository to a deployed staging enviro
 | 3 | **done** | Auth as specified, **plus** mail delivery, TOTP MFA, encrypted secrets and recovery codes. |
 | 4 | **done** | As specified. Scoping is enforced by the client's TYPE, not by a helper — see below. |
 | 5 | **done** | As specified. Exposed a two-session-old bug: guard SQLSTATEs never reached the error mapper. |
-| 6 | pending | Seed must also populate `document_types` and `social_platforms`, and now `permissions` + `position_permissions`, which context resolution reads. |
+| 6 | **done** | Seed is deterministic and synthetic, without faker — see the note below. Staging is configured but not yet deployed: the district org does not exist. |
 
-`docs/10-Build-Log.md` is the current-state record: environment, decisions, what is
+`docs/15-Build-Log.md` is the current-state record: environment, decisions, what is
 stubbed, and the traps. Read it before starting a session.
 
 **Sessions 2, 3 and 4 diverged from these prompts in ways worth knowing.** Session 2 found
@@ -33,6 +33,14 @@ a checked helper, and went two steps further than the prompt asked: scoped deleg
 drop `findUnique` and `update`, whose unique `where` cannot carry an injected filter, and
 a `?year=` override marks the context unwritable, because `year:read:historical` is a read
 permission and must not double as a backdating permission.
+
+Session 6 did not use faker, which the prompt names. Faker generates Western names, and a
+district demo populated with them is useless for the conversation the demo exists to have;
+the Ugandan name lists it was replaced with were needed for the club names regardless. The
+requirement was synthetic data and never real member data, and a deterministic generator
+meets it while reproducing exactly. It also found that dating appointments to RY2027-28 —
+the launch year, as the prompt specifies — produces a district nobody can sign in to until
+July 2027, because an appointment counts only once its term has started.
 
 ---
 
@@ -210,7 +218,7 @@ Plan first.
 **The most important session in M0.** Every feature you build afterwards inherits this. Get it wrong and you will be retrofitting scoping into forty endpoints.
 
 ```
-Read CLAUDE.md, docs/10-Build-Log.md, and docs/02-Architecture.md §4.1, §4.2
+Read CLAUDE.md, docs/15-Build-Log.md, and docs/02-Architecture.md §4.1, §4.2
 and ADR-012 before starting.
 
 Build the request context and scoped data access layer.
@@ -372,15 +380,15 @@ Never put real member data in seeds or on your laptop. Generate it.
 
 ## M0 exit checklist
 
-- [ ] CI green: typecheck, lint, tests, audit
-- [ ] Schema migrated; generated SQL diffed against `docs/schema.sql`
+- [x] CI green: typecheck, lint, tests, audit
+- [x] Schema migrated; generated SQL diffed against `docs/schema.sql`
 - [ ] Login works on staging
 - [x] `GET /auth/me` returns a correct, appointment-derived context
 - [x] A club secretary receives 404 for another club's records
 - [x] Writes to a locked year rejected with `YEAR_LOCKED`
 - [x] Audit log capturing mutations with before/after diffs
 - [x] No-PII harness running in CI and demonstrably failing on a bad route
-- [ ] `npm run db:seed` gives a realistic dataset in one command
+- [x] `npm run db:seed` gives a realistic dataset in one command
 - [ ] Staging deploying automatically from main
 - [ ] Repository under the district organisation with two admins
 
@@ -396,10 +404,17 @@ ADR-012 conformance checks into CI. It also found that guard SQLSTATEs had never
 the error mapper — Prisma 7's driver adapter nests them two levels deeper than the code
 looked — so every guard violation had been surfacing as an opaque 500 since session 3.
 
-**Still open on this list:** the seed and staging deployment (session 6), and moving the
-repository to a district-owned organisation — it is currently on a personal account, which
-ADR-011 and `docs/08-Incumbent-Assessment.md` both say is the specific failure this project
-exists to correct.
+**Still open on this list, and all three are the same item.** Staging is configured —
+Dockerfile, `fly.toml`, and a deploy workflow gated on green CI — but nothing is deployed,
+because there is no district-owned Fly organisation to deploy it to, and no district-owned
+GitHub organisation holding the repository. ADR-011 and `docs/08-Incumbent-Assessment.md`
+both name this as the specific failure the project exists to correct, so the remaining work
+is organisational rather than technical: create the accounts with two administrators, move
+the repository, then run `fly launch` and add `FLY_API_TOKEN`.
+
+The image is built and verified locally: it starts, connects, serves
+`/api/v1/admin/health`, refuses `/auth/me` unauthenticated, and signs in as the seeded PIME
+Chair with the correct district-wide context.
 
 **Next:** M1 governance core — positions and appointments CRUD, committees with sub-committees, and the year rollover job with dry-run. See `docs/07-Roadmap.md`.
 

@@ -4,7 +4,7 @@
 describe what the system *should* be; this one records what has actually been built, what
 was decided along the way, and what is deliberately unfinished.
 
-Last updated: 14 August 2026, after M0 session 4.
+Last updated: 14 August 2026, after M0 session 6. **M0 is complete.**
 
 ---
 
@@ -16,8 +16,8 @@ Last updated: 14 August 2026, after M0 session 4.
 | 2 — Prisma schema translation and migrations | **done** | `2a2f7e3`, `f799317` |
 | 3 — Authentication | **done**, plus mail, MFA, encryption | `2de1dfb`, `e527b8d`, `d1f62aa`, `7525705` |
 | 4 — Request context and scoped data access | **done** | `5b9076d`, `a4a62f7`, `d34f024` |
-| 5 — Audit log and no-PII harness | **done** | this commit |
-| 6 — Seed and staging deployment | **next** | — |
+| 5 — Audit log and no-PII harness | **done** | `1f248ea` |
+| 6 — Seed and staging deployment | **done** | this commit |
 
 CI runs typecheck → lint → format:check → test → build → `npm audit` against a
 `postgres:17` service container, and is green on `main`.
@@ -79,14 +79,25 @@ apps/api/src/
     helpers.ts       resetDatabase, org/position/appointment fixtures, signIn
     probe-routes.ts  routes mounted INTO the real app by the scoping tests only
     routes.ts        route discovery for the unauthenticated-PII harness
+
+apps/api/prisma/
+  seed.ts          the CLI entry — npm run db:seed
+  seed/run.ts      seedDatabase(), exported so seed.test.ts drives the real thing
+  seed/reference.ts   permissions, positions + the §10 matrix, lookups, templates
+  seed/organisation.ts  district, regions, clusters, the 20 clubs
+  seed/synthetic.ts   deterministic Ugandan member data. Never real data.
+  tsconfig.json    so the seed is typechecked and linted like everything else
+
+Dockerfile · fly.toml · .github/workflows/deploy-staging.yml · README.md
 ```
 
 `apps/web` is still the session-1 placeholder page. Nothing has been built on it.
 
-**150 tests**, all integration-style against real PostgreSQL. The suites that are load
+**165 tests**, all integration-style against real PostgreSQL. The suites that are load
 bearing rather than incidental: `no-pii.test.ts` (walks every route unauthenticated),
-`invariants.test.ts` (37 ADR-012 guards), `scope*.test.ts` (the data access layer) and
-`audit.test.ts`.
+`invariants.test.ts` (37 ADR-012 guards), `scope*.test.ts` (the data access layer),
+`audit.test.ts`, and `prisma/seed.test.ts`, which runs the real seed and signs in as
+the seeded PIME Chair.
 
 ---
 
@@ -321,6 +332,79 @@ set, and the one that drifted would be the one nobody read. The suite asserts ex
 passes, so deleting a check fails as loudly as breaking one, and it drops a trigger to
 prove it would notice a guard that stopped firing.
 
+### Session 6 — seed and staging deployment
+
+**No faker.** The prompt named it; the seed does not use it, for two project-specific
+reasons. faker generates Western names, and a district demo populated with them is useless
+for the conversation the demo exists to have — the curated Ugandan name lists in
+`prisma/seed/synthetic.ts` were needed for the club names regardless, which faker could
+never have produced. And it is one more dependency in a repository that is district
+property with one part-time maintainer, on an npm that prunes platform binaries on a
+workspace-scoped install (§6). The requirement was synthetic data, never real member data;
+a deterministic generator meets it and reproduces exactly, so a bug seen on one laptop is
+seen on another.
+
+**The dataset:** two Rotary Years with 2027-28 current and 2026-27 locked · district 9218
+· 3 regions · 6 clusters · 20 clubs affiliated for the year · 300 synthetic members with
+`JOIN` events and the roster refreshed · 29 permissions · 10 positions with 104
+`position_permissions` wired from the §10 matrix · 69 officer accounts. About six seconds.
+
+**Appointment terms are clamped to today.** The seeded year is 2027-28, the launch year,
+and an appointment counts only once its term has STARTED. Dated from 1 July 2027 the
+dataset produces a district nobody can sign in to until launch day: every context resolves
+empty and every scoped endpoint answers 403. `appointmentStart()` uses the Rotary Year, or
+today if that is still ahead. Found by the seed test, which is the point of having one.
+
+**`person_visibility` is left to the trigger.** The seed writes no visibility rows —
+`persons_visibility_ins` creates them with contact fields closed. A seed that wrote its own
+would be a second definition of the default, and the one that drifted would be the one
+nobody read.
+
+**Officers get a real invitation AND a development password.** `issueInvite()` is the only
+onboarding path, and it runs for all 69, producing hashed single-use tokens and
+notification rows. Outside production the seed then sets a shared password and marks the
+accounts ACTIVE, because sixty-nine invitation links in a terminal is not a way to log in
+and check a scorecard.
+
+**The seed refuses to run with `NODE_ENV=production`** unless `ALLOW_DESTRUCTIVE_SEED=true`.
+It truncates every table; the realistic accident is one `DATABASE_URL` left exported in a
+shell.
+
+**`prisma/` needed its own tsconfig, at `prisma/tsconfig.json`.** `apps/api/tsconfig.json`
+sets `rootDir: src` for the emitting build and therefore cannot see the seed, which would
+have left the only code in the repository that writes 300 members neither typechecked nor
+linted. The name matters: typescript-eslint's project service resolves the NEAREST
+`tsconfig.json` by walking up from each file, so `tsconfig.prisma.json` is found by
+`tsc -p` and not by the linter, which reports "not found by the project service".
+
+#### Deployment
+
+**Debian slim, not alpine.** Prisma's engine is built against glibc and segfaults on musl
+with no output at all — exit 139, no stack, no message.
+
+**Scripts must run during `npm ci`.** `argon2` is a native module and `--ignore-scripts`
+leaves it without a binding, which also segfaults on import with no message. It has no
+prebuilt binary for this platform, so the build stage installs `python3 make g++`; the
+runtime stage copies the compiled module and never sees a compiler.
+
+**`npm prune --omit=dev`, not a second `npm ci --omit=dev`.** Reinstalling has to choose
+between running scripts — and failing, because `prisma generate` needs a CLI that
+`--omit=dev` just removed — and skipping them, which is what breaks argon2.
+
+**`prisma` is a runtime dependency.** Migrations run as a Fly release command inside the
+image, once, before the new version takes traffic. That costs ~215MB of a ~800MB image.
+Migrating from CI instead does not work on Fly, whose managed Postgres is reachable only
+over the private network, so a runner would need a proxy: a large image on a deploy nobody
+watches beats a migration path that depends on a tunnel staying up.
+
+**The worker process is configured but commented out.** pg-boss is not built; a second
+machine running a script that does not exist would crash-loop, fail health checks and make
+every deployment look broken.
+
+**Deployment is gated on CI, not parallel to it.** `deploy-staging.yml` triggers on
+`workflow_run` and refuses anything but a success on main, so a failing no-PII harness
+stops the deployment rather than racing it.
+
 #### A bug this session exposed
 
 **Guard SQLSTATEs were never reaching the error mapper.** Prisma 7 with `@prisma/adapter-pg`
@@ -340,8 +424,8 @@ tested directly.
 | No endpoint issues invitations (`issueInvite()` is exported, unused) | who may invite whom is a permission question | M1 |
 | Admin reset of a member's MFA | needs permissions | M1 |
 | No worker process, no pg-boss | notifications deliver inline; the `notifications` row is already the queue | later |
-| No seed | — | session 6 |
-| Web app is a placeholder | — | M2 onwards |
+| Web app is a placeholder, and the static bundle is uploaded as a CI artifact rather than published | the district's static host does not exist yet, and choosing one in a workflow file is how it gets chosen by accident | M2 |
+| The worker process group in `fly.toml` is commented out | pg-boss is not built; a crash-looping machine would fail health checks and make every deploy look broken | with the jobs module |
 | No endpoint READS the audit log | who may read it is a permission question, and `audit:read:district` has no route yet | M1 |
 | `recordAction(EXPORT, …)` exists and is unused | there is no export module yet | M7 |
 | Positions, permissions and appointments have no CRUD — they are fixtures and, from session 6, seed rows | context resolution READS them; editing them is a governance feature | M1 |
@@ -350,10 +434,6 @@ tested directly.
 | Appointment term dates compare against UTC, not district-local, midnight | the boundary is three hours wide in Kampala and matters on 1 July | M1, with governance |
 | Permission codes match exactly — no `club:read:*` wildcard | a matcher would turn a typo in a seeded row into a silent grant | not planned |
 
-**Seeding note for session 6:** `notification_templates` rows are inserted by a *migration*
-(auth depends on them), but `document_types` and `social_platforms` are lookup tables with
-**no rows yet** — the seed must populate them, alongside areas of focus, permissions,
-positions, activity types and finance categories.
 
 ---
 
@@ -414,6 +494,10 @@ npm run typecheck && npm run lint && npm run format:check && npm run test && npm
 # Schema drift — must print "This is an empty migration."
 cd apps/api && npx prisma migrate diff --from-migrations ./prisma/migrations \
   --to-schema prisma/schema.prisma --script
+
+# The seed, and the deployment image
+npm run db:seed
+docker build -f apps/api/Dockerfile -t dis-api .
 
 # Database invariants — now a vitest suite, so `npm run test` covers them.
 # Still runnable by hand against a development database:

@@ -23,6 +23,7 @@
     "test": "npm run build:contracts && npm run test --workspaces --if-present",
     "db:generate": "npm run db:generate --workspace @dis/api",
     "db:migrate": "npm run db:migrate --workspace @dis/api",
+    "db:seed": "npm run build:contracts && npm run db:seed --workspace @dis/api",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

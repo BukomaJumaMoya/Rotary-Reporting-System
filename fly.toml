@@ -1,0 +1,87 @@
+# Rotaract DIS — staging.
+#
+# ADR-011: every account under a DISTRICT-owned identity with two administrators. Not a
+# personal account. This is the specific failure the project exists to correct, and a
+# deployment created under one person's login is how a system outlives its maintainer
+# only in the sense that nobody else can reach it.
+#
+#   fly deploy --config fly.toml --app rotaract-dis-staging
+
+app = "rotaract-dis-staging"
+# Europe is the nearest Fly region to East Africa with managed Postgres. Revisit if
+# Johannesburg becomes available: latency to Kampala matters on metered mobile data.
+primary_region = "ams"
+
+[build]
+  dockerfile = "apps/api/Dockerfile"
+
+[deploy]
+  # Migrations run as a release command, once, before the new version takes traffic —
+  # never from an app process, where every instance would race the others. `migrate
+  # deploy` applies pending migrations and never generates or resets, which is the only
+  # form of it that belongs anywhere near a database holding data.
+  release_command = "npx prisma migrate deploy --schema apps/api/prisma/schema.prisma"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  # Fly terminates TLS at its edge and forwards one hop. Too low and every request looks
+  # like it came from the load balancer, so the login rate limiter throttles the whole
+  # district as one client; too high and a caller can forge X-Forwarded-For.
+  TRUST_PROXY_HOPS = "1"
+  COOKIE_SECURE = "true"
+  MAIL_TRANSPORT = "smtp"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  # Staging may sleep; production must not. A cold start on a metered connection is a
+  # bad first impression, and this is the environment where that does not matter.
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/api/v1/admin/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  processes = ["app"]
+
+# ─── The worker ─────────────────────────────────────────────────────────────────
+#
+# pg-boss and the worker process are not built yet (ADR-008; notifications currently
+# deliver inline and the `notifications` row is already the queue). The process group is
+# left here, commented, rather than deployed: a second machine running a script that does
+# not exist would crash-loop, fail health checks and make every deployment look broken.
+#
+# Uncomment together with `npm run worker` when the jobs module lands.
+#
+# [processes]
+#   app = "node apps/api/dist/server.js"
+#   worker = "node apps/api/dist/worker.js"
+#
+# [[vm]]
+#   size = "shared-cpu-1x"
+#   memory = "512mb"
+#   processes = ["worker"]
+
+# ─── Secrets ────────────────────────────────────────────────────────────────────
+#
+# NEVER in this file — it is committed. Set them once against the district's Fly org:
+#
+#   fly secrets set --app rotaract-dis-staging \
+#     DATABASE_URL=... DIRECT_DATABASE_URL=... \
+#     SESSION_SECRET="$(openssl rand -base64 32)" \
+#     ENCRYPTION_KEYS="v1:$(openssl rand -base64 32)" \
+#     APP_BASE_URL=https://staging.rotaract9218.org \
+#     SMTP_HOST=... SMTP_USER=... SMTP_PASSWORD=... MAIL_FROM=...
+#
+# ENCRYPTION_KEYS holds second factors and must live in the platform secret store, never
+# beside the ciphertext and never in the same backup as the database (ADR-013).

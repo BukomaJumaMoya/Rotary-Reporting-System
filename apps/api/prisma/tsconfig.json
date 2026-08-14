@@ -1,0 +1,21 @@
+{
+  // The seed and its data modules live outside `src`, so apps/api/tsconfig.json — whose
+  // rootDir is src for the emitting build — does not see them. Without a project here
+  // they would be neither typechecked nor type-aware linted, which is a poor place for
+  // unchecked code: this is the only thing in the repository that writes 300 members.
+  //
+  // It sits at apps/api/prisma/tsconfig.json rather than apps/api/tsconfig.prisma.json
+  // because typescript-eslint's project service resolves the NEAREST tsconfig.json by
+  // walking up from each file. A differently-named project is found by `tsc -p` and not
+  // by the linter, which fails as "not found by the project service".
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".."
+  },
+  // `../src` as well as `.`, not instead of it. The seed imports the real service and
+  // platform modules, and the module augmentations they rely on — the `express-session`
+  // one that puts `userId` on a request, above all — live in files that would otherwise
+  // be pulled in without being part of the program.
+  "include": ["**/*.ts", "../src/**/*.ts"]
+}
