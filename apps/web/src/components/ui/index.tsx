@@ -438,3 +438,94 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
     </div>
   );
 }
+
+// ─── Pagination ──────────────────────────────────────────────────────────────
+
+/**
+ * Previous / next with a count.
+ *
+ * Not numbered pages: on a 360px screen a row of page numbers is a row of targets too
+ * small to hit, and "showing 26–50 of 87" is the part anybody actually reads.
+ */
+export function Pagination({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+}) {
+  const first = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const last = Math.min(page * pageSize, total);
+  const hasMore = page * pageSize < total;
+
+  if (total <= pageSize) return null;
+
+  return (
+    <div className="border-ink-200 mt-3 flex items-center justify-between gap-3 border-t pt-3">
+      <p className="text-ink-500 text-sm">
+        Showing {first}–{last} of {total}
+      </p>
+      <div className="flex gap-2">
+        <Button variant="secondary" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          Previous
+        </Button>
+        <Button variant="secondary" disabled={!hasMore} onClick={() => onPageChange(page + 1)}>
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** A labelled checkbox with a 44px target, for permission grids and consent. */
+export function Checkbox({
+  label,
+  checked,
+  onChange,
+  description,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  description?: string;
+}) {
+  return (
+    <label className="hover:bg-ink-50 flex min-h-11 cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-1 h-5 w-5 shrink-0"
+      />
+      <span className="min-w-0">
+        <span className="text-ink-900 block font-mono text-xs">{label}</span>
+        {description && <span className="text-ink-500 block text-xs">{description}</span>}
+      </span>
+    </label>
+  );
+}
+
+/** A page heading with an optional action, used by every admin screen. */
+export function PageHeader({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 className="text-ink-900 text-xl font-semibold">{title}</h1>
+        {description && <p className="text-ink-500 mt-0.5 text-sm">{description}</p>}
+      </div>
+      {action}
+    </header>
+  );
+}

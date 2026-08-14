@@ -3,6 +3,7 @@ import {
   auditListQuerySchema,
   createInvitationsRequestSchema,
   invitationListQuerySchema,
+  personSearchQuerySchema,
   appointmentListQuerySchema,
   committeeListQuerySchema,
   createAppointmentRequestSchema,
@@ -22,6 +23,7 @@ import { asyncHandler, parseQuery, pathParam, withBody } from '../../platform/va
 import * as administration from './administration.service.js';
 import * as appointments from './appointments.service.js';
 import * as committees from './committees.service.js';
+import * as persons from './persons.service.js';
 import * as positions from './positions.service.js';
 
 /**
@@ -336,5 +338,19 @@ governanceRouter.get(
     const ctx = requireContext(req);
     const query = parseQuery(auditListQuerySchema, req);
     res.status(200).json(await administration.listAudit(ctx, query));
+  }),
+);
+
+/**
+ * Person lookup for pickers. NAMES ONLY — an appointment picker needs to tell two people
+ * with the same name apart, and has never needed a phone number.
+ */
+governanceRouter.get(
+  '/persons',
+  requirePermission('person:read:club'),
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    const query = parseQuery(personSearchQuerySchema, req);
+    res.status(200).json(await persons.searchPersons(ctx, query));
   }),
 );

@@ -6,6 +6,14 @@
 **Goal:** access derives entirely from appointments, the district can be administered
 through a browser, and the year can roll over safely.
 
+**STATUS: complete.** All seven sessions built, tested and committed — `fbef671`,
+`8310ced`, `81010f3`, `8a3c7df`, `7dd1702`, `e04e786` and this commit. 282 tests.
+Three assumptions in the prompts turned out not to hold against the M0 build and are
+corrected in the code with the reasoning attached: committee scope did not expand
+downwards (session 4), the rollover step order cannot work against the locked-year guard
+(session 6), and a Prisma transaction client cannot be extended, so `scopedTransaction`
+was added to `platform/db.ts` (session 6).
+
 **Seven sessions.** Session 3 is the app shell — placed mid-milestone so you have something
 visible early, and so every module after it lands somewhere real instead of being tested
 with curl.
@@ -396,18 +404,18 @@ reflects their permissions and scope.
 
 ## M1 exit checklist
 
-- [ ] Positions, permissions and appointments manageable through the browser
-- [ ] Permission and scope unions correct across multiple appointments
-- [ ] Appointment terms compare against district-local midnight, in both context resolution and appointment validation
-- [ ] A committee chair creates sub-committees without district-wide permission
-- [ ] Invitations issuable, with club-scoped inviters limited to their own roster
-- [ ] Admin MFA reset audited and notified
-- [ ] Audit log readable, with person diffs redacted per visibility
-- [ ] `systemContext()` exists, respects locked years, and names its reason in the audit log
-- [ ] Rollover dry run commits nothing; committed run locks the prior year
-- [ ] Seed + rollover produces a coherent state
-- [ ] App shell running, mobile-usable at 360px, under 250KB gzipped
-- [ ] `no-pii`, `scope-registry` and `invariants` suites all green
+- [x] Positions, permissions and appointments manageable through the browser
+- [x] Permission and scope unions correct across multiple appointments
+- [x] Appointment terms compare against district-local midnight, in both context resolution and appointment validation
+- [x] A committee chair creates sub-committees without district-wide permission
+- [x] Invitations issuable, with club-scoped inviters limited to their own roster
+- [x] Admin MFA reset audited and notified
+- [x] Audit log readable, with person diffs redacted per visibility
+- [x] `systemContext()` exists, respects locked years, and names its reason in the audit log
+- [x] Rollover dry run commits nothing; committed run locks the prior year
+- [x] Seed + rollover produces a coherent state
+- [x] App shell running, mobile-usable at 360px, under 250KB gzipped
+- [x] `no-pii`, `scope-registry` and `invariants` suites all green
 
 **Next:** M2 reporting spine — the longest milestone, and the one whose exit test is a real
 club secretary filing a report on a phone in under three minutes.

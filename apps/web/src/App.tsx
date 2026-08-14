@@ -12,6 +12,10 @@ import {
   ResetPasswordPage,
 } from './features/auth/PasswordPages';
 import { DashboardPage } from './features/dashboard/DashboardPage';
+import { AuditPage, InvitationsPage, RolloverPage } from './features/governance/AdminPages';
+import { AppointmentsPage } from './features/governance/AppointmentsPage';
+import { CommitteesPage } from './features/governance/CommitteesPage';
+import { PositionsPage } from './features/governance/PositionsPage';
 
 /**
  * Everything behind `RequireAuth` needs a session. The guard redirects rather than
@@ -67,6 +71,59 @@ export function App() {
           element={
             <RequireAuth>
               <DashboardPage />
+            </RequireAuth>
+          }
+        />
+
+        {/*
+          Every admin screen gates on <Can> INSIDE itself as well as being routed here.
+          The route is convenience; the server is the boundary, and it refuses regardless.
+        */}
+        <Route
+          path="/admin/positions"
+          element={
+            <RequireAuth>
+              <PositionsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/appointments"
+          element={
+            <RequireAuth>
+              <AppointmentsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/committees"
+          element={
+            <RequireAuth>
+              <CommitteesPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/invitations"
+          element={
+            <RequireAuth>
+              <InvitationsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/audit"
+          element={
+            <RequireAuth>
+              <AuditPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/rollover"
+          element={
+            <RequireAuth>
+              <RolloverPage />
             </RequireAuth>
           }
         />

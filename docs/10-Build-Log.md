@@ -4,7 +4,7 @@
 describe what the system *should* be; this one records what has actually been built, what
 was decided along the way, and what is deliberately unfinished.
 
-Last updated: 14 August 2026, after M0 session 6. **M0 is complete.**
+Last updated: 15 August 2026, after M1 session 7. **M0 and M1 are complete.**
 
 ---
 
@@ -19,8 +19,47 @@ Last updated: 14 August 2026, after M0 session 6. **M0 is complete.**
 | 5 — Audit log and no-PII harness | **done** | `1f248ea` |
 | 6 — Seed and staging deployment | **done** | this commit |
 
+| M1 session | State | Commit |
+|---|---|---|
+| 1 — Positions and permissions CRUD | **done** | `fbef671` |
+| 2 — Appointments, district-local terms | **done** | `8310ced` |
+| 3 — Web application shell | **done** | `81010f3` |
+| 4 — Committees, delegated sub-committees | **done** | `8a3c7df` |
+| 5 — Invitations, MFA reset, audit read | **done** | `7dd1702` |
+| 6 — System context and year rollover | **done** | `e04e786` |
+| 7 — Governance administration screens | **done** | this commit |
+
 CI runs typecheck → lint → format:check → test → build → `npm audit` against a
 `postgres:17` service container, and is green on `main`.
+
+---
+
+## 1a. What M1 changed in the platform
+
+**`platform/time.ts`** — every term comparison runs against midnight in the DISTRICT's
+timezone, in context resolution and appointment validation alike, through one helper.
+
+**`platform/system-context.ts`** — `systemContext(districtId, rotaryYearId, reason)` for
+work with no request. Full permissions within one district, the locked-year check honoured
+exactly as a user context, and a mandatory reason that reaches `audit_log`. Jobs use this,
+never `unscopedPrisma`.
+
+**`scopedTransaction()` in `platform/db.ts`** — one transaction, several scoped clients.
+A Prisma transaction client cannot be `$extends`-ed (measured), so `db(a)` and `db(b)` can
+never share a transaction; rollover needs exactly that. The scope is applied by hand
+through `rewriteArgs`, the same function the extension uses. It refuses `via` models
+loudly rather than scoping them halfway, and it does not audit — a caller needing an audit
+row inside a transaction writes one, as rollover does.
+
+**Committee scope expands downwards** in `resolveScopes`, like regions to clusters to
+clubs. That is what lets a chair run their own subtree without district-wide permission.
+
+**A scoped `create` now returns honest types.** `TypeMap`'s `create.result` is
+`PayloadToResult` without its second type argument, so every field came back
+`string | undefined`. It reads the payload's own `scalars` instead.
+
+**`parseQuery()` and `pathParam()`** in `platform/validate.ts`: Express types query and
+path values as `string | string[]`, so every filter read straight off them was unchecked.
 
 ---
 

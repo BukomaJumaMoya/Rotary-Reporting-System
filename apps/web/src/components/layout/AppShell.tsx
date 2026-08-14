@@ -43,7 +43,14 @@ const NAV_ITEMS: NavItem[] = [
     permission: 'committee:manage:district',
     glyph: '⬢',
   },
+  {
+    to: '/admin/invitations',
+    label: 'Invites',
+    permission: 'person:invite:club',
+    glyph: '✉',
+  },
   { to: '/admin/audit', label: 'Audit', permission: 'audit:read:district', glyph: '☰' },
+  { to: '/admin/rollover', label: 'Rollover', permission: 'year:rollover:district', glyph: '⟳' },
 ];
 
 function useVisibleNav(): NavItem[] {
