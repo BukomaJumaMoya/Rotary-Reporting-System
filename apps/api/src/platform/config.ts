@@ -45,6 +45,13 @@ const environmentSchema = z.object({
   LOCKOUT_BASE_MINUTES: z.coerce.number().int().positive().default(5),
   LOCKOUT_MAX_MINUTES: z.coerce.number().int().positive().default(1440),
 
+  /**
+   * Keys for application-level encryption, as `id:base64key` pairs, comma separated.
+   * The first is active; the rest let old ciphertext decrypt during rotation. These
+   * live in the platform secret store, never in the database — see platform/crypto.ts.
+   */
+  ENCRYPTION_KEYS: z.string().min(1, 'ENCRYPTION_KEYS is required (openssl rand -base64 32)'),
+
   TOKEN_TTL_MINUTES: z.coerce.number().int().positive().default(60),
   // Invitations are sent to people who may not check email daily, and a club secretary
   // chasing an expired invitation is a support burden. Seven days.

@@ -31,6 +31,9 @@ export default defineConfig({
       TRUST_PROXY_HOPS: '1',
       // Mail is captured in memory so tests can assert on what would have been sent.
       MAIL_TRANSPORT: 'capture',
+      // Fixed test key. Real keys live in the platform secret store; this one exists
+      // only so the suite can encrypt and decrypt deterministically.
+      ENCRYPTION_KEYS: 'test:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=',
       APP_BASE_URL: 'https://dis.example.org',
     },
   },

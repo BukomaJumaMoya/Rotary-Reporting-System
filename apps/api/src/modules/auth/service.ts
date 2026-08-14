@@ -9,7 +9,9 @@ import {
 } from '../../platform/errors.js';
 import { notify } from '../notifications/service.js';
 import { NotificationTemplate } from '../notifications/templates.js';
+import { decryptSecret, encryptSecret, mfaContext } from '../../platform/crypto.js';
 import { createEnrolment, verifyCode, type Enrolment } from './mfa.js';
+import { generateRecoveryCodes, hashRecoveryCode } from './recovery.js';
 import { consumeTimingBudget, hashPassword, verifyPassword } from './passwords.js';
 import * as repository from './repository.js';
 import type { AuthUser } from './repository.js';
@@ -57,7 +59,71 @@ async function rejectAttempt(userId: string, error: AppError): Promise<never> {
   throw error;
 }
 
-export async function login(email: string, password: string, totpCode?: string): Promise<AuthUser> {
+export interface SecondFactor {
+  totpCode?: string | undefined;
+  recoveryCode?: string | undefined;
+}
+
+/**
+ * Checks the second factor: an authenticator code, or a recovery code when the
+ * authenticator is gone. Throws on failure; returns quietly on success.
+ *
+ * Both paths are single use — a TOTP code through the step guard, a recovery code
+ * through its own redemption — so neither can be replayed by someone who saw it once.
+ */
+async function verifySecondFactor(user: AuthUser, factor: SecondFactor): Promise<void> {
+  if (!user.mfaSecret) return;
+
+  if (factor.recoveryCode) {
+    const redeemed = await repository.redeemRecoveryCode(
+      user.id,
+      hashRecoveryCode(factor.recoveryCode),
+    );
+    if (!redeemed) {
+      await rejectAttempt(
+        user.id,
+        new AppError(401, ErrorCode.MFA_INVALID, 'That recovery code is not valid'),
+      );
+    }
+    return;
+  }
+
+  if (!factor.totpCode) {
+    // Not a failed attempt: the password was right, and the client simply has not been
+    // asked for a code yet. Counting this would lock out every correct login.
+    throw new AppError(401, ErrorCode.MFA_REQUIRED, 'A second factor is required');
+  }
+
+  const label = user.person.email ?? user.id;
+  const result = verifyCode(
+    decryptSecret(user.mfaSecret, mfaContext(user.id)),
+    label,
+    factor.totpCode,
+  );
+
+  if (!result.valid) {
+    await rejectAttempt(
+      user.id,
+      new AppError(401, ErrorCode.MFA_INVALID, 'That code is not valid'),
+    );
+  }
+
+  // Replay guard: a code already used cannot be used again inside its window.
+  const consumed = await repository.consumeMfaStep(user.id, BigInt(result.step));
+  if (!consumed) {
+    await rejectAttempt(
+      user.id,
+      new AppError(401, ErrorCode.MFA_INVALID, 'That code has already been used'),
+    );
+  }
+}
+
+export async function login(
+  email: string,
+  password: string,
+  totpCode?: string,
+  recoveryCode?: string,
+): Promise<AuthUser> {
   const user = await repository.findUserByEmail(email);
 
   if (!user || !user.passwordHash) {
@@ -78,30 +144,7 @@ export async function login(email: string, password: string, totpCode?: string):
   }
 
   if (user.mfaEnabled && user.mfaSecret) {
-    if (!totpCode) {
-      // Not a failed attempt: the password was right, and the client simply has not been
-      // asked for a code yet. Counting this would lock out every correct login.
-      throw new AppError(401, ErrorCode.MFA_REQUIRED, 'A second factor is required');
-    }
-
-    const label = user.person.email ?? user.id;
-    const result = verifyCode(user.mfaSecret, label, totpCode);
-
-    if (!result.valid) {
-      await rejectAttempt(
-        user.id,
-        new AppError(401, ErrorCode.MFA_INVALID, 'That code is not valid'),
-      );
-    }
-
-    // Replay guard: a code already used cannot be used again inside its window.
-    const consumed = await repository.consumeMfaStep(user.id, BigInt(result.step));
-    if (!consumed) {
-      await rejectAttempt(
-        user.id,
-        new AppError(401, ErrorCode.MFA_INVALID, 'That code has already been used'),
-      );
-    }
+    await verifySecondFactor(user, { totpCode, recoveryCode });
   }
 
   if (user.status === 'SUSPENDED' || user.status === 'DISABLED') {
@@ -254,7 +297,7 @@ export async function acceptInvite(
  * from the caller's active appointments — this shape is already the final one so the
  * client can be built against it now.
  */
-export function toMeResponse(user: AuthUser): MeResponse {
+export async function toMeResponse(user: AuthUser): Promise<MeResponse> {
   return {
     data: {
       userId: user.id,
@@ -263,6 +306,9 @@ export function toMeResponse(user: AuthUser): MeResponse {
       lastName: user.person.lastName,
       status: user.status,
       mfaEnabled: user.mfaEnabled,
+      mfaRecoveryCodesRemaining: user.mfaEnabled
+        ? await repository.countUnusedRecoveryCodes(user.id)
+        : 0,
       context: {
         districtId: null,
         rotaryYearId: null,
@@ -296,12 +342,16 @@ export async function beginMfaEnrolment(userId: string): Promise<Enrolment> {
   }
 
   const enrolment = createEnrolment(user.person.email ?? user.id);
-  await repository.stageMfaSecret(user.id, enrolment.secret);
+  // Encrypted before it touches the database, bound to this user id.
+  await repository.stageMfaSecret(user.id, encryptSecret(enrolment.secret, mfaContext(user.id)));
   return enrolment;
 }
 
-/** Confirms enrolment. Only a working code turns MFA on. */
-export async function confirmMfaEnrolment(userId: string, code: string): Promise<void> {
+/**
+ * Confirms enrolment. Only a working code turns MFA on, and doing so issues the recovery
+ * codes — returned once, here, and never retrievable again.
+ */
+export async function confirmMfaEnrolment(userId: string, code: string): Promise<string[]> {
   const user = await repository.findUserById(userId);
   if (!user) throw unauthenticated();
 
@@ -313,7 +363,7 @@ export async function confirmMfaEnrolment(userId: string, code: string): Promise
   }
 
   const label = user.person.email ?? user.id;
-  const result = verifyCode(user.mfaSecret, label, code);
+  const result = verifyCode(decryptSecret(user.mfaSecret, mfaContext(user.id)), label, code);
   if (!result.valid) {
     await rejectAttempt(
       user.id,
@@ -325,16 +375,27 @@ export async function confirmMfaEnrolment(userId: string, code: string): Promise
   if (!consumed) {
     throw new AppError(401, ErrorCode.MFA_INVALID, 'That code has already been used');
   }
+
+  return issueRecoveryCodes(user.id);
+}
+
+/** Generates a fresh set, stores only their hashes, and returns the plaintext once. */
+async function issueRecoveryCodes(userId: string): Promise<string[]> {
+  const codes = generateRecoveryCodes();
+  await repository.replaceRecoveryCodes(userId, codes.map(hashRecoveryCode));
+  return codes;
 }
 
 /**
- * Turns MFA off. Requires the password AND a current code.
- *
- * A hijacked session alone must not be able to strip the second factor — that would make
- * MFA worth nothing precisely when it matters. A member who has lost their authenticator
- * cannot pass this and needs an administrator, which arrives with permissions in M1.
+ * Issues a new set, invalidating the old one. Requires the password and a second factor
+ * — either an authenticator code or one of the remaining recovery codes, so a member
+ * down to their last code can refill without an administrator.
  */
-export async function disableMfa(userId: string, password: string, code: string): Promise<void> {
+export async function regenerateRecoveryCodes(
+  userId: string,
+  password: string,
+  factor: SecondFactor,
+): Promise<string[]> {
   const user = await repository.findUserById(userId);
   if (!user?.passwordHash) throw unauthenticated();
 
@@ -347,13 +408,39 @@ export async function disableMfa(userId: string, password: string, code: string)
     await rejectAttempt(user.id, invalidCredentials());
   }
 
-  const result = verifyCode(user.mfaSecret, user.person.email ?? user.id, code);
-  if (!result.valid) {
-    await rejectAttempt(
-      user.id,
-      new AppError(401, ErrorCode.MFA_INVALID, 'That code is not valid'),
-    );
+  await verifySecondFactor(user, factor);
+  return issueRecoveryCodes(user.id);
+}
+
+export async function recoveryCodesRemaining(userId: string): Promise<number> {
+  return repository.countUnusedRecoveryCodes(userId);
+}
+
+/**
+ * Turns MFA off. Requires the password AND a second factor.
+ *
+ * A hijacked session alone must not be able to strip the second factor — that would make
+ * MFA worth nothing precisely when it matters. A recovery code is accepted in place of an
+ * authenticator code, because this is the path for the member whose phone is gone, and
+ * requiring the authenticator in order to remove the authenticator is a trap.
+ */
+export async function disableMfa(
+  userId: string,
+  password: string,
+  factor: SecondFactor,
+): Promise<void> {
+  const user = await repository.findUserById(userId);
+  if (!user?.passwordHash) throw unauthenticated();
+
+  if (!user.mfaEnabled || !user.mfaSecret) {
+    throw new AppError(409, ErrorCode.MFA_NOT_ENROLLED, 'Two-factor sign-in is not on');
   }
 
+  const passwordOk = await verifyPassword(user.passwordHash, password);
+  if (!passwordOk) {
+    await rejectAttempt(user.id, invalidCredentials());
+  }
+
+  await verifySecondFactor(user, factor);
   await repository.disableMfa(user.id);
 }

@@ -4,7 +4,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../app.js';
 import { prisma } from '../../platform/db.js';
 import { closeSessionPool } from '../../platform/session.js';
-import { createUser, errorBody, resetDatabase } from '../../test/helpers.js';
+import { createUser, errorBody, meBody, resetDatabase } from '../../test/helpers.js';
 import { createEnrolment, verifyCode } from './mfa.js';
 
 const app = createApp();
@@ -107,7 +107,12 @@ describe('MFA enrolment', () => {
     const verify = await agent
       .post('/api/v1/auth/mfa/verify')
       .send({ code: codeFor(body.data.secret, user.email) });
-    expect(verify.status).toBe(204);
+    // 200, not 204: confirming enrolment is the one moment recovery codes exist in
+    // plaintext, so it must return them.
+    expect(verify.status).toBe(200);
+    expect((verify.body as { data: { recoveryCodes: string[] } }).data.recoveryCodes).toHaveLength(
+      10,
+    );
 
     const enabled = await prisma.user.findUniqueOrThrow({ where: { id: user.userId } });
     expect(enabled.mfaEnabled).toBe(true);
@@ -253,5 +258,177 @@ describe('disabling MFA', () => {
       .post('/api/v1/auth/login')
       .send({ email: user.email, password: user.password });
     expect(login.status).toBe(200);
+  });
+});
+
+describe('recovery codes', () => {
+  /** Enrols, confirms, and returns the codes issued at confirmation. */
+  async function enrolWithRecovery(user: { email: string; password: string }) {
+    const agent = await signedInAgent(user.email, user.password);
+    const enrol = await agent.post('/api/v1/auth/mfa/enrol');
+    const secret = (enrol.body as { data: { secret: string } }).data.secret;
+
+    const verify = await agent
+      .post('/api/v1/auth/mfa/verify')
+      .send({ code: codeFor(secret, user.email) });
+    expect(verify.status).toBe(200);
+
+    const codes = (verify.body as { data: { recoveryCodes: string[] } }).data.recoveryCodes;
+    return { agent, secret, codes };
+  }
+
+  it('issues ten codes when enrolment is confirmed, stored only as hashes', async () => {
+    const user = await createUser();
+    const { codes } = await enrolWithRecovery(user);
+
+    expect(codes).toHaveLength(10);
+    expect(new Set(codes).size).toBe(10);
+    for (const code of codes)
+      expect(code).toMatch(/^[0-9A-HJ-KM-NP-TV-Z]{5}-[0-9A-HJ-KM-NP-TV-Z]{5}$/);
+
+    const stored = await prisma.mfaRecoveryCode.findMany({ where: { userId: user.userId } });
+    expect(stored).toHaveLength(10);
+    // Hashed, like a password: this table must not be readable as credentials.
+    for (const row of stored) {
+      expect(row.codeHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(codes).not.toContain(row.codeHash);
+    }
+  });
+
+  it('signs in with a recovery code when the authenticator is gone', async () => {
+    const user = await createUser();
+    const { agent, codes } = await enrolWithRecovery(user);
+    await agent.post('/api/v1/auth/logout');
+
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password: user.password, recoveryCode: codes[0] });
+
+    expect(login.status).toBe(200);
+
+    const remaining = await prisma.mfaRecoveryCode.count({
+      where: { userId: user.userId, usedAt: null },
+    });
+    expect(remaining).toBe(9);
+  });
+
+  it('accepts a code however the member types it', async () => {
+    const user = await createUser();
+    const { agent, codes } = await enrolWithRecovery(user);
+    await agent.post('/api/v1/auth/logout');
+
+    // Lower case, no hyphen, stray spaces: formatting is presentation, not the secret.
+    const mangled = ` ${(codes[0] ?? '').toLowerCase().replace('-', '')} `;
+
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password: user.password, recoveryCode: mangled });
+
+    expect(login.status).toBe(200);
+  });
+
+  it('will not accept the same recovery code twice', async () => {
+    const user = await createUser();
+    const { agent, codes } = await enrolWithRecovery(user);
+    await agent.post('/api/v1/auth/logout');
+
+    const first = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password: user.password, recoveryCode: codes[0] });
+    expect(first.status).toBe(200);
+
+    const replay = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password: user.password, recoveryCode: codes[0] });
+
+    expect(replay.status).toBe(401);
+    expect(errorBody(replay).code).toBe('MFA_INVALID');
+  });
+
+  it('turns MFA off with a recovery code — the lost-phone path', async () => {
+    const user = await createUser();
+    const { agent, codes } = await enrolWithRecovery(user);
+
+    // Requiring the authenticator in order to remove the authenticator is a trap.
+    const disabled = await agent
+      .post('/api/v1/auth/mfa/disable')
+      .send({ password: user.password, recoveryCode: codes[0] });
+    expect(disabled.status).toBe(204);
+
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.userId } });
+    expect(stored.mfaEnabled).toBe(false);
+    // Codes go with the factor they recover: a stale printout must not re-enter later.
+    expect(await prisma.mfaRecoveryCode.count({ where: { userId: user.userId } })).toBe(0);
+  });
+
+  it('regenerates a set, invalidating the old one', async () => {
+    const user = await createUser();
+    const { agent, codes } = await enrolWithRecovery(user);
+
+    const regenerated = await agent
+      .post('/api/v1/auth/mfa/recovery-codes')
+      .send({ password: user.password, recoveryCode: codes[0] });
+    expect(regenerated.status).toBe(200);
+
+    const fresh = (regenerated.body as { data: { recoveryCodes: string[] } }).data.recoveryCodes;
+    expect(fresh).toHaveLength(10);
+    expect(fresh).not.toContain(codes[1]);
+
+    await agent.post('/api/v1/auth/logout');
+
+    // An old code no longer works, even one never used.
+    const old = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password: user.password, recoveryCode: codes[1] });
+    expect(old.status).toBe(401);
+
+    const current = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password: user.password, recoveryCode: fresh[0] });
+    expect(current.status).toBe(200);
+  });
+
+  it('reports how many are left, so a member can be warned before they run out', async () => {
+    const user = await createUser();
+    const { agent, codes } = await enrolWithRecovery(user);
+
+    const before = await agent.get('/api/v1/auth/me');
+    expect(meBody(before).mfaRecoveryCodesRemaining).toBe(10);
+
+    await agent.post('/api/v1/auth/logout');
+    await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password: user.password, recoveryCode: codes[0] });
+
+    const signedIn = request.agent(app);
+    await signedIn
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password: user.password, recoveryCode: codes[1] });
+
+    const after = await signedIn.get('/api/v1/auth/me');
+    expect(meBody(after).mfaRecoveryCodesRemaining).toBe(8);
+  });
+});
+
+describe('MFA secret storage', () => {
+  it('never stores the shared secret in clear', async () => {
+    const user = await createUser();
+    const agent = await signedInAgent(user.email, user.password);
+
+    const enrol = await agent.post('/api/v1/auth/mfa/enrol');
+    const secret = (enrol.body as { data: { secret: string } }).data.secret;
+
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.userId } });
+
+    // A database dump must not hand over the second factor along with the first.
+    expect(stored.mfaSecret).not.toBe(secret);
+    expect(stored.mfaSecret).not.toContain(secret);
+    expect(stored.mfaSecret).toMatch(/^test\..+\..+\..+$/);
+
+    // And it still works, so encryption is transparent to the member.
+    const verify = await agent
+      .post('/api/v1/auth/mfa/verify')
+      .send({ code: codeFor(secret, user.email) });
+    expect(verify.status).toBe(200);
   });
 });

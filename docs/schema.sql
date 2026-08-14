@@ -1,9 +1,11 @@
 -- =====================================================================
 -- Rotaract District Information System (DIS)
--- Authoritative PostgreSQL 16 schema — design baseline v1.5
+-- Authoritative PostgreSQL 16 schema — design baseline v1.6
 --
 -- v1.5 (auth): users.mfa_last_used_step, so a TOTP code cannot be replayed within its
 -- validity window.
+-- v1.6 (auth): mfa_recovery_codes, so a lost authenticator does not mean a locked-out
+-- officer; users.mfa_secret is now stored encrypted rather than in clear.
 --
 -- v1.4 (platform): audit_log made append-only by trigger; document types and
 -- social platforms became lookup tables rather than free text a scoring rule
@@ -266,9 +268,10 @@ CREATE TABLE users (
   person_id       UUID NOT NULL UNIQUE REFERENCES persons(id),
   password_hash   TEXT,                             -- Argon2id
   status          user_status NOT NULL DEFAULT 'INVITED',
-  -- TOTP shared secret, base32. Stored in clear: encrypting it needs a key management
-  -- story the project does not have yet. Raised for the M9 security review, because a
-  -- database leak otherwise hands over the second factor along with the first.
+  -- TOTP shared secret, ENCRYPTED with AES-256-GCM before it reaches this column
+  -- (apps/api/src/platform/crypto.ts). The key lives in the hosting platform's secret
+  -- store, never in this database and never in its backups, so a leaked dump does not
+  -- hand over the second factor along with the first. Format: keyId.iv.ciphertext.tag
   mfa_secret      TEXT,
   mfa_enabled     BOOLEAN NOT NULL DEFAULT FALSE,
   -- Highest TOTP step already accepted. A code stays valid for its 30-second step plus
@@ -280,6 +283,22 @@ CREATE TABLE users (
   locked_until    TIMESTAMPTZ,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Single-use codes that stand in for an authenticator app.
+--
+-- Without these, a member whose phone is lost or wiped cannot sign in at all, and the
+-- only remedy is an administrator clearing their MFA by hand — which for the DRR or the
+-- District Treasurer means being locked out of the award system until someone with
+-- database access is available. Codes are hashed: this table is as sensitive as a
+-- password column and must not be readable as credentials.
+CREATE TABLE mfa_recovery_codes (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code_hash  TEXT NOT NULL UNIQUE,
+  used_at    TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX mfa_recovery_user ON mfa_recovery_codes (user_id);
 
 CREATE TABLE user_tokens (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

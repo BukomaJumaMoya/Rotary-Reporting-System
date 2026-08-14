@@ -365,7 +365,9 @@ model User {
   /// Argon2id.
   passwordHash   String?    @map("password_hash")
   status         UserStatus @default(INVITED)
-  /// TOTP shared secret, base32. Plaintext — flagged for the M9 security review.
+  /// TOTP shared secret, AES-256-GCM encrypted (platform/crypto.ts) and bound to this
+  /// user id, so the value is useless in a database dump and cannot be moved to another
+  /// account. Format: keyId.iv.ciphertext.tag
   mfaSecret      String?    @map("mfa_secret")
   mfaEnabled     Boolean    @default(false) @map("mfa_enabled")
   /// Highest TOTP step already accepted, so a code cannot be replayed inside its window.
@@ -377,6 +379,7 @@ model User {
 
   person                   Person            @relation(fields: [personId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   tokens                   UserToken[]
+  mfaRecoveryCodes         MfaRecoveryCode[]
   recordedMembershipEvents MembershipEvent[]
   createdActivities        Activity[]             @relation("ActivityCreatedBy")
   verifiedActivities       Activity[]             @relation("ActivityVerifiedBy")
@@ -397,6 +400,21 @@ model User {
   auditEntries               AuditLogEntry[]
 
   @@map("users")
+}
+
+/// Single-use codes that stand in for an authenticator app when the phone holding it is
+/// lost. Hashed: this table is as sensitive as a password column.
+model MfaRecoveryCode {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @unique @map("code_hash")
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId], map: "mfa_recovery_user")
+  @@map("mfa_recovery_codes")
 }
 
 /// Reset, invite and verification tokens. Stored hashed, single use, with expiry.

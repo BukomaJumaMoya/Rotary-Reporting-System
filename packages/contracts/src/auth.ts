@@ -20,6 +20,12 @@ export const totpCodeSchema = z
   .trim()
   .regex(/^\d{6}$/, 'Enter the 6-digit code from your authenticator app');
 
+/** A recovery code: ten Crockford-base32 characters, usually written XXXXX-XXXXX. */
+export const recoveryCodeSchema = z
+  .string()
+  .trim()
+  .regex(/^[0-9A-Za-z-\s]{10,14}$/, 'Enter one of your recovery codes');
+
 export const loginRequestSchema = z.object({
   email: emailSchema,
   // Not `passwordSchema`: an existing password set under older rules must still be
@@ -34,6 +40,11 @@ export const loginRequestSchema = z.object({
    * that forgets is an authentication bypass.
    */
   totpCode: totpCodeSchema.optional(),
+  /**
+   * Accepted in place of `totpCode` when the authenticator is gone. Single use.
+   * Formatting is presentation — case, spaces and the hyphen are all normalised away.
+   */
+  recoveryCode: recoveryCodeSchema.optional(),
 });
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
 
@@ -53,12 +64,41 @@ export const mfaVerifyRequestSchema = z.object({
 });
 export type MfaVerifyRequest = z.infer<typeof mfaVerifyRequestSchema>;
 
-/** Turning MFA off requires the password AND a current code — either alone is not enough. */
-export const mfaDisableRequestSchema = z.object({
-  password: z.string().min(1).max(200),
-  code: totpCodeSchema,
+/**
+ * Recovery codes, returned ONCE when enrolment is confirmed or the set is regenerated.
+ * They are stored only as hashes, so this is the only moment they can be shown.
+ */
+export const mfaRecoveryCodesResponseSchema = z.object({
+  data: z.object({
+    recoveryCodes: z.array(z.string()),
+  }),
 });
+export type MfaRecoveryCodesResponse = z.infer<typeof mfaRecoveryCodesResponseSchema>;
+
+/**
+ * A second factor: an authenticator code, or a recovery code when the phone is gone.
+ * Exactly one is required — an empty object would let a hijacked session act alone.
+ */
+const secondFactorSchema = z
+  .object({
+    code: totpCodeSchema.optional(),
+    recoveryCode: recoveryCodeSchema.optional(),
+  })
+  .refine((value) => Boolean(value.code) !== Boolean(value.recoveryCode), {
+    message: 'Provide either an authenticator code or a recovery code',
+  });
+
+/** Turning MFA off requires the password AND a second factor — either alone is not enough. */
+export const mfaDisableRequestSchema = z
+  .object({ password: z.string().min(1).max(200) })
+  .and(secondFactorSchema);
 export type MfaDisableRequest = z.infer<typeof mfaDisableRequestSchema>;
+
+/** Issuing a fresh set invalidates every previous code. */
+export const mfaRegenerateRecoveryRequestSchema = z
+  .object({ password: z.string().min(1).max(200) })
+  .and(secondFactorSchema);
+export type MfaRegenerateRecoveryRequest = z.infer<typeof mfaRegenerateRecoveryRequestSchema>;
 
 export const forgotPasswordRequestSchema = z.object({
   email: emailSchema,
@@ -102,6 +142,12 @@ export const meResponseSchema = z.object({
     lastName: z.string(),
     status: z.enum(['INVITED', 'ACTIVE', 'SUSPENDED', 'DISABLED']),
     mfaEnabled: z.boolean(),
+    /**
+     * How many recovery codes are still unused. Surfaced so the client can warn a member
+     * who is running low — discovering you have none left at the moment your phone dies
+     * is the failure this whole mechanism exists to prevent.
+     */
+    mfaRecoveryCodesRemaining: z.number().int().nonnegative(),
     context: z.object({
       districtId: z.uuid().nullable(),
       rotaryYearId: z.uuid().nullable(),

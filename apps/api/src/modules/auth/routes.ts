@@ -3,6 +3,7 @@ import {
   inviteAcceptRequestSchema,
   loginRequestSchema,
   mfaDisableRequestSchema,
+  mfaRegenerateRecoveryRequestSchema,
   mfaVerifyRequestSchema,
   resetPasswordRequestSchema,
 } from '@dis/contracts';
@@ -96,14 +97,14 @@ authRouter.post(
   '/login',
   loginRateLimit,
   ...withBody(loginRequestSchema, async ({ body, req, res }) => {
-    const user = await service.login(body.email, body.password, body.totpCode);
+    const user = await service.login(body.email, body.password, body.totpCode, body.recoveryCode);
 
     // Session fixation: a session id issued before authentication must not survive it.
     await promisify((cb) => req.session.regenerate(cb));
     req.session.userId = user.id;
     await promisify((cb) => req.session.save(cb));
 
-    res.status(200).json(service.toMeResponse(user));
+    res.status(200).json(await service.toMeResponse(user));
   }),
 );
 
@@ -136,7 +137,7 @@ authRouter.get(
       throw unauthenticated();
     }
 
-    res.status(200).json(service.toMeResponse(user));
+    res.status(200).json(await service.toMeResponse(user));
   }),
 );
 
@@ -186,8 +187,9 @@ authRouter.post(
   '/mfa/verify',
   mfaRateLimit,
   ...withBody(mfaVerifyRequestSchema, async ({ body, req, res }) => {
-    await service.confirmMfaEnrolment(requireSession(req), body.code);
-    res.status(204).end();
+    const recoveryCodes = await service.confirmMfaEnrolment(requireSession(req), body.code);
+    // The only moment these can be shown: only their hashes are kept.
+    res.status(200).json({ data: { recoveryCodes } });
   }),
 );
 
@@ -195,7 +197,24 @@ authRouter.post(
   '/mfa/disable',
   mfaRateLimit,
   ...withBody(mfaDisableRequestSchema, async ({ body, req, res }) => {
-    await service.disableMfa(requireSession(req), body.password, body.code);
+    await service.disableMfa(requireSession(req), body.password, {
+      totpCode: body.code,
+      recoveryCode: body.recoveryCode,
+    });
     res.status(204).end();
+  }),
+);
+
+/** Issues a fresh set, invalidating every previous code. */
+authRouter.post(
+  '/mfa/recovery-codes',
+  mfaRateLimit,
+  ...withBody(mfaRegenerateRecoveryRequestSchema, async ({ body, req, res }) => {
+    const recoveryCodes = await service.regenerateRecoveryCodes(
+      requireSession(req),
+      body.password,
+      { totpCode: body.code, recoveryCode: body.recoveryCode },
+    );
+    res.status(200).json({ data: { recoveryCodes } });
   }),
 );

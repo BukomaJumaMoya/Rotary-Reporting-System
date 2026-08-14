@@ -78,10 +78,44 @@ export async function consumeMfaStep(
 }
 
 export async function disableMfa(userId: string): Promise<void> {
-  await prisma.user.update({
-    where: { id: userId },
-    data: { mfaEnabled: false, mfaSecret: null, mfaLastUsedStep: null },
+  // Recovery codes are meaningless without the factor they recover, and leaving them
+  // would let a stale printout re-enter an account after MFA was deliberately removed.
+  await prisma.$transaction([
+    prisma.mfaRecoveryCode.deleteMany({ where: { userId } }),
+    prisma.user.update({
+      where: { id: userId },
+      data: { mfaEnabled: false, mfaSecret: null, mfaLastUsedStep: null },
+    }),
+  ]);
+}
+
+/** Replaces the whole set: issuing new codes invalidates every previous one. */
+export async function replaceRecoveryCodes(userId: string, hashes: string[]): Promise<void> {
+  await prisma.$transaction([
+    prisma.mfaRecoveryCode.deleteMany({ where: { userId } }),
+    prisma.mfaRecoveryCode.createMany({
+      data: hashes.map((codeHash) => ({ userId, codeHash })),
+    }),
+  ]);
+}
+
+/**
+ * Redeems a recovery code, returning false if it was unknown or already used.
+ *
+ * The `usedAt: null` inside the update is what makes redemption single use under
+ * concurrency: two requests carrying the same code both find the row, and only one
+ * updates it.
+ */
+export async function redeemRecoveryCode(userId: string, codeHash: string): Promise<boolean> {
+  const result = await prisma.mfaRecoveryCode.updateMany({
+    where: { userId, codeHash, usedAt: null },
+    data: { usedAt: new Date() },
   });
+  return result.count === 1;
+}
+
+export async function countUnusedRecoveryCodes(userId: string): Promise<number> {
+  return prisma.mfaRecoveryCode.count({ where: { userId, usedAt: null } });
 }
 
 export async function recordFailedAttempt(
