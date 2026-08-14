@@ -1,1 +1,75 @@
 @import 'tailwindcss';
+
+/**
+ * Rotaract District 9218.
+ *
+ * The palette is Rotaract's own: Cranberry for action, Azure for information. Never the
+ * Rotary wheel — Rotaract has its own mark, and using Rotary's is both wrong and a brand
+ * violation.
+ *
+ * No webfonts. Members report from metered Android data and a font file is 30–100KB
+ * before a single byte of content arrives; the system stack is already on the device and
+ * already rendered.
+ */
+@theme {
+  --color-cranberry-50: #fdf2f7;
+  --color-cranberry-100: #fce7f0;
+  --color-cranberry-200: #fbcfe1;
+  --color-cranberry-500: #d41367;
+  --color-cranberry-600: #b81059;
+  --color-cranberry-700: #950d48;
+
+  --color-azure-50: #eff8ff;
+  --color-azure-100: #dbeefe;
+  --color-azure-500: #0067c8;
+  --color-azure-600: #0055a5;
+  --color-azure-700: #004485;
+
+  /* Warm slate: a neutral that does not fight the cranberry. */
+  --color-ink-50: #f8f8f7;
+  --color-ink-100: #f1f0ef;
+  --color-ink-200: #e4e2e0;
+  --color-ink-300: #c9c6c3;
+  --color-ink-400: #8f8b87;
+  --color-ink-500: #67635f;
+  --color-ink-600: #4a4744;
+  --color-ink-700: #35322f;
+  --color-ink-900: #1c1a19;
+
+  --color-success-100: #dcfce7;
+  --color-success-700: #15803d;
+  --color-warning-100: #fef3c7;
+  --color-warning-700: #b45309;
+  --color-danger-100: #fee2e2;
+  --color-danger-600: #dc2626;
+  --color-danger-700: #b91c1c;
+
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-ink-50 text-ink-900 font-sans antialiased;
+  }
+
+  /*
+   * Visible focus, always. Keyboard navigation is not a niche: it is how anybody using a
+   * screen reader, a switch or a laptop without a mouse operates the whole system.
+   */
+  :focus-visible {
+    @apply outline-cranberry-500 rounded-sm outline-2 outline-offset-2;
+  }
+
+  /* A form control smaller than 16px makes iOS Safari zoom on focus, which throws the
+     layout of every screen a member fills in one-handed. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

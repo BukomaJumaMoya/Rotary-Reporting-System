@@ -1,27 +1,78 @@
-import { healthResponseSchema } from '@dis/contracts';
+import { useEffect } from 'react';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import type { ReactNode } from 'react';
+import { AppShell } from './components/layout/AppShell';
+import { SkeletonList, ToastProvider } from './components/ui';
+import { setUnauthenticatedHandler } from './lib/api';
+import { useAuth, useClearAuth } from './features/auth/useAuth';
+import { LoginPage } from './features/auth/LoginPage';
+import {
+  AcceptInvitePage,
+  ForgotPasswordPage,
+  ResetPasswordPage,
+} from './features/auth/PasswordPages';
+import { DashboardPage } from './features/dashboard/DashboardPage';
 
-// Proves the shared contracts package resolves and executes in the browser build.
-// Replaced by real feature code from M1 onwards; there is nothing else to this page.
-const contractsWired = healthResponseSchema.safeParse({ status: 'ok' }).success;
+/**
+ * Everything behind `RequireAuth` needs a session. The guard redirects rather than
+ * rendering an error, because "you are not signed in" is not a failure — it is the
+ * expected state of a browser that has been closed since yesterday.
+ */
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { isLoading, isSignedIn } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="p-6">
+        <SkeletonList rows={4} />
+      </div>
+    );
+  }
+  if (!isSignedIn) return <Navigate to="/login" replace />;
+
+  return <AppShell>{children}</AppShell>;
+}
+
+/**
+ * Hooks the API client's 401 handling to the router.
+ *
+ * Registered here rather than imported into `lib/api`, so the fetch wrapper stays free of
+ * navigation and can be used from anywhere — including a test.
+ */
+function useSessionExpiryRedirect(): void {
+  const navigate = useNavigate();
+  const clearAuth = useClearAuth();
+
+  useEffect(() => {
+    setUnauthenticatedHandler(() => {
+      clearAuth();
+      navigate('/login', { replace: true });
+    });
+  }, [navigate, clearAuth]);
+}
 
 export function App() {
+  useSessionExpiryRedirect();
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-        <p className="text-xs font-semibold tracking-widest text-slate-500 uppercase">
-          Rotaract District 9218
-        </p>
-        <h1 className="mt-2 text-2xl font-bold text-slate-900">District Information System</h1>
-        <p className="mt-4 text-sm text-slate-600">
-          Scaffold only — M0 foundations. Authentication arrives in the next session.
-        </p>
-        <dl className="mt-6 space-y-1 text-sm">
-          <div className="flex justify-between">
-            <dt className="text-slate-500">Shared contracts</dt>
-            <dd className="font-medium text-slate-900">{contractsWired ? 'wired' : 'broken'}</dd>
-          </div>
-        </dl>
-      </div>
-    </main>
+    <ToastProvider>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot" element={<ForgotPasswordPage />} />
+        <Route path="/reset/:token" element={<ResetPasswordPage />} />
+        <Route path="/invite/:token" element={<AcceptInvitePage />} />
+
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <DashboardPage />
+            </RequireAuth>
+          }
+        />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </ToastProvider>
   );
 }
