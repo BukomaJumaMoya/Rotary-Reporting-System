@@ -69,7 +69,10 @@ Handlers never read `districtId` or `rotaryYearId` from user input. Both come fr
 | `POST` | `/auth/password/forgot` | Always `204`, regardless of whether the email exists |
 | `POST` | `/auth/password/reset` | Consumes token |
 | `POST` | `/auth/invite/accept` | Sets password, records consent |
-| `POST` | `/auth/mfa/enrol` · `/auth/mfa/verify` · `/auth/mfa/disable` | Authenticated; recommended for district-scope roles |
+| `POST` | `/auth/mfa/enrol` | Authenticated. Stages a secret, returns the `otpauth://` URI. Does **not** enable MFA. |
+| `POST` | `/auth/mfa/verify` | Confirms enrolment with a code, enables MFA, returns the recovery codes **once** |
+| `POST` | `/auth/mfa/disable` | Password + a second factor (code or recovery code) |
+| `POST` | `/auth/mfa/recovery-codes` | Password + a second factor. Issues a fresh set, invalidating the old. |
 
 `GET /auth/me` is the client's source of truth for what to render. It must never be the security boundary — every endpoint re-checks server-side.
 
@@ -86,6 +89,14 @@ A correct password with no code is not a failed attempt — counting it would lo
 Enrolment stores the secret but leaves MFA **off** until a code proves the authenticator works, so a member who loses the QR code mid-setup is not locked out of their own account. Disabling requires the password *and* a current code: a hijacked session alone must not be able to strip the second factor. A member who has lost their authenticator entirely needs an administrator — that path arrives with permissions in M1.
 
 Codes are single use. A code is valid for its 30-second step plus one step either way for clock drift, and `users.mfa_last_used_step` stops it being replayed inside that window.
+
+### Recovery codes
+
+Ten single-use codes are issued when enrolment is confirmed, shown once, and stored only as hashes. One may be sent as `recoveryCode` instead of `totpCode` wherever a second factor is required — including `/auth/mfa/disable`, because requiring the authenticator in order to remove the authenticator is exactly the trap that leaves a member locked out.
+
+`GET /auth/me` reports `mfaRecoveryCodesRemaining` so the client can warn a member who is running low. Disabling MFA deletes the remaining codes with it: a stale printout must not re-enter an account after the factor was deliberately removed.
+
+A member who has lost both the authenticator *and* the codes needs an administrator to clear MFA on their behalf. That endpoint requires permissions and arrives in M1.
 
 **Auth error codes:** `INVALID_CREDENTIALS` · `ACCOUNT_LOCKED` (423, with `retryAfterSeconds`) · `ACCOUNT_NOT_ACTIVE` · `RATE_LIMITED` (429) · `TOKEN_INVALID` · `MFA_REQUIRED` · `MFA_INVALID` · `MFA_ALREADY_ENABLED` · `MFA_NOT_ENROLLED`
 

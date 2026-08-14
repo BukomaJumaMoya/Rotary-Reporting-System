@@ -355,6 +355,35 @@ Here the rubric is rows. The PIME Chair authors it in the interface, previews it
 
 ---
 
+## 6a. Derived state, and the tables added during implementation
+
+`schema.sql` is at **v1.6**; its header logs every amendment since the v1.0 baseline and why. Two structural changes are worth knowing before reading any query.
+
+**Derived state is a view (ADR-012).** Nothing stores a number that can be computed from other rows:
+
+| View | Replaces | Answers |
+|---|---|---|
+| `club_rosters` (materialised) | — | current membership, from the event log |
+| `dues_invoice_states` | `dues_invoices.status` | paid / partial / unpaid / waived, and the outstanding balance |
+| `member_dues_states` | `member_dues.amount_paid` | member dues totals from the payment log |
+| `club_assessment_states` | `total_score`, `max_possible`, `rank_in_tier` | scorecard totals, percentage and tier ranking |
+| `framework_point_totals` | — | whether a rubric's declared total, parameter weights and criterion points agree |
+
+The assessment one matters most: ranking is computed from the same numbers it ranks, so standings can never disagree with the scorecard they link to. A stored total could also only ever answer "now", where the engine needs "as at the close of the March period".
+
+**Tables added during implementation.**
+
+| Table | Why |
+|---|---|
+| `session` | server-side sessions (ADR-003), owned by Prisma so migrations do not drop it |
+| `mfa_recovery_codes` | a lost phone must not mean a locked-out officer |
+| `member_dues_payments` | member cash collection had only a running total, no audit trail |
+| `document_types`, `social_platforms` | lookup tables replacing free text that scoring rules string-match |
+
+**Guards.** `membership_events` and `audit_log` are append-only, enforced by triggers raising `DIS01` and `DIS02`; a `person_visibility` row is created by trigger on every person insert, because a column default cannot apply to a row that does not exist. Every guard has a check in `apps/api/prisma/checks/invariants.sql`.
+
+---
+
 ## 7. Conventions and pitfalls
 
 | Convention | Reason |

@@ -92,6 +92,19 @@ Each decision is recorded with its reasoning, because in eighteen months you wil
 **Decision.** `district_id` on every tenant-scoped table from the first migration, enforced by a data access layer that requires an explicit district context. Postgres Row-Level Security as a defence-in-depth backstop.
 **Why.** This is the decision that cannot be cheaply reversed. Retrofitting tenancy means touching every table, every query and every test. Adding it now costs one column and one middleware. **But tenant *features* — per-district branding, tenant admin consoles, configurable everything — are explicitly deferred until a second district actually signs.** Isolation now; features never, until paid for.
 
+### ADR-013 — Application-level encryption for secrets, keys in the platform store
+**Decision.** Values that the database must hold but must not yield if it leaks are encrypted by the application before they are stored, with AES-256-GCM (`apps/api/src/platform/crypto.ts`). Today that is TOTP shared secrets; document storage keys and any future API credentials belong here too. Keys are supplied as `ENCRYPTION_KEYS`, a comma-separated list of `id:base64key` pairs of which the first is active.
+
+**Why.** "Encrypted at rest" means nothing without saying where the key is. Disk encryption on a managed database protects against a stolen disk and nothing else — a leaked dump, a stolen backup, or read-only SQL injection all hand over plaintext. The key therefore lives in the hosting platform's secret store: not in the database, not in the repository, and **not in the same backup as the ciphertext**. That separation is the entire control.
+
+A second factor stored in clear beside the password hash defeats the purpose of having one — an attacker with the dump has the account the moment the password is guessed or reused.
+
+**How rotation works.** Every ciphertext names the key that produced it (`keyId.iv.ciphertext.tag`). To rotate: prepend a new pair, deploy, re-encrypt at leisure, then drop the old pair. A value encrypted under a key that has been retired too early fails loudly rather than returning rubbish.
+
+**Additional authenticated data** binds each ciphertext to where it belongs — an MFA secret to its user id — so a row copied onto another account fails to decrypt instead of granting that member's second factor.
+
+**Consequence.** Losing every copy of a key means the affected members re-enrol. That is acceptable precisely because this mechanism holds second factors and recoverable credentials, never the only copy of member records. Anything whose loss would be unrecoverable must not be encrypted this way without a key escrow decision first.
+
 ### ADR-012 — Where an invariant lives
 **Decision.** Every rule the data must obey is placed by a three-tier test, applied in order:
 

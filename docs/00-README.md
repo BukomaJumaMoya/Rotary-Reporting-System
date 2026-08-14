@@ -1,7 +1,7 @@
 # Rotaract District Information System (DIS)
 ### Technical documentation package — District 9218, RY 2027–2028
 
-**Status:** Design baseline v1.0
+**Status:** Design baseline v1.0 · schema at v1.6 · **in build, M0 sessions 1–3 complete**
 **Prepared:** August 2026
 **Target launch:** 1 July 2027 (district charter date)
 **Ownership:** District property. Repository to be held under a district-controlled GitHub organisation from first commit.
@@ -22,11 +22,16 @@ A complete design baseline sufficient to begin implementation immediately, writt
 | 05 | `05-API-Spec.md` | REST API surface, conventions, error model, authorisation matrix |
 | 06 | `06-Assessment-Engine.md` | The scoring rules engine — design, DSL, metric resolver registry |
 | 07 | `07-Roadmap.md` | Build sequence, milestones, definition of done, pilot plan |
+| 08 | `08-Incumbent-Assessment.md` | What the predecessor system does, and why several rules exist |
+| 09 | `09-ClaudeCode-M0-Sessions.md` | Session-by-session prompts for M0, with progress |
+| 10 | `10-Build-Log.md` | **What has actually been built** — state, decisions, traps, what is stubbed |
 | — | `CLAUDE.md` | Project context file for Claude Code — drop at repository root |
 
 ## Reading order
 
-**If you are starting to build:** `CLAUDE.md` → `02-Architecture.md` → `schema.sql` → `07-Roadmap.md`.
+**If you are picking up the build:** `CLAUDE.md` → `10-Build-Log.md` → the session prompt in `09-ClaudeCode-M0-Sessions.md`. The design documents describe the intended system; `10-Build-Log.md` describes the one that exists.
+
+**If you are starting from scratch:** `CLAUDE.md` → `02-Architecture.md` → `schema.sql` → `07-Roadmap.md`.
 
 **If you are presenting to the district:** `01-SRS.md` §1–3 and `07-Roadmap.md` only. Nobody in a district meeting wants to see a DDL.
 

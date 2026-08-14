@@ -12,6 +12,8 @@ Launch: **1 July 2027**, the district's charter date. Built by one part-time dev
 
 Full design documentation is in `docs/`. Read `docs/00-README.md` first. When a decision here conflicts with `docs/`, `docs/` wins and this file should be updated.
 
+**`docs/10-Build-Log.md` records what has actually been built, the decisions taken during implementation, and what is deliberately unfinished. Read it before writing code** — the other documents describe the design, not the current state.
+
 ## Stack
 
 PostgreSQL 16 · Node 20 · Express 5 · React 18 + Vite · TypeScript strict · Prisma (CRUD + migrations) · raw SQL via `$queryRaw` (analytics only) · Zod (shared contracts) · pg-boss (jobs) · S3-compatible storage + `sharp` · session cookies in Postgres · Argon2id · TanStack Query · Tailwind.
@@ -47,7 +49,13 @@ Every design decision derives from these. If a change conflicts with one, the ch
 
 **Assessment.** No SQL in `assessment_criteria.rule` — rules name a resolver from the code registry and supply config. Resolvers are pure: input `(ctx, config)`, output `{ value, evidence }`, no writes, no side effects. Every score persists its evidence.
 
+**Where an invariant lives (ADR-012).** Declarative constraints first — `CHECK`, `UNIQUE`, FK, partial index. **Derived state is a view, never a stored column maintained by a trigger.** Triggers only as guards, each raising a stable `SQLSTATE` mapped to a domain code in `platform/errors.ts`, listed in the ADR's registry, and exercised by `apps/api/prisma/checks/invariants.sql`. Adding a guard without a check there is incomplete work.
+
+**Prisma owns anything Prisma can represent.** An index or table it *could* express but does not know about gets proposed for dropping on the next `migrate dev`. `prisma migrate diff --from-migrations --to-schema` must always report an empty migration.
+
 **Money** is `NUMERIC`, never `FLOAT`. **Timestamps** are `TIMESTAMPTZ`, never `TIMESTAMP`.
+
+**Secrets** that the database must hold but must not yield — currently TOTP secrets — are encrypted with `platform/crypto.ts` before they are stored (ADR-013). Keys live in the platform secret store, never beside the data.
 
 **IDs** are UUIDs, generated client-side for offline-created records so retry is idempotent.
 
@@ -80,7 +88,9 @@ Modules talk through exported service functions. No module imports another's rep
 
 - `snake_case` in the database, `camelCase` in TypeScript. Prisma maps between them.
 - Zod schemas in `packages/contracts` are the single source of truth for request shapes. Server validates with them; client derives form types from them.
-- One error shape: `{ error: { code, message, details } }`. Domain errors use stable codes (`PERIOD_CLOSED`, `YEAR_LOCKED`, `FRAMEWORK_LOCKED`, `TIER_NOT_APPLICABLE`).
+- One error shape: `{ error: { code, message, details } }`. Domain errors use stable codes (`PERIOD_CLOSED`, `YEAR_LOCKED`, `FRAMEWORK_LOCKED`, `TIER_NOT_APPLICABLE`) declared in `platform/errors.ts`.
+- Handlers take a **typed body**: `...withBody(schema, async ({ body, req, res }) => …)`. Express types `req.body` as `any`, so reading it directly is unchecked and a renamed contract field would compile.
+- Tests read responses **through the contract schemas** (`errorBody`, `meBody` in `src/test/helpers.ts`) rather than casting, so every assertion also proves the envelope shape.
 - Never leak stack traces, SQL or internal IDs to a client.
 - Soft delete via `deleted_at` on governed entities. Every query filters it.
 - Raw SQL lives **only** in `modules/assessment/resolvers/`. Everywhere else uses Prisma.
@@ -127,13 +137,19 @@ CRUD does not need exhaustive coverage. Do not chase a coverage number.
 
 ```bash
 npm run dev              # api + web
+npm run db:generate      # prisma generate — after ANY schema.prisma change
 npm run db:migrate       # prisma migrate dev
-npm run db:seed          # reset to realistic fixtures
+npm run db:seed          # reset to realistic fixtures        (session 6)
 npm run test             # vitest — needs PostgreSQL and TEST_DATABASE_URL
 npm run typecheck
 npm run lint
-npm run worker           # pg-boss worker process
+npm run worker           # pg-boss worker process             (not built yet)
 ```
+
+**PostgreSQL runs locally as the `dis-postgres` service on port 5433** (data directory
+`C:\Users\HP\.dis-pgdata`), separate from the install on 5432. Databases:
+`rotaract_dis_dev`, `rotaract_dis_dev_shadow`, `dis_test`, `dis_schema_check`.
+See `docs/10-Build-Log.md` §2.
 
 **Tests need a database.** `TEST_DATABASE_URL` must name a database containing "test"; the
 suite truncates every table between cases and refuses to run otherwise.
@@ -148,8 +164,15 @@ apply to `sharp` when image processing lands.
 
 ## Current phase
 
-**M0 — Foundations.** Repo setup, schema migration, auth, request context, audit middleware, CI.
+**M0 — Foundations.** Sessions 1–3 are done: monorepo and CI, schema translated and
+migrated (`docs/schema.sql` is at v1.6), session authentication with lockout, mail
+delivery, and TOTP two-factor with encrypted secrets and recovery codes.
 
-Next: M1 governance core (positions, appointments, permission resolution).
+**Next: session 4 — request context and scoped data access.** Every feature afterwards
+inherits it, so it is built before any feature. `GET /auth/me` currently returns a stub
+context and permissions do not exist yet.
 
-See `docs/07-Roadmap.md` for the full milestone plan and definitions of done.
+Then session 5 (audit log, no-PII harness) and session 6 (seed, staging deploy).
+
+See `docs/09-ClaudeCode-M0-Sessions.md` for the session prompts, `docs/10-Build-Log.md`
+for current state, and `docs/07-Roadmap.md` for milestones beyond M0.

@@ -4,6 +4,31 @@ Six sessions that take you from an empty repository to a deployed staging enviro
 
 **Paste each prompt as the first message of a fresh Claude Code session.** Do not continue one session into the next — a session carrying two hours of unrelated context will start ignoring your axioms.
 
+---
+
+## Progress
+
+| Session | State | What actually happened |
+|---|---|---|
+| 1 | **done** | As specified. CI green. |
+| 2 | **done** | Translation surfaced real defects in the v1.0 baseline; `schema.sql` is now **v1.6** and ADR-012 was written. See below. |
+| 3 | **done** | Auth as specified, **plus** mail delivery, TOTP MFA, encrypted secrets and recovery codes. |
+| 4 | **next** | — |
+| 5 | pending | The test database harness already exists (session 3 built it). |
+| 6 | pending | Seed must also populate `document_types` and `social_platforms`. |
+
+`docs/10-Build-Log.md` is the current-state record: environment, decisions, what is
+stubbed, and the traps. Read it before starting a session.
+
+**Sessions 2 and 3 diverged from these prompts in ways worth knowing.** Session 2 found
+that `club_rosters` had its superseded-event predicate inverted — every correction was
+discarded while the row it corrected kept counting — and that scores could exceed the
+criterion they were awarded against. Session 3 was extended beyond its six endpoints
+because the password-reset flow stored tokens nobody could receive, and because MFA
+without encryption or recovery codes is a liability rather than a feature.
+
+---
+
 **Before session 1:**
 - GitHub organisation created for the district, repo inside it, second admin added
 - `docs/` and `CLAUDE.md` committed at the root
@@ -178,10 +203,18 @@ Plan first.
 **The most important session in M0.** Every feature you build afterwards inherits this. Get it wrong and you will be retrofitting scoping into forty endpoints.
 
 ```
-Read CLAUDE.md (axioms 1, 2, 6) and docs/02-Architecture.md §4.1 and §4.2
-before starting.
+Read CLAUDE.md, docs/10-Build-Log.md, and docs/02-Architecture.md §4.1, §4.2
+and ADR-012 before starting.
 
 Build the request context and scoped data access layer.
+
+Context that has changed since this prompt was written: authentication,
+sessions and the error envelope already exist (apps/api/src/platform,
+apps/api/src/modules/auth). GET /auth/me currently returns a STUB context —
+nulls and empty arrays — and this session fills it. Handlers take a typed
+body via withBody(); tests run against a real PostgreSQL (dis_test) with
+helpers in src/test/. Derived state is a view, never a stored column
+(ADR-012), so the data access layer must scope views as well as tables.
 
 1. RequestContext type in packages/contracts:
      { userId, personId, districtId, rotaryYearId,
@@ -256,6 +289,19 @@ Part 2 — The no-PII test harness. This one is mandatory (CLAUDE.md, Testing §
 - Fail the build if a new route returns personal data unauthenticated.
 
 Part 3 — Wire both into CI.
+
+The test harness already exists: vitest runs against a real PostgreSQL
+(TEST_DATABASE_URL, dis_test), CI has a postgres:17 service, and
+src/test/helpers.ts provides resetDatabase and factories. Do not rebuild it.
+
+Also port apps/api/prisma/checks/invariants.sql — 37 checks that attempt each
+database guard violation and assert it fails — into a vitest suite, so ADR-012
+conformance runs in CI rather than by hand.
+
+Note for the PII walker: GET /api/v1/admin/health is the only unauthenticated
+route today. Everything under /auth returns 401 or 204 without a session,
+except login and the token endpoints, which take credentials rather than
+returning data.
 ```
 
 This harness exists because the predecessor system published four thousand members' phone numbers, emails, genders and residential areas on an unauthenticated page. Writing it now, with three routes, means it protects you automatically for the next eleven months.
@@ -287,9 +333,17 @@ dataset:
   DRR, DES, PIME Chair, District Treasurer, 3 ADRRs, 2 assessors
 - Appointments wiring those users to positions and scopes for 2027-28
 - Activity types covering every category in docs/03-Data-Model.md §5
-- Areas of focus, finance categories, notification templates
+- Areas of focus, finance categories
+- document_types and social_platforms — these are lookup tables added during
+  implementation and are currently EMPTY; documents and social accounts
+  reference them by foreign key, so nothing can be created without them
+- notification_templates already has AUTH_PASSWORD_RESET and AUTH_INVITE from
+  a data migration (authentication depends on them). Do not duplicate those;
+  add any others the seed needs with ON CONFLICT DO NOTHING semantics.
 
 Make it idempotent and rerunnable: npm run db:seed resets and reseeds.
+Use issueInvite() from modules/auth/service.ts for the seeded officer
+accounts rather than inventing a second invitation path.
 
 Part 2 — Deploy to staging:
 - Dockerfile for apps/api, static build for apps/web
@@ -322,6 +376,18 @@ Never put real member data in seeds or on your laptop. Generate it.
 - [ ] `npm run db:seed` gives a realistic dataset in one command
 - [ ] Staging deploying automatically from main
 - [ ] Repository under the district organisation with two admins
+
+**Done so far:** CI green including a PostgreSQL service; schema migrated and verified by
+building it twice — from migrations and from `schema.sql` — and comparing catalogs;
+`prisma migrate diff` reports no drift; 37 database invariants pass; login, lockout,
+password reset by email, invitations, and two-factor sign-in all work end to end.
+
+**Still open on this list:** the appointment-derived context (session 4), the club
+secretary 404 and `YEAR_LOCKED` tests (session 4), the audit log and PII harness
+(session 5), the seed and staging deployment (session 6), and moving the repository to a
+district-owned organisation — it is currently on a personal account, which ADR-011 and
+`docs/08-Incumbent-Assessment.md` both say is the specific failure this project exists to
+correct.
 
 **Next:** M1 governance core — positions and appointments CRUD, committees with sub-committees, and the year rollover job with dry-run. See `docs/07-Roadmap.md`.
 
