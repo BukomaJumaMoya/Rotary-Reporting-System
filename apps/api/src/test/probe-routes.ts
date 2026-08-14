@@ -1,3 +1,4 @@
+import { orgScopes } from '@dis/contracts';
 import { Router, type Express } from 'express';
 import { z } from 'zod';
 import {
@@ -45,6 +46,8 @@ probeRouter.get('/context', (req, res) => {
       scopes: {
         clubIds: [...ctx.scopes.clubIds].sort(),
         clusterIds: [...ctx.scopes.clusterIds].sort(),
+        regionIds: [...ctx.scopes.regionIds].sort(),
+        committeeIds: [...ctx.scopes.committeeIds].sort(),
         isDistrictWide: ctx.scopes.isDistrictWide,
       },
     },
@@ -112,6 +115,30 @@ probeRouter.get(
 
     requireScope(ctx, { scopeType: activity.hostScopeType, scopeId: activity.hostScopeId });
     res.status(200).json({ data: { id: activity.id, title: activity.title } });
+  }),
+);
+
+/**
+ * A scope check against an arbitrary org unit — the shape a documents or budgets handler
+ * takes, where the owner may be a club, a cluster, a region, a committee or the district.
+ */
+probeRouter.get(
+  '/scope/:scopeType/:scopeId',
+  requirePermission('activity:read:club'),
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    const rawType = req.params['scopeType'];
+    const rawId = req.params['scopeId'];
+
+    const parsed = z.enum(orgScopes).safeParse(typeof rawType === 'string' ? rawType : '');
+    if (!parsed.success) throw notFound();
+
+    requireScope(ctx, {
+      scopeType: parsed.data,
+      scopeId: typeof rawId === 'string' ? rawId : null,
+    });
+    await Promise.resolve();
+    res.status(200).json({ data: { inScope: true } });
   }),
 );
 

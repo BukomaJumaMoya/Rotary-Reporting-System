@@ -126,27 +126,36 @@ export function requirePermission(code: string): RequestHandler {
   };
 }
 
-/** True when the caller's scope covers this org unit. */
+/**
+ * True when the caller's scope covers this org unit.
+ *
+ * Every one of the five is answered, because records are owned at every one of them —
+ * `documents.owner_scope_type` and `activities.host_scope_type` take a REGION or a
+ * COMMITTEE as readily as a CLUB.
+ *
+ * Downward only. A cluster appointment covers that cluster's clubs; a club appointment
+ * covers nothing above it. That asymmetry is the whole point of a scope: a club
+ * secretary holding `activity:create:club` may create activities for one club.
+ */
 export function hasScope(
   ctx: RequestContext,
   target: { scopeType: OrgScopeValue; scopeId: string | null },
 ): boolean {
   if (ctx.scopes.isDistrictWide) return true;
+  if (target.scopeType === 'DISTRICT') return false; // only a district-wide caller, above
+  if (target.scopeId === null) return false;
 
   switch (target.scopeType) {
-    case 'DISTRICT':
-      // Only a district-wide caller, handled above.
-      return false;
     case 'CLUB':
-      return target.scopeId !== null && ctx.scopes.clubIds.includes(target.scopeId);
+      return ctx.scopes.clubIds.includes(target.scopeId);
     case 'CLUSTER':
-      return target.scopeId !== null && ctx.scopes.clusterIds.includes(target.scopeId);
+      return ctx.scopes.clusterIds.includes(target.scopeId);
     case 'REGION':
+      return ctx.scopes.regionIds.includes(target.scopeId);
     case 'COMMITTEE':
-      // A region or committee is addressed through the appointment that names it, and
-      // neither is expanded into the scope arrays. Nothing needs this yet; when M1 gives
-      // committees records of their own, this grows a case rather than a caller.
-      return false;
+      // Committees are orthogonal to the geography: serving on one grants that
+      // committee's records and nothing under it.
+      return ctx.scopes.committeeIds.includes(target.scopeId);
   }
 }
 
@@ -193,11 +202,15 @@ export function clubScopeWhere<C extends string>(
 export function serialiseScopes(scopes: RequestScopes): {
   clubIds: string[];
   clusterIds: string[];
+  regionIds: string[];
+  committeeIds: string[];
   isDistrictWide: boolean;
 } {
   return {
     clubIds: [...scopes.clubIds],
     clusterIds: [...scopes.clusterIds],
+    regionIds: [...scopes.regionIds],
+    committeeIds: [...scopes.committeeIds],
     isDistrictWide: scopes.isDistrictWide,
   };
 }

@@ -45,7 +45,13 @@ function contextFor(org: OrgFixture, overrides: Partial<RequestContext> = {}): R
     districtId: org.districtId,
     rotaryYearId: org.currentYearId,
     permissions: new Set<string>(),
-    scopes: { clubIds: [], clusterIds: [], isDistrictWide: true },
+    scopes: {
+      clubIds: [],
+      clusterIds: [],
+      regionIds: [],
+      committeeIds: [],
+      isDistrictWide: true,
+    },
     isYearWritable: true,
     ...overrides,
   };
@@ -326,6 +332,101 @@ describe('tables with no scope column of their own', () => {
     // The parent's deleted_at reaches the child through the same chain, so an attendee
     // list or a photo gallery cannot outlive the activity it belonged to.
     expect(await db(contextFor(org)).activityMedia.findMany()).toEqual([]);
+  });
+
+  it('scopes the standings view by year, through the period', async () => {
+    const org = await createOrg();
+    const lastYear = await seedAssessment(org, org.previousYearId, 'AUG-26');
+    const thisYear = await seedAssessment(org, org.currentYearId, 'AUG-27');
+
+    const states = await db(contextFor(org)).clubAssessmentState.findMany({
+      select: { clubAssessmentId: true },
+    });
+
+    // club_assessment_states is a VIEW. It carries a district and a period but no year,
+    // and Prisma views DO support relation fields — so it declares `period` and reaches
+    // the year exactly as the table does. Standings for the wrong year are the same
+    // failure as scores for the wrong year: an award argument.
+    expect(states.map((s) => s.clubAssessmentId)).toEqual([thisYear.assessment.id]);
+    expect(states.map((s) => s.clubAssessmentId)).not.toContain(lastYear.assessment.id);
+  });
+
+  it('refuses to create a child under a parent the caller cannot see', async () => {
+    const mine = await createOrg();
+    const theirs = await createOrg();
+    const foreign = await seedAssessment(theirs, theirs.currentYearId, 'AUG');
+    const ours = await seedAssessment(mine, mine.currentYearId, 'SEP');
+
+    // Exactly the handler that writes itself: POST /assessments/:id/comments, with the
+    // id straight off the URL. There is nothing on the comment to stamp, so the layer
+    // goes and looks at the parent.
+    const write = db(contextFor(mine)).assessmentComment.create({
+      data: {
+        clubAssessmentId: foreign.assessment.id,
+        authorUserId: ours.club.id,
+        body: 'Filed under somebody else’s assessment',
+      },
+    });
+
+    await expect(write).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(await unscopedPrisma.assessmentComment.count()).toBe(0);
+  });
+
+  it('accepts a create under a parent the caller can see', async () => {
+    const org = await createOrg();
+    const ours = await seedAssessment(org, org.currentYearId, 'SEP');
+    const user = await createUser();
+
+    const created = await db(contextFor(org)).assessmentComment.create({
+      data: {
+        clubAssessmentId: ours.assessment.id,
+        authorUserId: user.userId,
+        body: 'Good turnout this month',
+      },
+    });
+
+    expect(created.clubAssessmentId).toBe(ours.assessment.id);
+  });
+
+  it('sees through a connect as well as a scalar foreign key', async () => {
+    const mine = await createOrg();
+    const theirs = await createOrg();
+    const foreign = await seedAssessment(theirs, theirs.currentYearId, 'AUG');
+    const user = await createUser();
+
+    // Prisma accepts either spelling; a check that understood only one would be a check
+    // with a documented way around it.
+    const write = db(contextFor(mine)).assessmentComment.create({
+      data: {
+        clubAssessment: { connect: { id: foreign.assessment.id } },
+        author: { connect: { id: user.userId } },
+        body: 'Connected instead of assigned',
+      },
+    });
+
+    await expect(write).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('refuses to re-point a child at a parent in another district', async () => {
+    const mine = await createOrg();
+    const theirs = await createOrg();
+    const foreign = await seedAssessment(theirs, theirs.currentYearId, 'AUG');
+    const ours = await seedAssessment(mine, mine.currentYearId, 'SEP');
+    const user = await createUser();
+
+    const comment = await unscopedPrisma.assessmentComment.create({
+      data: { clubAssessmentId: ours.assessment.id, authorUserId: user.userId, body: 'Ours' },
+      select: { id: true },
+    });
+
+    // Re-pointing the foreign key is how a row leaves the district without any scoped
+    // column changing, so updates are checked as well as creates.
+    const move = db(contextFor(mine)).assessmentComment.updateMany({
+      where: { id: comment.id },
+      data: { clubAssessmentId: foreign.assessment.id },
+    });
+
+    await expect(move).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
   it('is a compile error to reach a child table without a context', () => {

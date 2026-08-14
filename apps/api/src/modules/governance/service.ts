@@ -3,6 +3,7 @@ import {
   type AppointmentSummary,
   type OrgScopeValue,
   type RequestContext,
+  type RequestScopes,
 } from '@dis/contracts';
 import { insufficientScope, notFound } from '../../platform/errors.js';
 import * as repository from './repository.js';
@@ -185,12 +186,13 @@ async function resolveYear(input: {
 async function resolveScopes(
   held: ActiveAppointment[],
   appointmentYearId: string,
-): Promise<{ clubIds: string[]; clusterIds: string[]; isDistrictWide: boolean }> {
+): Promise<RequestScopes> {
   const isDistrictWide = held.some((a) => a.scopeType === 'DISTRICT');
 
   const directClubIds = scopeIdsOfType(held, 'CLUB');
   const directClusterIds = scopeIdsOfType(held, 'CLUSTER');
   const regionIds = scopeIdsOfType(held, 'REGION');
+  const committeeIds = scopeIdsOfType(held, 'COMMITTEE');
 
   const regionClusterIds = await repository.findClusterIdsInRegions(regionIds, appointmentYearId);
   const clusterIds = [...new Set([...directClusterIds, ...regionClusterIds])];
@@ -201,6 +203,11 @@ async function resolveScopes(
     // that is a boolean is work done 140 times to no purpose.
     clubIds: [...new Set([...directClubIds, ...clusterClubIds])].sort(),
     clusterIds: clusterIds.sort(),
+    // The region and committee an appointment names are kept as well as expanded. An
+    // LDRR is responsible for their region's clubs AND for the region itself, and
+    // documents are owned at both.
+    regionIds: [...new Set(regionIds)].sort(),
+    committeeIds: [...new Set(committeeIds)].sort(),
     isDistrictWide,
   };
 }

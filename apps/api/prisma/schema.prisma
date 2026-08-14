@@ -1258,6 +1258,8 @@ model AssessmentPeriod {
   framework           AssessmentFramework  @relation(fields: [frameworkId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   clubAssessments     ClubAssessment[]
   assessorAssignments AssessorAssignment[]
+  /// Back-relation for the club_assessment_states view. Prisma requires both sides.
+  assessmentStates    ClubAssessmentState[]
 
   @@unique([frameworkId, label])
   @@map("assessment_periods")
@@ -1671,6 +1673,12 @@ view ClubAssessmentState {
   percentage       Decimal?         @db.Decimal(6, 2)
   scoredCriteria   Int              @map("scored_criteria")
   rankInTier       BigInt           @map("rank_in_tier")
+
+  /// Declared so the scoped data access layer can reach the Rotary Year, which lives
+  /// on the period's framework and nowhere on this view. Without it, standings are
+  /// scoped by district only and a current-year read returns every year assessed.
+  /// Prisma emits no foreign key for a view relation, exactly as for club_rosters.
+  period AssessmentPeriod @relation(fields: [periodId], references: [id])
 
   @@map("club_assessment_states")
 }

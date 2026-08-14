@@ -33,8 +33,14 @@ export interface RequestContext {
 /**
  * Which records the caller may touch, as opposed to which actions they may perform.
  *
- * `clubIds` is already expanded: a cluster appointment contributes that cluster's clubs
- * and a region appointment contributes the clubs of every cluster in it, so a
+ * One array per org unit an appointment can name, because records are owned at every one
+ * of them: `documents.owner_scope_type`, `activities.host_scope_type`,
+ * `budgets.owner_scope_type` and `goals.owner_scope_type` all take a REGION or a
+ * COMMITTEE as readily as a CLUB. A scope check that could not answer for a region would
+ * refuse an LDRR their own region's documents.
+ *
+ * The arrays are already EXPANDED DOWNWARDS: a region appointment contributes that
+ * region's clusters and their clubs, a cluster appointment contributes its clubs. So a
  * record-level check is one array lookup rather than a graph walk per request.
  *
  * `isDistrictWide` is a flag rather than "every club id" deliberately — enumerating 140
@@ -44,6 +50,8 @@ export interface RequestContext {
 export interface RequestScopes {
   readonly clubIds: readonly string[];
   readonly clusterIds: readonly string[];
+  readonly regionIds: readonly string[];
+  readonly committeeIds: readonly string[];
   readonly isDistrictWide: boolean;
 }
 

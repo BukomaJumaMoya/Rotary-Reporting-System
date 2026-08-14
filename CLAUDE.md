@@ -41,7 +41,7 @@ Every design decision derives from these. If a change conflicts with one, the ch
 
 Scoped tables are reachable **only** through `db(ctx)` (`platform/db.ts`), which injects district, year and `deletedAt: null`. They are absent from the type of the plain `prisma` export, so `prisma.activity` does not compile. Scoped delegates offer no `findUnique`, `update`, `delete` or `upsert` — a unique `where` cannot carry the filter; use `findFirst({ where: { id } })`, `updateMany`, `deleteMany`, and treat null or a zero count as the 404. Creates do not take `districtId`/`rotaryYearId`; the layer stamps them. `db(ctx).$transaction(cb)` is scoped too; only the callback form exists.
 
-**Every** new table needs a row in `platform/scope.ts` — a scope rule, a `via` naming the parent that carries one (`assessment_scores` has no `district_id`; it inherits its `club_assessment`'s), or a reason in `UNSCOPED_BY_DESIGN`. `scope-registry.test.ts` fails the build otherwise. A table with no scope column is the easier mistake, not the safer one. `via` cannot check a create — read the parent through `db(ctx)` first.
+**Every** new table needs a row in `platform/scope.ts` — a scope rule, a `via` naming the parent that carries one (`assessment_scores` has no `district_id`; it inherits its `club_assessment`'s), or a reason in `UNSCOPED_BY_DESIGN`. `scope-registry.test.ts` fails the build otherwise. A table with no scope column is the easier mistake, not the safer one. A `via` write is checked against its parent, so creating a child under another district's row returns `404`.
 
 `unscopedPrisma` is the escape hatch and ESLint confines it to `platform/`, `modules/governance/` and `src/test/`.
 

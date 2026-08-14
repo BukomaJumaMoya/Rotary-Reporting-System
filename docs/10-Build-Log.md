@@ -149,12 +149,24 @@ district's rows. `club_assessments` was the sharpest case: district-scoped alone
 current-year scorecard read returned every year ever assessed, because its year lives
 behind `period → framework` rather than in a column.
 
-**What `via` does not do:** it cannot check a create, because there is nothing to stamp —
-the parent is named by a foreign key the caller supplies. A service creating a child must
-read the parent through `db(ctx)` first, which proves it is in scope. And
-`ClubAssessmentState` is a view, and Prisma views carry no relation fields, so it stays
-district-scoped; standings are always read for a named period, so the module supplies the
-`periodId`.
+**`via` checks writes too.** A child has nothing on it to stamp — it names its parent by
+id, and that id comes from the caller — so a create or an update naming a parent runs one
+`COUNT` against that parent inside the scope, and answers `404` when it is not there.
+`POST /assessments/:id/comments` with somebody else's assessment id is the shape of the
+attack and it is an easy handler to write. The check reads both spellings, the scalar
+foreign key and `connect: { id }`, and applies to updates as well, because re-pointing a
+foreign key is how a row leaves a district without any scoped column changing. `via.fk`
+carries the column name and the registry test checks it against
+`@relation(fields: [...])` in the schema.
+
+Not covered: a nested create of the parent alongside the child, where there is no id to
+check. The parent write is scoped on its own, so the child lands under a parent that was
+already stamped.
+
+**`club_assessment_states` is scoped through a relation like any table.** Prisma views DO
+support relation fields — `club_rosters` already uses them — so the view declares `period`
+and reaches the Rotary Year the same way `club_assessments` does. No foreign key is
+emitted for a view relation, and `prisma migrate diff` still reports an empty migration.
 
 **Scoped delegates drop `findUnique`, `findUniqueOrThrow`, `update`, `delete` and
 `upsert`.** Their `where` takes unique fields only and cannot carry the injected filter,
@@ -195,11 +207,19 @@ and from nothing else. It is the one module that reads the database without a co
 for the obvious reason. The middleware is mounted globally in `app.ts`, so every module
 built from here inherits it without anyone wiring it up.
 
-**Scope expansion happens once per request.** A cluster appointment contributes that
-cluster's clubs and a region appointment contributes the clubs of every cluster in it, so
-a record-level check is an array lookup rather than a graph walk. A district-wide caller
-gets `isDistrictWide: true` and an EMPTY `clubIds` — enumerating 140 clubs to answer a
-boolean is work done 140 times to no purpose.
+**Scope expansion happens once per request.** `RequestScopes` carries one array per org
+unit an appointment can name — `clubIds`, `clusterIds`, `regionIds`, `committeeIds` —
+because records are owned at every one of them: `documents.owner_scope_type`,
+`activities.host_scope_type`, `budgets.owner_scope_type` and `goals.owner_scope_type` all
+take a REGION or a COMMITTEE as readily as a CLUB. The arrays are expanded DOWNWARDS and
+the unit itself is kept: a region appointment contributes the region, its clusters and
+their clubs, so an LDRR passes a scope check on their own region as well as on the clubs
+inside it. Nothing expands upwards — a club secretary covers one club.
+
+This widened `RequestScopes` beyond the three fields in `docs/05-API-Spec.md §1`, which
+has been updated to match. A district-wide caller still gets `isDistrictWide: true` and an
+EMPTY `clubIds` — enumerating 140 clubs to answer a boolean is work done 140 times to no
+purpose.
 
 **Cost per authenticated request is three queries** for a club secretary, four for an
 ADRR: the account, the active appointments, the district's current year, and the cluster
@@ -240,10 +260,8 @@ assembled its own app would prove the stack the test built, not the one that shi
 | Web app is a placeholder | — | M2 onwards |
 | Audit log table exists and is append-only, but nothing writes to it | — | session 5 |
 | Positions, permissions and appointments have no CRUD — they are fixtures and, from session 6, seed rows | context resolution READS them; editing them is a governance feature | M1 |
-| `requireScope` answers DISTRICT, CLUSTER and CLUB; REGION and COMMITTEE return **false** | `RequestScopes` carries no `regionIds`/`committeeIds`, so an LDRR fails their own region's check. It fails CLOSED, which is the safe direction, but `documents.owner_scope_type` can already be REGION | M1, with governance |
-| A `via` child's **create** is unchecked — nothing to stamp, so a child can be created under another district's parent | the parent arrives as a foreign key; services must read it through `db(ctx)` first, which proves scope | M1 convention, enforced by review |
-| `ClubAssessmentState` is district-scoped but not year-scoped | it is a view, and Prisma views carry no relation fields for `via` to follow | M4, or give the view a `rotary_year_id` |
 | A malformed or unauthorised `?year=` fails EVERY authenticated route, including `/auth/logout` | context resolution is global and eager; sending `?year=` to logout is a client bug | not planned |
+| A nested create of a parent alongside its child is not scope-checked | there is no parent id to check; the parent's own write is stamped, so the child lands under a stamped row | not planned |
 | Appointment term dates compare against UTC, not district-local, midnight | the boundary is three hours wide in Kampala and matters on 1 July | M1, with governance |
 | Permission codes match exactly — no `club:read:*` wildcard | a matcher would turn a typo in a seeded row into a silent grant | not planned |
 

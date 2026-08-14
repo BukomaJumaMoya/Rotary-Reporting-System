@@ -325,7 +325,13 @@ export async function toMeResponse(user: AuthUser, detail?: ResolvedContext): Pr
         permissions: detail?.permissions ?? [],
         scopes: detail?.context
           ? serialiseScopes(detail.context.scopes)
-          : { clubIds: [], clusterIds: [], isDistrictWide: false },
+          : {
+              clubIds: [],
+              clusterIds: [],
+              regionIds: [],
+              committeeIds: [],
+              isDistrictWide: false,
+            },
       },
       appointments: detail ? await detail.listAppointments() : [],
     },

@@ -94,11 +94,20 @@ describe('the scope registry', () => {
         problems.push(`${name}.via.model → ${rule.via.model} is not registered`);
       }
       // The relation field has to exist, or Prisma reports "Unknown argument" on whichever
-      // endpoint touches the table first — which could be months from now.
+      // endpoint touches the table first — which could be months from now. The declared
+      // foreign key has to be the one named too: `via.fk` is what the parent-in-scope
+      // check on writes reads, and a wrong name would read undefined and check nothing.
       const body = bodies.get(name) ?? '';
-      const declared = new RegExp(`^\\s+${rule.via.relation}\\s+\\w+\\??\\s+@relation`, 'm');
-      if (!declared.test(body)) {
+      const declared = new RegExp(
+        `^\\s+${rule.via.relation}\\s+\\w+\\??\\s+@relation\\(fields: \\[(\\w+)\\]`,
+        'm',
+      );
+      const match = declared.exec(body);
+
+      if (!match) {
         problems.push(`${name}.${rule.via.relation} is not a relation field on ${name}`);
+      } else if (match[1] !== rule.via.fk) {
+        problems.push(`${name}.via.fk is ${rule.via.fk}, but the relation uses ${match[1]}`);
       }
     }
 

@@ -8,6 +8,7 @@ import {
   assignClubToCluster,
   createCluster,
   createClub,
+  createCommittee,
   createOrg,
   createPosition,
   createRegion,
@@ -41,7 +42,13 @@ interface ProbeContext {
   rotaryYearId: string;
   isYearWritable: boolean;
   permissions: string[];
-  scopes: { clubIds: string[]; clusterIds: string[]; isDistrictWide: boolean };
+  scopes: {
+    clubIds: string[];
+    clusterIds: string[];
+    regionIds: string[];
+    committeeIds: string[];
+    isDistrictWide: boolean;
+  };
 }
 
 function contextBody(response: { body: unknown }): ProbeContext {
@@ -190,6 +197,85 @@ describe('context resolution', () => {
 
     expect(ctx.scopes.clusterIds).toEqual([cluster.id]);
     expect(ctx.scopes.clubIds).toEqual([club.id]);
+    // The region is kept as well as expanded. Documents, activities, budgets and goals
+    // are all owned at REGION scope, so an LDRR who could not pass a scope check on
+    // their own region would be refused their own paperwork.
+    expect(ctx.scopes.regionIds).toEqual([region.id]);
+  });
+
+  it('scopes a committee appointment to the committee and nothing beneath it', async () => {
+    const org = await createOrg();
+    const user = await createUser();
+    const club = await createClub();
+
+    const committee = await createCommittee({
+      districtId: org.districtId,
+      rotaryYearId: org.currentYearId,
+      name: 'Finance Committee',
+    });
+    const position = await createPosition({
+      districtId: org.districtId,
+      code: 'COMMITTEE_MEMBER',
+      scope: 'COMMITTEE',
+      permissions: ['activity:read:club'],
+    });
+    await appoint({
+      personId: user.personId,
+      districtId: org.districtId,
+      rotaryYearId: org.currentYearId,
+      positionId: position.id,
+      scopeType: 'COMMITTEE',
+      scopeId: committee.id,
+    });
+
+    const agent = await signIn(app, user);
+    const ctx = contextBody(await agent.get('/api/v1/__probe/context'));
+
+    expect(ctx.scopes.committeeIds).toEqual([committee.id]);
+    // Committees are orthogonal to the geography: serving on one grants that committee's
+    // records and no club's.
+    expect(ctx.scopes.clubIds).toEqual([]);
+    expect(ctx.scopes.isDistrictWide).toBe(false);
+    expect(ctx.scopes.clubIds).not.toContain(club.id);
+  });
+
+  it('lets an LDRR pass a scope check on their own region, end to end', async () => {
+    const org = await createOrg();
+    const user = await createUser();
+
+    const region = await createRegion(org.districtId, 'Central Region');
+    const otherRegion = await createRegion(org.districtId, 'Northern Region');
+    const cluster = await createCluster({
+      districtId: org.districtId,
+      rotaryYearId: org.currentYearId,
+      regionId: region.id,
+    });
+
+    const position = await createPosition({
+      districtId: org.districtId,
+      code: 'LDRR',
+      scope: 'REGION',
+      permissions: ['activity:read:club'],
+    });
+    await appoint({
+      personId: user.personId,
+      districtId: org.districtId,
+      rotaryYearId: org.currentYearId,
+      positionId: position.id,
+      scopeType: 'REGION',
+      scopeId: region.id,
+    });
+
+    const agent = await signIn(app, user);
+
+    // Their own region, and the cluster inside it, both pass.
+    expect((await agent.get(`/api/v1/__probe/scope/REGION/${region.id}`)).status).toBe(200);
+    expect((await agent.get(`/api/v1/__probe/scope/CLUSTER/${cluster.id}`)).status).toBe(200);
+
+    // Another region does not, and the district above them does not either — scope runs
+    // downwards, never up.
+    expect((await agent.get(`/api/v1/__probe/scope/REGION/${otherRegion.id}`)).status).toBe(404);
+    expect((await agent.get(`/api/v1/__probe/scope/DISTRICT/${org.districtId}`)).status).toBe(404);
   });
 
   it('resolves the PIME Chair district-wide without enumerating every club', async () => {

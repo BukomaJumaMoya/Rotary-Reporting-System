@@ -1,5 +1,5 @@
 import type { RequestContext } from '@dis/contracts';
-import { yearLocked } from './errors.js';
+import { notFound, yearLocked } from './errors.js';
 
 /**
  * THE REGISTRY.
@@ -47,6 +47,15 @@ export interface ScopeVia {
   readonly relation: string;
   /** The parent's model name, which must itself be registered. */
   readonly model: string;
+  /**
+   * The scalar foreign key backing `relation`.
+   *
+   * Reads do not need it — a nested relation filter does the work. WRITES do: a create
+   * names its parent by id, and there is nothing on the row itself to stamp, so the only
+   * way to stop a child being filed under another district's parent is to go and look.
+   * The registry test checks this against `@relation(fields: [...])` in the schema.
+   */
+  readonly fk: string;
 }
 
 export interface ScopeRule {
@@ -77,10 +86,10 @@ export const CONTEXT_BOUND_MODELS = {
 
   // --- Governance -----------------------------------------------------------
   Position: { district: 'sharedWhenNull' },
-  PositionPermission: { via: { relation: 'position', model: 'Position' } },
+  PositionPermission: { via: { relation: 'position', model: 'Position', fk: 'positionId' } },
   Appointment: { district: 'required', year: true },
   Committee: { district: 'required', year: true },
-  CommitteeMember: { via: { relation: 'committee', model: 'Committee' } },
+  CommitteeMember: { via: { relation: 'committee', model: 'Committee', fk: 'committeeId' } },
 
   // --- Membership -----------------------------------------------------------
   MembershipEvent: { district: 'required', year: true },
@@ -92,22 +101,22 @@ export const CONTEXT_BOUND_MODELS = {
   Activity: { district: 'required', year: true, softDelete: true },
   // Children of an activity inherit its district, its year AND its soft delete, so the
   // attendees of a deleted activity disappear with it rather than outliving it.
-  ActivityAreaOfFocus: { via: { relation: 'activity', model: 'Activity' } },
-  ActivityPartner: { via: { relation: 'activity', model: 'Activity' } },
-  ActivityMedia: { via: { relation: 'activity', model: 'Activity' } },
-  ActivityAttendee: { via: { relation: 'activity', model: 'Activity' } },
+  ActivityAreaOfFocus: { via: { relation: 'activity', model: 'Activity', fk: 'activityId' } },
+  ActivityPartner: { via: { relation: 'activity', model: 'Activity', fk: 'activityId' } },
+  ActivityMedia: { via: { relation: 'activity', model: 'Activity', fk: 'activityId' } },
+  ActivityAttendee: { via: { relation: 'activity', model: 'Activity', fk: 'activityId' } },
 
   // --- Finance --------------------------------------------------------------
   FinanceCategory: { district: 'sharedWhenNull' },
   Budget: { district: 'required', year: true },
-  BudgetLine: { via: { relation: 'budget', model: 'Budget' } },
+  BudgetLine: { via: { relation: 'budget', model: 'Budget', fk: 'budgetId' } },
   FinancialTransaction: { district: 'required', year: true, softDelete: true },
   DuesInvoice: { district: 'required', year: true },
   DuesInvoiceState: { district: 'required', year: true },
-  DuesPayment: { via: { relation: 'invoice', model: 'DuesInvoice' } },
+  DuesPayment: { via: { relation: 'invoice', model: 'DuesInvoice', fk: 'invoiceId' } },
   MemberDues: { district: 'required', year: true },
   MemberDuesState: { district: 'required', year: true },
-  MemberDuesPayment: { via: { relation: 'memberDues', model: 'MemberDues' } },
+  MemberDuesPayment: { via: { relation: 'memberDues', model: 'MemberDues', fk: 'memberDuesId' } },
   TrfContribution: { district: 'required', year: true },
 
   // --- Assessment -----------------------------------------------------------
@@ -116,33 +125,50 @@ export const CONTEXT_BOUND_MODELS = {
   // Every table below reaches it through a relation chain, which is what stops a
   // current-year scorecard read from returning last year's scores as well.
   AssessmentFramework: { district: 'required', year: true },
-  AssessmentParameter: { via: { relation: 'framework', model: 'AssessmentFramework' } },
-  AssessmentCriterion: { via: { relation: 'parameter', model: 'AssessmentParameter' } },
-  AssessmentPeriod: { via: { relation: 'framework', model: 'AssessmentFramework' } },
+  AssessmentParameter: {
+    via: { relation: 'framework', model: 'AssessmentFramework', fk: 'frameworkId' },
+  },
+  AssessmentCriterion: {
+    via: { relation: 'parameter', model: 'AssessmentParameter', fk: 'parameterId' },
+  },
+  AssessmentPeriod: {
+    via: { relation: 'framework', model: 'AssessmentFramework', fk: 'frameworkId' },
+  },
   // districtId of its own AND the year through the period: club_assessments has no
   // rotary_year_id, and district scoping alone let a current-year context see every
   // year's assessments.
   ClubAssessment: {
     district: 'required',
-    via: { relation: 'period', model: 'AssessmentPeriod' },
+    via: { relation: 'period', model: 'AssessmentPeriod', fk: 'periodId' },
   },
-  AssessmentScore: { via: { relation: 'clubAssessment', model: 'ClubAssessment' } },
-  AssessorAssignment: { via: { relation: 'period', model: 'AssessmentPeriod' } },
-  AssessmentComment: { via: { relation: 'clubAssessment', model: 'ClubAssessment' } },
-  AssessmentDispute: { via: { relation: 'clubAssessment', model: 'ClubAssessment' } },
-  // A VIEW, and Prisma views carry no relation fields, so `via` cannot reach the period
-  // from here. District-scoped only: standings are always read for a named period, and
-  // the assessment module supplies that periodId. Revisit if the view ever grows a
-  // rotary_year_id.
-  ClubAssessmentState: { district: 'required' },
+  AssessmentScore: {
+    via: { relation: 'clubAssessment', model: 'ClubAssessment', fk: 'clubAssessmentId' },
+  },
+  AssessorAssignment: { via: { relation: 'period', model: 'AssessmentPeriod', fk: 'periodId' } },
+  AssessmentComment: {
+    via: { relation: 'clubAssessment', model: 'ClubAssessment', fk: 'clubAssessmentId' },
+  },
+  AssessmentDispute: {
+    via: { relation: 'clubAssessment', model: 'ClubAssessment', fk: 'clubAssessmentId' },
+  },
+  // A view, and scoped through a relation like any table. Prisma views DO support
+  // relation fields — club_rosters already uses them — so the view declares `period` and
+  // reaches the year the same way club_assessments does. No foreign key is emitted for a
+  // view relation, so this costs nothing at the schema level.
+  ClubAssessmentState: {
+    district: 'required',
+    via: { relation: 'period', model: 'AssessmentPeriod', fk: 'periodId' },
+  },
   FrameworkPointTotal: { district: 'required', year: true },
 
   // --- Goals, documents, public image, platform -----------------------------
   Goal: { district: 'required', year: true },
-  GoalSnapshot: { via: { relation: 'goal', model: 'Goal' } },
+  GoalSnapshot: { via: { relation: 'goal', model: 'Goal', fk: 'goalId' } },
   Document: { district: 'required', softDelete: true },
   SocialAccount: { district: 'required' },
-  SocialSnapshot: { via: { relation: 'socialAccount', model: 'SocialAccount' } },
+  SocialSnapshot: {
+    via: { relation: 'socialAccount', model: 'SocialAccount', fk: 'socialAccountId' },
+  },
   MediaAppearance: { district: 'required', year: true },
   ExportJob: { district: 'required' },
 } as const satisfies Record<string, ScopeRule>;
@@ -381,6 +407,36 @@ export const softDeleteExtension = {
 };
 
 /**
+ * Every parent id a write names, from the `data` of a create or an update.
+ *
+ * Both spellings are read — the scalar foreign key and a `connect: { id }` — because
+ * Prisma accepts either and a check that only understood one would be a check with a
+ * documented way around it.
+ */
+function parentIdsIn(data: unknown, via: ScopeVia): string[] {
+  const rows = Array.isArray(data) ? data : [data];
+  const ids = new Set<string>();
+
+  for (const row of rows) {
+    const record = asRecord(row);
+
+    const scalar = record[via.fk];
+    if (typeof scalar === 'string') ids.add(scalar);
+
+    const connect = asRecord(asRecord(record[via.relation])['connect'])['id'];
+    if (typeof connect === 'string') ids.add(connect);
+  }
+  return [...ids];
+}
+
+/** Counts rows of a model that are inside the caller's scope. Supplied by `db.ts`. */
+export type ScopedCounter = (delegateKey: string, where: ArgsRecord) => Promise<number>;
+
+function delegateKeyOf(model: string): string {
+  return model.charAt(0).toLowerCase() + model.slice(1);
+}
+
+/**
  * The district and year scoping extension, built per request context.
  *
  * Two things it deliberately does not do, both worth knowing before relying on it:
@@ -392,17 +448,41 @@ export const softDeleteExtension = {
  *    being queried. `via` scopes a child BY its parent, which is the opposite direction
  *    and is applied; an `include` reading down from a scoped parent is inherently within
  *    scope anyway.
- *  * **A `via` child's create is not checked.** There is nothing to stamp — the parent is
- *    named by a foreign key the caller supplies — so creating a child under another
- *    district's parent would succeed. Read the parent through `db(ctx)` first; a service
- *    that has done so has already proved the parent is in scope.
  */
-export function createScopeExtension(ctx: RequestContext) {
+export function createScopeExtension(ctx: RequestContext, countInScope: ScopedCounter) {
+  /**
+   * Refuses a write that files a row under a parent the caller cannot see.
+   *
+   * A `via` child has nothing on it to stamp — it names its parent by id, and that id
+   * arrives from the caller. So the only way to know is to go and look, which costs one
+   * COUNT per write on a child table. `POST /assessments/:id/scores` with somebody
+   * else's assessment id is the shape of the attack, and it is an easy handler to write.
+   *
+   * 404, because the parent is out of scope and an out-of-scope record does not exist as
+   * far as this caller is concerned.
+   */
+  async function assertParentInScope(via: ScopeVia, data: unknown): Promise<void> {
+    const ids = parentIdsIn(data, via);
+    // Nothing named — a nested create of the parent, or an update touching other
+    // columns. There is no id to check, and the parent write is scoped on its own.
+    if (ids.length === 0) return;
+
+    const visible = await countInScope(delegateKeyOf(via.model), {
+      AND: [...scopeClauses(via.model, ctx), { id: { in: ids } }],
+    });
+    if (visible !== ids.length) throw notFound();
+  }
+
   return {
     name: 'district-year-scope',
     query: {
       $allModels: {
-        $allOperations: ({ model, operation, args, query }: OperationInput): Promise<unknown> => {
+        $allOperations: async ({
+          model,
+          operation,
+          args,
+          query,
+        }: OperationInput): Promise<unknown> => {
           const rule = CONTEXT_BOUND_MODELS[model as ContextBoundModelName] as
             ScopeRule | undefined;
           if (!rule) return query(args);
@@ -418,6 +498,12 @@ export function createScopeExtension(ctx: RequestContext) {
 
           if (WRITE_OPERATIONS.has(operation) && !ctx.isYearWritable) {
             throw yearLocked('This Rotary Year is closed to changes');
+          }
+
+          // Checked on updates as well as creates: re-pointing a child's foreign key is
+          // how a row moves to another district without any scoped column changing.
+          if (rule.via && WRITE_OPERATIONS.has(operation)) {
+            await assertParentInScope(rule.via, asRecord(args)['data']);
           }
 
           if (CREATE_OPERATIONS.has(operation)) {

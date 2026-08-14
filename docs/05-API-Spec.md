@@ -13,9 +13,20 @@ type RequestContext = {
   districtId: string;      // from active appointment
   rotaryYearId: string;    // current year, or ?year= override if permitted
   permissions: Set<string>;
-  scopes: { clubIds: string[]; clusterIds: string[]; isDistrictWide: boolean };
+  scopes: {
+    clubIds: string[];
+    clusterIds: string[];
+    regionIds: string[];
+    committeeIds: string[];
+    isDistrictWide: boolean;
+  };
+  isYearWritable: boolean; // false for a locked year, and under a ?year= override
 };
 ```
+
+One array per org unit an appointment can name, because records are owned at every one of them — `documents.owner_scope_type` and `activities.host_scope_type` take a REGION or a COMMITTEE as readily as a CLUB. They are expanded downwards and keep the unit itself: a region appointment yields the region, its clusters and their clubs. Nothing expands upwards.
+
+`isYearWritable` is false when the district year is locked, and also under a `?year=` override — the permission that opens one is named `year:read:historical`, and a read door must not become a backdating door. Writes through the data access layer are refused with `YEAR_LOCKED`.
 
 Handlers never read `districtId` or `rotaryYearId` from user input. Both come from the context, and the data access layer injects them. A handler that writes `where: { districtId: req.body.districtId }` is a bug, not a feature.
 

@@ -288,6 +288,23 @@ export async function createCluster(input: {
   });
 }
 
+export async function createCommittee(input: {
+  districtId: string;
+  rotaryYearId: string;
+  name?: string;
+  parentCommitteeId?: string;
+}) {
+  return unscopedPrisma.committee.create({
+    data: {
+      districtId: input.districtId,
+      rotaryYearId: input.rotaryYearId,
+      name: input.name ?? `Committee ${randomUUID().slice(0, 6)}`,
+      parentCommitteeId: input.parentCommitteeId ?? null,
+    },
+    select: { id: true, name: true },
+  });
+}
+
 export async function assignClubToCluster(input: {
   clubId: string;
   clusterId: string;

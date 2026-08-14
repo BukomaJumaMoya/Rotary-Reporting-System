@@ -195,6 +195,8 @@ export const meResponseSchema = z.object({
       scopes: z.object({
         clubIds: z.array(z.uuid()),
         clusterIds: z.array(z.uuid()),
+        regionIds: z.array(z.uuid()),
+        committeeIds: z.array(z.uuid()),
         isDistrictWide: z.boolean(),
       }),
     }),

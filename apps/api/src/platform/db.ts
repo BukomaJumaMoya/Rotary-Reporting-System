@@ -8,6 +8,7 @@ import {
   CONTEXT_BOUND_MODELS,
   type ContextBoundDelegateKey,
   type ContextBoundModelName,
+  type ScopedCounter,
   type SoftDeleteOnlyDelegateKey,
   type UNSCOPABLE_OPERATIONS,
 } from './scope.js';
@@ -263,10 +264,29 @@ export function db(ctx: RequestContext): ScopedClient {
   // The one cast in this layer. A `query` extension changes behaviour, never result
   // types, so the extended client is structurally the base client — narrowed here to
   // the delegate surface that can actually honour the scope.
-  const scoped = baseClient.$extends(createScopeExtension(ctx)) as unknown as ScopedClient;
+  const scoped = baseClient.$extends(
+    createScopeExtension(ctx, countInScope),
+  ) as unknown as ScopedClient;
   clientsByContext.set(ctx, scoped);
   return scoped;
 }
+
+/**
+ * Counts rows a `via` parent check can see, for `createScopeExtension`.
+ *
+ * Runs against `baseClient` rather than the scoped client on purpose: the scope filter is
+ * already built by the caller, and going through the scoped client would re-enter the
+ * extension that asked the question.
+ */
+const countInScope: ScopedCounter = (delegateKey, where) => {
+  const delegates = baseClient as unknown as Record<
+    string,
+    { count(args: { where: unknown }): Promise<number> }
+  >;
+  const delegate = delegates[delegateKey];
+  if (!delegate) throw new Error(`Scope rule names an unknown model delegate: ${delegateKey}`);
+  return delegate.count({ where });
+};
 
 export async function disconnect(): Promise<void> {
   await unscopedPrisma.$disconnect();
