@@ -198,6 +198,14 @@ async function resolveScopes(
   const clusterIds = [...new Set([...directClusterIds, ...regionClusterIds])];
   const clusterClubIds = await repository.findClubIdsInClusters(clusterIds, appointmentYearId);
 
+  // Committees expand downwards too: chairing one covers its sub-committees, exactly as a
+  // region covers its clusters. That is what lets a chair create and staff a sub-committee
+  // without holding committee:manage:district (M1 session 4).
+  const allCommitteeIds = await repository.findDescendantCommitteeIds(
+    committeeIds,
+    appointmentYearId,
+  );
+
   return {
     // Not expanded for a district-wide caller: enumerating 140 clubs to answer a question
     // that is a boolean is work done 140 times to no purpose.
@@ -207,7 +215,7 @@ async function resolveScopes(
     // LDRR is responsible for their region's clubs AND for the region itself, and
     // documents are owned at both.
     regionIds: [...new Set(regionIds)].sort(),
-    committeeIds: [...new Set(committeeIds)].sort(),
+    committeeIds: allCommitteeIds.sort(),
     isDistrictWide,
   };
 }

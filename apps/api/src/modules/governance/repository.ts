@@ -159,6 +159,42 @@ export async function findClusterIdsInRegions(
   return rows.map((row) => row.id);
 }
 
+/**
+ * The committees beneath the given ones, for the year.
+ *
+ * Scope runs DOWNWARDS: a chair of a parent committee covers its sub-committees, exactly
+ * as a region appointment covers the clusters inside it. Without this, "may this chair
+ * create a sub-committee under their own" would need an ancestor walk at every check
+ * instead of one array lookup — and M1 session 4 assumes the array already contains them.
+ *
+ * Committees nest at most three deep (enforced when one is created), so the walk is
+ * bounded and the loop guard below is a belt rather than a strategy.
+ */
+export async function findDescendantCommitteeIds(
+  committeeIds: string[],
+  rotaryYearId: string,
+): Promise<string[]> {
+  if (committeeIds.length === 0) return [];
+
+  const found = new Set(committeeIds);
+  let frontier = committeeIds;
+
+  for (let depth = 0; depth < MAX_COMMITTEE_DEPTH && frontier.length > 0; depth += 1) {
+    const children = await unscopedPrisma.committee.findMany({
+      where: { parentCommitteeId: { in: frontier }, rotaryYearId },
+      select: { id: true },
+    });
+
+    frontier = children.map((row) => row.id).filter((id) => !found.has(id));
+    for (const id of frontier) found.add(id);
+  }
+
+  return [...found];
+}
+
+/** Committees nest at most three deep: district committee, sub-committee, working group. */
+export const MAX_COMMITTEE_DEPTH = 3;
+
 /** The clubs assigned to the given clusters, for the year. */
 export async function findClubIdsInClusters(
   clusterIds: string[],

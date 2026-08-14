@@ -1,6 +1,10 @@
 import {
+  addCommitteeMemberRequestSchema,
   appointmentListQuerySchema,
+  committeeListQuerySchema,
   createAppointmentRequestSchema,
+  createCommitteeRequestSchema,
+  updateCommitteeRequestSchema,
   createPositionRequestSchema,
   paginationQuerySchema,
   positionListQuerySchema,
@@ -13,6 +17,7 @@ import { requireContext, requirePermission } from '../../platform/context.js';
 import { insufficientScope } from '../../platform/errors.js';
 import { asyncHandler, parseQuery, pathParam, withBody } from '../../platform/validate.js';
 import * as appointments from './appointments.service.js';
+import * as committees from './committees.service.js';
 import * as positions from './positions.service.js';
 
 /**
@@ -180,5 +185,80 @@ governanceRouter.get(
 
     const query = parseQuery(paginationQuerySchema, req);
     res.status(200).json(await appointments.listForPerson(ctx, personId, query));
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Committees
+//
+// Readable by any signed-in member of the district: who sits on what is not a secret,
+// and a member cannot volunteer for a committee they cannot see. WRITES are gated by
+// `committee:manage:district` OR by chairing the committee in question — the scope check
+// inside the service, which is the whole point of the feature.
+// ---------------------------------------------------------------------------
+
+governanceRouter.get(
+  '/committees',
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    const query = parseQuery(committeeListQuerySchema, req);
+
+    if (query.tree) {
+      res.status(200).json({ data: await committees.tree(ctx) });
+      return;
+    }
+    res.status(200).json(await committees.list(ctx, query));
+  }),
+);
+
+governanceRouter.get(
+  '/committees/:id',
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    res.status(200).json({ data: await committees.get(ctx, pathParam(req, 'id')) });
+  }),
+);
+
+governanceRouter.post(
+  '/committees',
+  ...withBody(createCommitteeRequestSchema, async ({ body, req, res }) => {
+    const ctx = requireContext(req);
+    res.status(201).json({ data: await committees.create(ctx, body) });
+  }),
+);
+
+governanceRouter.patch(
+  '/committees/:id',
+  ...withBody(updateCommitteeRequestSchema, async ({ body, req, res }) => {
+    const ctx = requireContext(req);
+    res.status(200).json({ data: await committees.update(ctx, pathParam(req, 'id'), body) });
+  }),
+);
+
+governanceRouter.get(
+  '/committees/:id/members',
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    const query = parseQuery(paginationQuerySchema, req);
+    res.status(200).json(await committees.listMembers(ctx, pathParam(req, 'id'), query));
+  }),
+);
+
+/** Adds an APPOINTMENT, not a person: membership carries the position it is served in. */
+governanceRouter.post(
+  '/committees/:id/members',
+  ...withBody(addCommitteeMemberRequestSchema, async ({ body, req, res }) => {
+    const ctx = requireContext(req);
+    const members = await committees.addMember(ctx, pathParam(req, 'id'), body);
+    res.status(201).json({ data: members });
+  }),
+);
+
+governanceRouter.delete(
+  '/committees/:id/members/:appointmentId',
+  asyncHandler(async (req, res) => {
+    const ctx = requireContext(req);
+    await committees.removeMember(ctx, pathParam(req, 'id'), pathParam(req, 'appointmentId'));
+    res.status(204).end();
   }),
 );

@@ -39,6 +39,8 @@ export const ErrorCode = {
   INVALID_SCOPE_REFERENCE: 'INVALID_SCOPE_REFERENCE',
   /** The appointment's scope type does not match the position's own scope. */
   SCOPE_TYPE_MISMATCH: 'SCOPE_TYPE_MISMATCH',
+  /** Committees nest at most three deep; deeper is a maze nobody can navigate. */
+  COMMITTEE_TOO_DEEP: 'COMMITTEE_TOO_DEEP',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   // Database guards (ADR-012). Mapped from SQLSTATE below.
   MEMBERSHIP_IMMUTABLE: 'MEMBERSHIP_IMMUTABLE',

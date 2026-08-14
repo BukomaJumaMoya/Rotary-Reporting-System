@@ -192,3 +192,90 @@ export const updateAppointmentRequestSchema = z
     message: 'Provide at least one field to change',
   });
 export type UpdateAppointmentRequest = z.infer<typeof updateAppointmentRequestSchema>;
+
+// ---------------------------------------------------------------------------
+// Committees
+//
+// Self-referencing, so a chair can create sub-committees without a developer. The
+// district asked for exactly this and the incumbent system could not do it:
+// "allow chairs to create their own sub-committee, enter position and select the person".
+// ---------------------------------------------------------------------------
+
+/** District committee → sub-committee → working group. Deep enough; deeper is a maze. */
+export const MAX_COMMITTEE_DEPTH = 3;
+
+export const committeeSchema = z.object({
+  id: z.uuid(),
+  parentCommitteeId: z.uuid().nullable(),
+  name: z.string(),
+  mandate: z.string().nullable(),
+  rotaryYearId: z.uuid(),
+  /** 1 for a district committee, 2 for a sub-committee, 3 for a working group. */
+  depth: z.number().int().positive(),
+  memberCount: z.number().int().nonnegative(),
+});
+export type Committee = z.infer<typeof committeeSchema>;
+
+/** The same committee with its children nested, for the tree view. */
+export type CommitteeNode = Committee & { children: CommitteeNode[] };
+
+export const committeeNodeSchema: z.ZodType<CommitteeNode> = committeeSchema.extend({
+  children: z.lazy(() => z.array(committeeNodeSchema)),
+});
+
+export const committeeListResponseSchema = listResponseSchema(committeeSchema);
+export const committeeTreeResponseSchema = z.object({ data: z.array(committeeNodeSchema) });
+export const committeeResponseSchema = singleResponseSchema(committeeSchema);
+
+export const committeeListQuerySchema = paginationQuerySchema.extend({
+  /** Only the direct children of this committee. `root` for the top level. */
+  parentId: z.union([z.uuid(), z.literal('root')]).optional(),
+  /** Nested rather than flat. Ignores pagination — a committee tree is a handful of rows. */
+  tree: booleanQuerySchema.optional(),
+});
+export type CommitteeListQuery = z.infer<typeof committeeListQuerySchema>;
+
+export const createCommitteeRequestSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  mandate: z.string().trim().max(2000).nullable().default(null),
+  parentCommitteeId: z.uuid().nullable().default(null),
+});
+export type CreateCommitteeRequest = z.infer<typeof createCommitteeRequestSchema>;
+
+/**
+ * `parentCommitteeId` is absent: re-parenting a committee mid-year would move every
+ * member's scope with it, silently, and is not something a form should offer.
+ */
+export const updateCommitteeRequestSchema = z
+  .object({
+    name: z.string().trim().min(2).max(120).optional(),
+    mandate: z.string().trim().max(2000).nullable().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'Provide at least one field to change',
+  });
+export type UpdateCommitteeRequest = z.infer<typeof updateCommitteeRequestSchema>;
+
+/**
+ * Membership is by APPOINTMENT, not by person.
+ *
+ * Serving on a committee is something you do in a capacity, for a year, and it expires
+ * with the appointment that justified it — so the row names the appointment and carries
+ * the person's position context with it.
+ */
+export const committeeMemberSchema = z.object({
+  appointmentId: z.uuid(),
+  personId: z.uuid(),
+  personName: z.string(),
+  positionName: z.string(),
+  roleLabel: z.string().nullable(),
+});
+export type CommitteeMember = z.infer<typeof committeeMemberSchema>;
+
+export const committeeMemberListResponseSchema = listResponseSchema(committeeMemberSchema);
+
+export const addCommitteeMemberRequestSchema = z.object({
+  appointmentId: z.uuid(),
+  roleLabel: z.string().trim().max(80).nullable().default(null),
+});
+export type AddCommitteeMemberRequest = z.infer<typeof addCommitteeMemberRequestSchema>;
