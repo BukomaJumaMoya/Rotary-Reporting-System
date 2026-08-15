@@ -90,6 +90,14 @@ export default tseslint.config(
     },
   },
 
+  // Repository tooling: plain Node scripts, outside every app's tsconfig.
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+
   // Prettier owns formatting; ESLint must never report it. Keep this last.
   prettier,
 );

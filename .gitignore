@@ -52,6 +52,7 @@ node_modules/.tmp/
 uploads/
 storage/
 tmp/
+.tmp/
 
 # Editors / tooling
 .vscode/*

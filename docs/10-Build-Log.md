@@ -6,6 +6,70 @@ was decided along the way, and what is deliberately unfinished.
 
 Last updated: 15 August 2026, after M1 session 7. **M0 and M1 are complete.**
 
+<!-- dis:state milestone=M1 schema=v1.7 tests=282 -->
+
+---
+
+## 0. Start here
+
+**A new session begins by reading this section and §0a.** Everything below is detail you
+can reach for; these two are what you need before writing anything. `npm run docs:check`
+verifies most of what follows against the code, so if it is green the claims here are not
+merely assertions.
+
+**Where the build is.** M0 (foundations) and M1 (governance core) are complete. M2 (the
+reporting spine — clubs, persons, membership events, activities with media) is next, and
+its session prompts are in `docs/13-ClaudeCode-M2-Sessions.md`.
+
+**Read in this order.** `CLAUDE.md` for the axioms and the non-negotiable rules → this
+section → §0a for what the last milestone changed about how you must write code → the
+session prompt for the milestone you are implementing. Reach into §4 when you hit something
+surprising; it is written to answer "why is it like this".
+
+**What is true about the system right now** — the four things most likely to trip you up:
+
+1. Scoped models are absent from the `prisma` export's *type*. `prisma.activity` does not
+   compile. Use `db(ctx)`, and `findFirst`/`updateMany`/`deleteMany` rather than
+   `findUnique`/`update`/`delete`.
+2. Every new table needs a row in `platform/scope.ts` — a scope rule, a `via`, or an
+   `UNSCOPED_BY_DESIGN` reason. The build fails otherwise, but at `npm run test`, not at
+   `migrate dev`.
+3. Every new router must be mounted through the `mount()` helper in `createApp`, or the
+   unauthenticated-PII harness will not walk it and will pass without proving anything.
+4. Every new database guard needs a check in `apps/api/prisma/checks/invariants.sql`, and
+   the suite asserts an exact count — adding a guard without a check fails the build.
+
+**Open items that shape the next milestone** are in §5. Two are not code: the repository is
+still on a personal account (ADR-011, M0's last unmet exit condition), and the web bundle
+has nowhere to publish to.
+
+---
+
+## 0a. What the last milestone changed about the rules
+
+**This section is rewritten at every milestone close and describes only the most recent
+one.** Its purpose is that a fresh session does not rediscover a rule by breaking it. The
+full history is in §4.
+
+**After M1, when writing code:**
+
+- **Two scopes in one transaction need `scopedTransaction()`.** A Prisma transaction client
+  cannot be `$extends`-ed, so `db(a)` and `db(b)` can never share one. It does not audit —
+  write the audit row yourself, as rollover does.
+- **Work with no request uses `systemContext({ districtId, rotaryYearId, reason })`**, never
+  `unscopedPrisma`. The reason is mandatory and reaches `audit_log`.
+- **Any date that decides authority goes through `platform/time.ts`.** Comparing a term
+  against UTC is wrong by a three-hour window in Kampala, and rollover lands on exactly that
+  boundary.
+- **`isCurrent` and `isActive` are different questions.** Active means not revoked; current
+  means the term covers today where the district is.
+- **Committee scope expands downwards**, so a chair covers their own subtree. Nothing
+  expands upwards.
+- **Permission codes match exactly.** There is no wildcard, and adding one would turn a typo
+  in a seeded row into a silent grant.
+
+**No axiom changed in M1.** The conformance review is in §4a.
+
 ---
 
 ## 1. Where the build is
@@ -606,11 +670,46 @@ dialog tells the truth before the server has to.
 
 ---
 
+## 4a. Axiom conformance
+
+**Rewritten at every milestone close, one row per axiom, before the milestone is called
+done.** A milestone is a few weeks of fixes and adjustments made under time pressure, and
+the realistic way this system stops being the system designed is not a decision to abandon
+an axiom — it is a Tuesday-afternoon workaround that nobody re-read. The question each row
+answers is not "do we still believe this" but "did anything built this milestone weaken it,
+including things built for good reasons".
+
+`npm run docs:check` proves the mechanical half — no `districtId` on `Club`, no writes to
+`membership_events` or `club_rosters`, no raw SQL outside the resolvers, no float money, no
+naive timestamps. The rest is judgement and belongs here.
+
+**A row may legitimately say an axiom was bent.** Recording that is the point; an axiom
+nobody may ever qualify becomes an axiom people route around silently.
+
+### As at M1 close
+
+| # | Axiom | Holds? | What M1 did to it |
+|---|---|---|---|
+| 1 | The Rotary Year is a dimension, not a filter | **holds** | Rollover is the first thing to write across two years, and it does so through two scoped clients in one transaction rather than by dropping the year filter. `scopedTransaction()` exists precisely so that the escape hatch was not needed. |
+| 2 | District affiliation is temporal | **holds** | Untouched. Rollover copies affiliations forward into the new year rather than mutating them, which is the axiom working as intended. |
+| 3 | Membership is an event log | **holds** | Untouched by M1; the seed appends `JOIN` events and refreshes the derived roster, and nothing writes to `club_rosters`. M2 is where this gets tested for real. |
+| 4 | One activity model | **not yet exercised** | No activity code exists. M2. |
+| 5 | The assessment rubric is data | **not yet exercised** | No assessment code exists. M6. The *governance* analogue was honoured: positions and their permission sets are rows edited in the UI, not constants. |
+| 6 | Personal data is private by default | **holds, and narrowed further** | `GET /persons` returns names only, selected at the repository so there is nothing for a later change to widen accidentally. The audit read redacts contact values out of every diff. No endpoint returns a contact field to anyone yet. |
+
+**Bent, deliberately, and why.** Nothing this milestone. The one judgement call worth
+recording is that `?year=` remains a read door: a context resolved under the override is
+marked unwritable and every write through it is refused. That is what keeps a
+historical-read permission from becoming a backdating permission, and it should be
+re-checked whenever a new write path is added.
+
+---
+
 ## 5. Deliberately unfinished
 
 | Thing | Why | Lands in |
 |---|---|---|
-| The repository and hosting accounts are on a PERSONAL account | ADR-011 names this as the failure the project exists to correct; it needs district-owned GitHub and Fly organisations with two administrators | **M0's last open exit condition** |
+| The repository and hosting accounts are on a PERSONAL account | ADR-011 names this as the failure the project exists to correct; it needs district-owned GitHub and Fly organisations with two administrators | **M0's last open exit condition** — carried: it needs a district decision and two named administrators, not a commit |
 | No worker process, no pg-boss | notifications deliver inline; the `notifications` row is already the queue | later |
 | The web bundle is uploaded as a CI artifact rather than published | the district's static host does not exist yet, and choosing one in a workflow file is how it gets chosen by accident | **due before M2 session 2** |
 | The worker process group in `fly.toml` is commented out | pg-boss is not built; a crash-looping machine would fail health checks and make every deploy look broken | with the jobs module |
@@ -692,6 +791,12 @@ an explicit driver adapter.
 
 ```bash
 npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build
+
+# Does the documentation still describe the system? --strict makes a warning or an
+# unproven check a failure, and --with-db rebuilds docs/schema.sql and diffs the catalog.
+npm run test:report                                # docs:check reads the test count from this
+npm run docs:check
+npm run docs:check -- --strict --with-db           # the milestone gate; see /close-milestone
 
 # Schema drift — must print "This is an empty migration."
 cd apps/api && npx prisma migrate diff --from-migrations ./prisma/migrations \

@@ -160,6 +160,8 @@ npm run db:seed          # reset to realistic fixtures
 npm run test             # vitest — needs PostgreSQL and TEST_DATABASE_URL
 npm run typecheck
 npm run lint
+npm run test:report      # same suite, writes .tmp/vitest-report.json for docs:check
+npm run docs:check       # does the documentation still describe the system?
 npm run worker           # pg-boss worker process             (not built yet)
 ```
 
@@ -178,6 +180,25 @@ stops working with "could not be found, and is needed by esbuild". The binaries 
 therefore declared explicitly in the root `optionalDependencies`, and **their version must
 be bumped together with esbuild's**, or esbuild rejects the mismatch. The same trap will
 apply to `sharp` when image processing lands.
+
+## How a milestone is built and closed
+
+Each milestone is implemented in its own session, and **the next session starts with no
+memory of this one**. `docs/10-Build-Log.md` is the entire handoff: §0 says where the build
+is, §0a says what the last milestone changed about how you must write code, and §4a records
+whether the axioms above still hold. Read those three before writing anything.
+
+At the end of a milestone, run the **`/close-milestone`** skill. It verifies the build,
+walks the axiom conformance review, updates every document, and proves the result with
+`npm run docs:check --strict --with-db`. Do not hand-roll that update: the documents drift
+in specific, boring ways — a permission count, an endpoint nobody wrote down, a schema
+amendment that was never applied to `docs/schema.sql` — and the check exists because each of
+those has already happened here at least once.
+
+`npm run docs:check` is cheap and worth running any time you have added an endpoint, a
+permission, an error code or a table.
+
+---
 
 ## Current phase
 

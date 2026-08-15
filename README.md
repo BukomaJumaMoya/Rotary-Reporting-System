@@ -198,6 +198,31 @@ packages/contracts/  Zod schemas shared by both — the single source of request
 docs/              The design baseline, and the build log
 ```
 
+## Working on a milestone
+
+Each milestone (M0…M10) is built in its own session and handed to the next one entirely
+through `docs/`. [`docs/10-Build-Log.md`](docs/10-Build-Log.md) §0 and §0a are the handoff:
+where the build is, and what the last milestone changed about how code must be written.
+
+At the end of a milestone, run the **`/close-milestone`** skill
+([`.claude/skills/close-milestone/`](.claude/skills/close-milestone/)). It verifies the
+build, walks a conformance review over all six axioms, updates every document, and proves
+the result:
+
+```bash
+npm run docs:check                          # cheap; run it any time
+npm run docs:check -- --strict --with-db    # the milestone gate
+```
+
+`docs:check` compares the documents against the code: every seeded permission appears in
+the API spec and vice versa, every registered route is documented, every error code's
+built/designed status is true, the Build Log's code map names every source file that
+exists, the test and permission counts are measured rather than asserted, and
+`docs/schema.sql` rebuilds to exactly the migrated database. It reports **skip** rather than
+**ok** for anything it could not actually check — a green tick that means nothing is worse
+than no tick, which this project learned the hard way from a route-walking harness that
+passed vacuously for a whole session.
+
 ## Contributing
 
 Read [`CLAUDE.md`](CLAUDE.md) first: it holds the six axioms, the non-negotiable rules and

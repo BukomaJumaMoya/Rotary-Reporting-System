@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Rotaract District Information System — Rotaract District 9218",
+  "description": "Rotaract District Information System \u2014 Rotaract District 9218",
   "license": "UNLICENSED",
   "engines": {
     "node": "^20.19.0 || ^22.13.0 || >=24"
@@ -21,6 +21,8 @@
     "build:contracts": "npm run build --workspace @dis/contracts",
     "typecheck": "npm run build:contracts && npm run typecheck --workspace @dis/api --workspace @dis/web",
     "test": "npm run build:contracts && npm run test --workspaces --if-present",
+    "test:report": "npm run build:contracts && npm run test --workspace @dis/api -- --reporter=json --outputFile=../../.tmp/vitest-report.json",
+    "docs:check": "node scripts/doc-check.mjs",
     "db:generate": "npm run db:generate --workspace @dis/api",
     "db:migrate": "npm run db:migrate --workspace @dis/api",
     "db:seed": "npm run build:contracts && npm run db:seed --workspace @dis/api",
