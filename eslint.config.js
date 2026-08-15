@@ -95,9 +95,11 @@ export default tseslint.config(
     },
   },
 
-  // Repository tooling: plain Node scripts, outside every app's tsconfig.
+  // Repository tooling: plain Node scripts, outside every app's tsconfig. `apps/web/scripts`
+  // is here rather than under the browser block above — it generates the PWA icons at build
+  // time and never ships, so `Buffer` and `console` are correct there and `window` is not.
   {
-    files: ['scripts/**/*.mjs'],
+    files: ['scripts/**/*.mjs', 'apps/*/scripts/**/*.mjs'],
     languageOptions: {
       globals: globals.node,
     },

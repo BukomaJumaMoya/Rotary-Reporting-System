@@ -9,7 +9,9 @@
     // Vite owns the build; tsc is only a typechecker here.
     "noEmit": true,
 
-    "types": ["vite/client"]
+    // `vite-plugin-pwa/client` declares the `virtual:pwa-register` module the service
+    // worker registration imports. Without it that import is an unresolved module.
+    "types": ["vite/client", "vite-plugin-pwa/client"]
   },
   "include": ["src", "vite.config.ts"]
 }

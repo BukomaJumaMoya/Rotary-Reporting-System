@@ -2,8 +2,10 @@ import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAuth, useClearAuth } from '../../features/auth/useAuth';
+import { clearDeviceState } from '../../lib/offline/caches';
 import { Button } from '../ui';
 import { cx } from '../../lib/cx';
+import { ConnectionBanner } from './ConnectionBanner';
 
 /**
  * The frame.
@@ -125,6 +127,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       .post('/auth/logout', undefined, { allowUnauthenticated: true })
       .catch(() => undefined);
     clearAuth();
+
+    // A shared phone is the normal case in a Rotaract club. A cache that survives sign-out
+    // shows the next officer the previous one's district — the predecessor's failure in a
+    // new form. The outbox is deliberately kept: it is the member's own unsent work.
+    await clearDeviceState();
+
     navigate('/login', { replace: true });
   };
 
@@ -172,6 +180,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             Sign out
           </Button>
         </header>
+
+        {/* Above the content, never over it: a member mid-form is not interrupted. */}
+        <ConnectionBanner />
 
         {/* pb-20 keeps the last row clear of the bottom bar on mobile. */}
         <main className="flex-1 px-4 pt-4 pb-20 md:px-6 md:pt-6 md:pb-6">{children}</main>

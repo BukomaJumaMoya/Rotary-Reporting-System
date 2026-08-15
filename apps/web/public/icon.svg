@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#d41367"/>
+  <g transform="translate(61.44 61.44)">
+    <text x="194.56" y="194.56"
+          font-family="Segoe UI, Helvetica, Arial, sans-serif"
+          font-size="264.6016" font-weight="700"
+          fill="#ffffff" text-anchor="middle" dominant-baseline="central">R</text>
+  </g>
+</svg>

@@ -66,9 +66,20 @@ export function serveWebClient(app: Express): void {
       setHeaders: (res, filePath) => {
         // Both separators: this runs on Windows in development and Linux in production.
         const hashed = /[/\\]assets[/\\]/.test(filePath);
+
+        // The SERVICE WORKER and its manifest are never held (M3 session 1). A cached
+        // `sw.js` is a deploy the device does not notice until the entry expires — and the
+        // service worker is the thing that decides how everything else is cached, so a
+        // stale one is a stale application with no way to correct it from the server.
+        const isWorker = /[/\\](sw\.js|workbox-[^/\\]+\.js|manifest\.webmanifest)$/.test(filePath);
+
         res.setHeader(
           'Cache-Control',
-          hashed ? 'public, max-age=31536000, immutable' : 'public, max-age=3600',
+          isWorker
+            ? 'no-cache'
+            : hashed
+              ? 'public, max-age=31536000, immutable'
+              : 'public, max-age=3600',
         );
       },
     }),

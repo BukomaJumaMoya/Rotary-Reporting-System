@@ -275,6 +275,9 @@ apps/web/src/
   features/
     auth/        LoginPage (password → TOTP → recovery), PasswordPages
                  (forgot, reset, accept invite), useAuth/useScope
+    lib/offline/ caches.ts (cleared on sign-out) · connectivity.ts (heartbeat)
+                 pwa.ts (registration, update prompt, install prompt)
+    components/layout/ConnectionBanner.tsx — offline, update and install, never modal
     clubs/       ClubsPage (directory) · ClubProfilePage (tabs, one summary call)
                  ClubFormPage (charter and edit) · ClustersPage · types.ts
     activities/  ReportPage — THE screen: four steps, rendered from the type
