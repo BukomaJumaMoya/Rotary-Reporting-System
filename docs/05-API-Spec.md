@@ -62,7 +62,21 @@ Handlers never read `districtId` or `rotaryYearId` from user input. Both come fr
 
 ### Domain error codes
 
-`PERIOD_CLOSED` · `YEAR_LOCKED` · `FRAMEWORK_LOCKED` · `TIER_NOT_APPLICABLE` · `DUPLICATE_MEMBERSHIP_EVENT` · `MISSING_REQUIRED_FIELD_FOR_TYPE` · `ASSESSMENT_FINALISED` · `DISPUTE_WINDOW_CLOSED` · `RI_ID_ALREADY_CLAIMED` · `INSUFFICIENT_SCOPE`
+Declared in `apps/api/src/platform/errors.ts`, which is the list that is actually true.
+
+**Built:** `INSUFFICIENT_SCOPE` · `YEAR_LOCKED` · `NOT_FOUND` · `VALIDATION_ERROR` ·
+`POSITION_IN_USE` · `POSITION_ALREADY_HELD` · `TEMPLATE_IMMUTABLE` · `UNKNOWN_PERMISSION` ·
+`DUPLICATE_CODE` · `INVALID_SCOPE_REFERENCE` · `SCOPE_TYPE_MISMATCH` · `COMMITTEE_TOO_DEEP` ·
+`ROLLOVER_NOT_CONFIRMED` · `PERIOD_OPEN` · `MEMBERSHIP_IMMUTABLE` · `AUDIT_IMMUTABLE` ·
+the auth codes in §2.
+
+**Designed, not yet built:** `PERIOD_CLOSED` · `FRAMEWORK_LOCKED` · `TIER_NOT_APPLICABLE` ·
+`DUPLICATE_MEMBERSHIP_EVENT` · `MISSING_REQUIRED_FIELD_FOR_TYPE` · `ASSESSMENT_FINALISED` ·
+`DISPUTE_WINDOW_CLOSED` · `RI_ID_ALREADY_CLAIMED`.
+
+`MEMBERSHIP_IMMUTABLE` and `AUDIT_IMMUTABLE` are mapped from database guard SQLSTATEs
+(ADR-012). Prisma 7's driver adapter nests the code two levels deeper than the obvious
+place, which is why `sqlStateOf()` reads three candidates.
 
 ### Idempotency
 
@@ -126,13 +140,16 @@ A member who has lost both the authenticator *and* the codes needs an administra
 | `GET` | `/clusters` · `POST` `/clusters` | `cluster:read/manage:district` |
 | `POST` | `/clusters/:id/clubs` | `cluster:manage:district` |
 | `GET` | `/years` · `GET` `/years/current` | authenticated |
-| `POST` | `/admin/rollover` | `year:rollover:district` — supports `{ dryRun }` |
+| `POST` | `/admin/rollover` | `year:rollover:district` — **built in M1**; `dryRun` is required, not defaulted |
 
 `GET /clubs/:id/summary` exists specifically to avoid the mobile client making six round trips to render a club page. Design for the network, not for REST purity.
 
 ---
 
 ## 4. People and governance
+
+**The design target.** The table immediately below is what this surface should become; the
+one after it is what exists today. Where they differ, the second is the truth.
 
 | Method | Path | Permission |
 |---|---|---|
@@ -143,10 +160,34 @@ A member who has lost both the authenticator *and* the codes needs an administra
 | `PATCH` | `/persons/:id/visibility` | own record only |
 | `GET` | `/persons/:id/export` | own record only — subject access request |
 | `POST` | `/persons/:id/erasure` | own record; queues review |
-| `GET` | `/positions` · `POST` · `PATCH` | `position:manage:district` |
-| `GET` | `/appointments` | `appointment:read:*` |
-| `POST` | `/appointments` · `DELETE` | `appointment:manage:district` or committee chair for own sub-committee |
-| `GET` | `/committees` · `POST` · `POST /committees/:id/members` | `committee:manage:district` / chair |
+
+**Built in M1** — the governance surface, as it exists:
+
+| Method | Path | Permission |
+|---|---|---|
+| `GET` | `/persons` | `person:read:club` — **NAMES ONLY**, for pickers. Scoped through `club_rosters`. |
+| `GET` | `/permissions` | `position:manage:district` — reference list, read-only |
+| `GET` | `/positions` · `/positions/:id` | `appointment:read:district` — `?scope=`, `?isActive=`, `?includeTemplates=` |
+| `POST` `PATCH` `DELETE` | `/positions` · `/positions/:id` | `position:manage:district`. DELETE is soft. |
+| `PUT` | `/positions/:id/permissions` | `position:manage:district` — replaces the WHOLE set, atomically |
+| `GET` | `/appointments` · `/appointments/:id` | `appointment:read:district` |
+| `POST` `PATCH` `DELETE` | `/appointments` · `/appointments/:id` | `appointment:manage:district`. DELETE is soft. |
+| `GET` | `/persons/:id/appointments` | own record, or `appointment:read:district` |
+| `GET` | `/committees` · `/committees/:id` | any signed-in member — `?tree=true`, `?parentId=` |
+| `POST` `PATCH` | `/committees` · `/committees/:id` | `committee:manage:district` **or chairing that subtree** |
+| `GET` `POST` `DELETE` | `/committees/:id/members[/:appointmentId]` | as above. Adds an APPOINTMENT, not a person. |
+| `GET` `POST` | `/invitations` · `/invitations/:id/resend` | `person:invite:district`, or `person:invite:club` for your own roster |
+| `POST` | `/users/:id/mfa/reset` | `user:manage:district` — audited, and the member is notified |
+| `GET` | `/audit` | `audit:read:district` — contact values redacted from every diff |
+| `POST` | `/admin/rollover` | `year:rollover:district` — `dryRun` is REQUIRED |
+
+**`GET /persons` returns names only.** No email, no phone, no photo — a picker needs to tell
+two people with the same name apart and has never needed anything else. The full person
+surface with visibility handling arrives in M2, and the rows above marked *(M2)* below are
+not built yet.
+
+*(M2)* `GET /persons/:id` · `POST /persons` · `PATCH /persons/:id` ·
+`PATCH /persons/:id/visibility` · `GET /persons/:id/export` · `POST /persons/:id/erasure`.
 
 **There is no unauthenticated person endpoint.** Not a reduced one, not a name-only one. If a public directory is ever wanted, it becomes a separate, explicitly-designed, opt-in surface with its own review — not a permission relaxation on this route.
 
@@ -271,4 +312,20 @@ Every list endpoint accepts `?format=xlsx`, which queues an export job for large
 
 `finance:read:club` for the secretary is deliberate — it fixes the district's logged complaint that secretaries could see collections but not expenditure.
 
-Seed this matrix as `position_permissions` rows in `prisma/seed.ts`. It is configuration, and the DES can change it without a deployment.
+**Permissions added in M1**, all seeded and wired onto the slate:
+
+| Permission | Held by | Why it exists |
+|---|---|---|
+| `person:invite:district` | DES, DRR | Invite anyone in the district |
+| `person:invite:club` | Club Secretary | Invite **only people on your own club's roster** — which is what makes it safe to give a secretary |
+| `user:manage:district` | DES | Reset a member's second factor when they have lost both the authenticator and the codes |
+| `appointment:read:district` | most district roles | Read appointments and the positions catalogue |
+| `club:read:district` · `person:read:club` · `membership:read:club` · `activity:read:club` · `assessment:read:club` | broadly | The read half of each resource, separated from its write half |
+
+**This matrix is a starting position, not a definition.** It is seeded as
+`position_permissions` rows by `prisma/seed/reference.ts`, and the DES edits it through
+`/admin/positions` without a deployment — which is the whole reason positions are data.
+
+Codes are matched EXACTLY at authorisation time. There is no wildcard: `club:read:*` above
+is shorthand for this document, and a matcher that expanded it would turn a typo in a
+seeded row into a silent grant.

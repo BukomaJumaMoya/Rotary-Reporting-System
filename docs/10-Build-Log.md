@@ -94,6 +94,9 @@ the vitest global setup refuses to run otherwise, because it truncates every tab
 packages/contracts/src/
   auth.ts        login, password reset, invite, MFA, /auth/me, error envelope
   context.ts     RequestContext, RequestScopes, the ?year= param, org scopes
+  common.ts      pagination, the list envelope, shared primitives
+  governance.ts  positions, permissions, appointments, committees, persons
+  administration.ts  invitations, MFA reset, audit read, rollover
   health.ts      the one unauthenticated response shape
 
 apps/api/src/
@@ -101,18 +104,27 @@ apps/api/src/
     audit.ts     actor store (AsyncLocalStorage), governed models, JSON-safe diffs
     config.ts    every env var, validated with Zod at startup; process exits if invalid
     context.ts   context middleware, requireContext, requirePermission, requireScope
-    db.ts        prisma (scoped models removed from its TYPE) · db(ctx) · unscopedPrisma
-    scope.ts     the scope registry, the Prisma extensions, the locked-year check
-    errors.ts    AppError, stable codes, error handler, SQLSTATE → domain code mapping
-    session.ts   express-session + connect-pg-simple, cookie policy
-    validate.ts  validateBody, withBody (typed body), asyncHandler
     crypto.ts    AES-256-GCM for secrets, with key rotation (ADR-013)
+    db.ts        prisma (scoped models removed from its TYPE) · db(ctx) · unscopedPrisma
+                 · scopedTransaction() · recordAction()
+    errors.ts    AppError, stable codes, error handler, SQLSTATE → domain code mapping
     mail.ts      smtp | log | capture transports
+    scope.ts     the scope registry, the Prisma extensions, the locked-year check
+    session.ts   express-session + connect-pg-simple, cookie policy
+    system-context.ts  systemContext() for work with no request; a MANDATORY reason
+    time.ts      district-local midnight; isTermCurrent, isoDate, fromIsoDate
+    validate.ts  validateBody, withBody (typed body), parseQuery, pathParam
   modules/
     admin/       GET /api/v1/admin/health — the only unauthenticated route
     auth/        routes · service · repository · passwords · tokens · mfa · recovery
-    governance/  repository · service — appointment-derived context resolution
+    governance/  routes · repository · service       context resolution; one router
+                 positions.{repository,service}      catalogue + the permission matrix
+                 appointments.{repository,service}   terms, uniqueness, revocation
+                 committees.service                  delegated subtrees, depth 3
+                 administration.service              invitations, MFA reset, audit read
+                 persons.service                     names only — no contact fields
     notifications/ service · templates — delivery log built on notification_templates
+    org/         rollover.service · routes — the year rollover, dry run and committed
   test/
     global-setup.ts  applies migrations to TEST_DATABASE_URL
     helpers.ts       resetDatabase, org/position/appointment fixtures, signIn
@@ -127,16 +139,28 @@ apps/api/prisma/
   seed/synthetic.ts   deterministic Ugandan member data. Never real data.
   tsconfig.json    so the seed is typechecked and linted like everything else
 
+apps/web/src/
+  lib/           api.ts (fetch wrapper + ApiError) · queries.ts (TanStack keys,
+                 useList, useApiMutation) · cx.ts · toast.ts
+  components/    ui/index.tsx — the whole design system in one file
+                 Can.tsx — permission-gated rendering, presentation only
+                 layout/AppShell.tsx — nav, year badge, district, sign-out
+  features/
+    auth/        LoginPage (password → TOTP → recovery), PasswordPages
+                 (forgot, reset, accept invite), useAuth/useScope
+    dashboard/   DashboardPage — what this account may actually do
+    governance/  PositionsPage (catalogue + permission matrix)
+                 AppointmentsPage · CommitteesPage · AdminPages
+                 (invitations, audit, rollover) · types.ts
+
 Dockerfile · fly.toml · .github/workflows/deploy-staging.yml · README.md
 ```
 
-`apps/web` is still the session-1 placeholder page. Nothing has been built on it.
-
-**165 tests**, all integration-style against real PostgreSQL. The suites that are load
+**282 tests**, all integration-style against real PostgreSQL. The suites that are load
 bearing rather than incidental: `no-pii.test.ts` (walks every route unauthenticated),
 `invariants.test.ts` (37 ADR-012 guards), `scope*.test.ts` (the data access layer),
-`audit.test.ts`, and `prisma/seed.test.ts`, which runs the real seed and signs in as
-the seeded PIME Chair.
+`audit.test.ts`, `rollover.test.ts` (dry run and committed), and `prisma/seed.test.ts`,
+which runs the real seed and signs in as the seeded PIME Chair.
 
 ---
 
@@ -152,7 +176,7 @@ only as guards, each with a stable SQLSTATE and a conformance test. This removed
 
 **ADR-013 — secret encryption and key management** (`02-Architecture.md`).
 
-**`docs/schema.sql` is now v1.6.** The translation surfaced real defects in the v1.0
+**`docs/schema.sql` is now v1.7.** The translation surfaced real defects in the v1.0
 baseline; every amendment is logged in the file's own header. The substantive one:
 `club_rosters` filtered on `supersedes_event_id IS NULL`, which discarded every correction
 while continuing to count the row it corrected.
@@ -175,7 +199,7 @@ the envelope shape.
 **Errors.** One envelope, stable codes in `platform/errors.ts`. Guard SQLSTATEs map to
 domain codes. Never serialise a stack trace, SQL or an internal id.
 
-### Session 4 — the scoped data access layer
+### M0 session 4 — the scoped data access layer
 
 **Scoping is the client, not a helper.** `platform/db.ts` exports `prisma` with every
 context-bound model **removed from its type**, so `prisma.activity` does not compile.
@@ -302,30 +326,7 @@ lets the scoping tests mount probe routes INSIDE the real middleware stack — a
 assembled its own app would prove the stack the test built, not the one that ships.
 `tsconfig.build.json` excludes `src/test`, so none of it reaches `dist`.
 
-### M1 session 2 — district-local term boundaries
-
-**The deferred item from §5 is closed.** Appointment terms are compared against midnight
-in the DISTRICT's timezone, not UTC, in `platform/time.ts` — and in both places that ask:
-context resolution and appointment validation. They share one helper, because if they
-disagreed an appointment could be creatable and not yet effective for reasons nobody
-could see.
-
-Compared against UTC the boundary in Kampala is three hours wide. Between 21:00 and
-midnight EAT on 30 June an incoming officer is already authorised; on 1 July between
-midnight and 03:00 EAT they are not. Rollover happens on exactly that boundary, once a
-year. Three tests pin the clock to it.
-
-**The term filter moved out of SQL.** `findActiveAppointments` can no longer express the
-comparison in a `where` clause, because it needs each row's own district timezone and a
-person may hold appointments in more than one district. `is_active` and the person narrow
-it to a handful of rows first, and the date check runs in TypeScript.
-
-**`isCurrent` is distinct from `isActive` on the appointment contract.** Active means not
-revoked; current means the term covers today where the district is. An appointment created
-in June for a term starting 1 July is the first and not the second, and a screen showing
-one number for both would be lying for a month.
-
-### Session 5 — audit log and the unauthenticated-PII guard
+### M0 session 5 — audit log and the unauthenticated-PII guard
 
 **The audit extension is applied LAST, so it runs innermost.** Prisma nests query
 extensions with the first-applied outermost — measured, not assumed — so an audit
@@ -394,7 +395,7 @@ set, and the one that drifted would be the one nobody read. The suite asserts ex
 passes, so deleting a check fails as loudly as breaking one, and it drops a trigger to
 prove it would notice a guard that stopped firing.
 
-### Session 6 — seed and staging deployment
+### M0 session 6 — seed and staging deployment
 
 **No faker.** The prompt named it; the seed does not use it, for two project-specific
 reasons. faker generates Western names, and a district demo populated with them is useless
@@ -408,7 +409,7 @@ seen on another.
 
 **The dataset:** two Rotary Years with 2027-28 current and 2026-27 locked · district 9218
 · 3 regions · 6 clusters · 20 clubs affiliated for the year · 300 synthetic members with
-`JOIN` events and the roster refreshed · 29 permissions · 10 positions with 104
+`JOIN` events and the roster refreshed · 32 permissions · 10 positions with 107
 `position_permissions` wired from the §10 matrix · 69 officer accounts. About six seconds.
 
 **Appointment terms are clamped to today.** The seeded year is 2027-28, the launch year,
@@ -479,21 +480,147 @@ tested directly.
 
 ---
 
+### M1 — governance
+
+#### Session 1 — positions and permissions
+
+**A position is a row and its permission set is a join table**, both editable in the UI, so
+adding a district role is a form rather than a release (axiom 5's shape, applied to
+governance). `POSITION_IN_USE` refuses deactivating a position somebody currently holds:
+the alternative is an appointment pointing at a role that no longer exists, which every
+later permission check has to have an opinion about.
+
+**Shared template positions are readable by every district and editable by none.**
+`is_template` marks the RI-defined slate. `TEMPLATE_IMMUTABLE` is a clearer answer than a
+404 here, because the row is legitimately visible — the screen says "Shared" instead of
+offering a button that always fails.
+
+**`PUT /positions/:id/permissions` replaces the whole set, and takes the whole set.** A
+client-computed diff lets two officers editing the same position silently merge each
+other's work; sending the full set makes the last write obviously the last write.
+
+**A code is immutable after creation.** The seed, the §10 authorisation matrix and whatever
+an officer wrote on paper all refer to a position by code. `DUPLICATE_CODE` guards the
+insert; the edit form disables the field.
+
+#### Session 2 — district-local term boundaries
+
+**The deferred item recorded in M0 is closed.** Appointment terms are compared against midnight
+in the DISTRICT's timezone, not UTC, in `platform/time.ts` — and in both places that ask:
+context resolution and appointment validation. They share one helper, because if they
+disagreed an appointment could be creatable and not yet effective for reasons nobody
+could see.
+
+Compared against UTC the boundary in Kampala is three hours wide. Between 21:00 and
+midnight EAT on 30 June an incoming officer is already authorised; on 1 July between
+midnight and 03:00 EAT they are not. Rollover happens on exactly that boundary, once a
+year. Three tests pin the clock to it.
+
+**The term filter moved out of SQL.** `findActiveAppointments` can no longer express the
+comparison in a `where` clause, because it needs each row's own district timezone and a
+person may hold appointments in more than one district. `is_active` and the person narrow
+it to a handful of rows first, and the date check runs in TypeScript.
+
+**`isCurrent` is distinct from `isActive` on the appointment contract.** Active means not
+revoked; current means the term covers today where the district is. An appointment created
+in June for a term starting 1 July is the first and not the second, and a screen showing
+one number for both would be lying for a month.
+
+#### Session 3 — the web application
+
+**`<Can>` is presentation, never a boundary.** Every screen it hides is refused by the
+server independently, and the dashboard says so. The one place client-side logic does real
+work is the committee tree, where "may I manage this node" needs SCOPE as well as
+permission — `committee:manage:district` anywhere, or chairing this subtree — and that
+answer comes from `RequestScopes`, computed server-side and merely read here.
+
+**One design-system file.** `components/ui/index.tsx` holds every primitive. Tailwind v4
+with tokens in CSS, no component library: the payload budget is 250 KB of initial JS on
+metered Android data, and a component library is the easiest way to lose it.
+
+**The 401 handler is registered from `App.tsx`, not imported into `lib/api.ts`.** The fetch
+wrapper stays free of navigation, so tests and non-React callers can use it.
+
+#### Session 4 — committees
+
+**Committee scope expands downwards, which the session prompt assumed and the code did
+not.** A chair holding a committee appointment now covers their committee and every
+sub-committee beneath it, so they can create and staff their own subtree without holding
+anything district-wide. That is the delegation the district asked for.
+
+**Membership is by APPOINTMENT, not by person.** Serving on a committee is something you do
+in a capacity, and it should expire with the appointment that justified it. The picker
+therefore chooses an appointment.
+
+**Depth is capped at three** (`COMMITTEE_TOO_DEEP`). Unbounded nesting makes scope expansion
+a recursive query with no natural bound, and no district committee structure needs four.
+
+#### Session 5 — invitations, MFA reset, audit read
+
+**Closes two M0 deferrals.** `issueInvite()` had been exported and unused since M0 session
+3 because *who may invite whom* is a permission question; it is now behind
+`person:invite:club` / `:cluster` / `:district`, each checked against the caller's scope for
+the club or cluster named. Admin MFA reset is behind `user:mfa:reset:district` and writes a
+notification to the account holder — a reset nobody is told about is the attack.
+
+**`user_tokens.created_at` was added** (migration `20260815010000`, schema.sql v1.7) so the
+outstanding-invitations screen can say how long somebody has sat on an invitation without
+inferring it from a TTL that may have changed since.
+
+**`/persons` returns names only.** Governance screens need a person picker; a person picker
+is not a directory. No contact field is selected at the repository level, so there is
+nothing for a later change to accidentally widen. The no-PII harness covers the
+unauthenticated case; this is the authenticated one, and it is a deliberate narrowing
+rather than a visibility-flag decision.
+
+**The audit read is district-scoped like everything else** and paginates. `AUDIT_IMMUTABLE`
+already refused writes at the database; the read adds no way around it.
+
+#### Session 6 — system context and rollover
+
+**The step order in the session prompt cannot work.** It locks the outgoing year before
+deactivating its appointments — but deactivating them is a write into that year, which the
+lock refuses. Rollover deactivates first, then locks.
+
+**A dry run is not a preview computed separately.** It runs the real transaction and rolls
+it back, so what the officer approves is what actually happened in a transaction that then
+did not commit. `dryRun` is required in the request, not defaulted: a defaulted destructive
+flag is the wrong default whichever way it points, and `ROLLOVER_NOT_CONFIRMED` refuses the
+committed path without an explicit confirmation string.
+
+**Rollover is the reason `scopedTransaction()` exists.** It reads last year's appointments
+and writes next year's affiliations atomically, and no single `db(ctx)` spans two years.
+
+**ESLint caught rollover reaching for `unscopedPrisma`** — which was allowed, because the
+rule permits `platform/` and `modules/governance/` and rollover briefly lived there. It
+moved to `modules/org/` and now goes through `db(ctx)` and `scopedTransaction()` like
+everything else. The lint rule found it, which is the argument for having the rule.
+
+#### Session 7 — administration screens
+
+**Every admin screen gates on `<Can>` inside itself as well as being routed behind auth.**
+The route is convenience; the server refuses regardless.
+
+**The deactivate warning reads the count already on the row** rather than guessing, so the
+dialog tells the truth before the server has to.
+
+---
+
 ## 5. Deliberately unfinished
 
 | Thing | Why | Lands in |
 |---|---|---|
-| No endpoint issues invitations (`issueInvite()` is exported, unused) | who may invite whom is a permission question | M1 |
-| Admin reset of a member's MFA | needs permissions | M1 |
+| The repository and hosting accounts are on a PERSONAL account | ADR-011 names this as the failure the project exists to correct; it needs district-owned GitHub and Fly organisations with two administrators | **M0's last open exit condition** |
 | No worker process, no pg-boss | notifications deliver inline; the `notifications` row is already the queue | later |
-| Web app is a placeholder, and the static bundle is uploaded as a CI artifact rather than published | the district's static host does not exist yet, and choosing one in a workflow file is how it gets chosen by accident | M2 |
+| The web bundle is uploaded as a CI artifact rather than published | the district's static host does not exist yet, and choosing one in a workflow file is how it gets chosen by accident | **due before M2 session 2** |
 | The worker process group in `fly.toml` is commented out | pg-boss is not built; a crash-looping machine would fail health checks and make every deploy look broken | with the jobs module |
-| No endpoint READS the audit log | who may read it is a permission question, and `audit:read:district` has no route yet | M1 |
 | `recordAction(EXPORT, …)` exists and is unused | there is no export module yet | M7 |
-| Positions, permissions and appointments have no CRUD — they are fixtures and, from session 6, seed rows | context resolution READS them; editing them is a governance feature | M1 |
 | A malformed or unauthorised `?year=` fails EVERY authenticated route, including `/auth/logout` | context resolution is global and eager; sending `?year=` to logout is a client bug | not planned |
 | A nested create of a parent alongside its child is not scope-checked | there is no parent id to check; the parent's own write is stamped, so the child lands under a stamped row | not planned |
 | Permission codes match exactly — no `club:read:*` wildcard | a matcher would turn a typo in a seeded row into a silent grant | not planned |
+| A person's contact details have no endpoint at all, not even an authenticated one | `person_visibility` is enforced nowhere yet because nothing reads the fields; the flags exist and default closed | M2 |
+| Committee scope expands downwards but a sub-committee chair cannot see the parent | nothing expands upwards, deliberately | not planned |
+| Rollover does not carry appointments forward | an appointment is a decision for the incoming DRR to make, not a default | not planned |
 
 
 ---
@@ -539,6 +666,20 @@ own writes. All fixtures in `src/test/helpers.ts` use the escape hatch.
 keeps no mount-path string, so the unauthenticated-PII harness reads a registry instead.
 `assertAllRoutersDiscovered` fails the build if a router bypasses the helper — but the
 failure is in the PII suite, not where the router was added.
+
+**A Prisma transaction client cannot be `$extends`-ed.** Measured, not assumed — which is
+why `scopedTransaction()` applies the scope by hand rather than composing extensions. If you
+need two scopes in one transaction, that is the only route; `db(a).$transaction` gives you
+`a` and nothing else.
+
+**`scopedTransaction()` does not audit.** The extension chain it bypasses is where auditing
+lives. A caller needing an audit row inside a transaction writes one explicitly, as rollover
+does.
+
+**`docs/schema.sql` must be verified, not just edited.** Rebuild it into `dis_schema_check`
+and diff `information_schema.columns` against the migrated development database. M1 did this
+and found the `session` table had been live since M0 session 3 without ever being recorded
+in the file that calls itself authoritative.
 
 **Prisma 7 differences from most documentation:** configuration lives in
 `prisma.config.ts`, the client generator is `prisma-client` emitting TypeScript into

@@ -67,6 +67,10 @@ Scoped tables are reachable **only** through `db(ctx)` (`platform/db.ts`), which
 
 **Secrets** that the database must hold but must not yield — currently TOTP secrets — are encrypted with `platform/crypto.ts` before they are stored (ADR-013). Keys live in the platform secret store, never beside the data.
 
+**Scoped data access.** Context-bound models are removed from the `prisma` export's *type* — reach them through `db(ctx)`. `unscopedPrisma` is importable only from `platform/`, `modules/governance/` and `src/test/`, and ESLint enforces that. Two scopes inside one transaction need `scopedTransaction()`; a Prisma transaction client cannot be `$extends`-ed. Work with no request uses `systemContext({ districtId, rotaryYearId, reason })`, never `unscopedPrisma` — the reason is mandatory and reaches `audit_log`.
+
+**Dates that decide authority** — appointment terms, year boundaries — compare against midnight in the DISTRICT's timezone via `platform/time.ts`, never UTC. In Kampala the difference is a three-hour window, and rollover happens on exactly that boundary.
+
 **IDs** are UUIDs, generated client-side for offline-created records so retry is idempotent.
 
 **Never copy production data to a development environment.** Use `prisma/seed.ts`.
@@ -100,7 +104,8 @@ Modules talk through exported service functions. No module imports another's rep
 
 - `snake_case` in the database, `camelCase` in TypeScript. Prisma maps between them.
 - Zod schemas in `packages/contracts` are the single source of truth for request shapes. Server validates with them; client derives form types from them.
-- One error shape: `{ error: { code, message, details } }`. Domain errors use stable codes (`PERIOD_CLOSED`, `YEAR_LOCKED`, `FRAMEWORK_LOCKED`, `TIER_NOT_APPLICABLE`) declared in `platform/errors.ts`.
+- One error shape: `{ error: { code, message, details } }`. Domain errors use stable codes (`YEAR_LOCKED`, `INSUFFICIENT_SCOPE`, `POSITION_IN_USE`, `PERIOD_CLOSED` …) declared in `platform/errors.ts`, which is the list that is actually true — `05-API-Spec.md §1` marks which are built.
+- Permission codes match **exactly**. There is no `club:read:*` wildcard: a matcher turns a typo in a seeded row into a silent grant.
 - Handlers take a **typed body**: `...withBody(schema, async ({ body, req, res }) => …)`. Express types `req.body` as `any`, so reading it directly is unchecked and a renamed contract field would compile.
 - Tests read responses **through the contract schemas** (`errorBody`, `meBody` in `src/test/helpers.ts`) rather than casting, so every assertion also proves the envelope shape.
 - Never leak stack traces, SQL or internal IDs to a client.
@@ -116,7 +121,7 @@ Priority order:
 
 1. **Assessment resolvers** — 80%+ coverage, unit tested with fixture data. A scoring bug is an award scandal.
 2. **Permission resolution** — every position × every endpoint class.
-3. **Year rollover** — integration tested, both dry-run and committed paths.
+3. **Year rollover** — integration tested, both dry-run and committed paths. Built in M1; `modules/org/rollover.test.ts`.
 4. **Offline sync idempotency** — same UUID posted twice yields one row.
 5. **No-PII-unauthenticated** — an automated test that walks every route and asserts unauthenticated requests never return contact fields. This one is mandatory; it guards the failure this project exists to correct.
 
@@ -151,7 +156,7 @@ CRUD does not need exhaustive coverage. Do not chase a coverage number.
 npm run dev              # api + web
 npm run db:generate      # prisma generate — after ANY schema.prisma change
 npm run db:migrate       # prisma migrate dev
-npm run db:seed          # reset to realistic fixtures        (session 6)
+npm run db:seed          # reset to realistic fixtures
 npm run test             # vitest — needs PostgreSQL and TEST_DATABASE_URL
 npm run typecheck
 npm run lint
@@ -176,20 +181,35 @@ apply to `sharp` when image processing lands.
 
 ## Current phase
 
-**M0 — Foundations is complete.** Monorepo and CI, schema translated and migrated
-(`docs/schema.sql` is at v1.6), session authentication with lockout, mail delivery, TOTP
-two-factor with encrypted secrets and recovery codes, the request context and scoped data
-access layer, the audit log, the unauthenticated-PII harness, a one-command synthetic seed,
-and a staging deployment that is configured but not yet launched.
+**M0 — Foundations and M1 — Governance core are both complete** (August 2026).
+`docs/schema.sql` is at v1.7.
 
-**One item remains, and it is organisational rather than technical:** the repository and
+M0: monorepo and CI, schema translated and migrated, session authentication with lockout,
+mail delivery, TOTP with encrypted secrets and recovery codes, the request context and
+scoped data access layer, the audit log, the unauthenticated-PII harness, a one-command
+synthetic seed, and a staging deployment that is configured but not yet launched.
+
+M1: positions and their permission matrix, appointments with district-local terms,
+committees with delegated sub-committees, invitations, admin MFA reset, the audit read, the
+year rollover with a real dry run, and the web application with its governance screens.
+
+**Two items remain outside the code. The first is organisational rather than technical:** the repository and
 the hosting accounts are on a personal account. ADR-011 and `docs/08-Incumbent-Assessment.md`
 both name that as the specific failure this project exists to correct. Create the
 district-owned GitHub and Fly organisations with two administrators, move the repository,
 then `fly launch` and add `FLY_API_TOKEN`.
 
-**Next: M1 — governance core.** Positions and appointments CRUD, committees with
-sub-committees, and the year rollover job with dry-run. See `docs/07-Roadmap.md`.
+**The second is now due:** the web bundle is uploaded as a CI artifact rather than
+published, because the district's static host does not exist yet. Choose it deliberately —
+choosing it inside a workflow file is how it gets chosen by accident. Needed before M2
+session 2.
 
-See `docs/09-ClaudeCode-M0-Sessions.md` for the session prompts, `docs/10-Build-Log.md`
-for current state, and `docs/07-Roadmap.md` for milestones beyond M0.
+**Next: M2 — the reporting spine.** Clubs with RI IDs and affiliations, persons with
+visibility defaults, the membership event log and its derived roster, and activities with
+media. The first features built on the governance core, and the first to touch personal data
+at scale — read the personal-data rules above before starting. `sharp` lands here, and with
+it the npm optional-binary trap described below.
+
+See `docs/09-ClaudeCode-M0-Sessions.md` and `docs/12-ClaudeCode-M1-Sessions.md` for the
+session prompts already used, `docs/10-Build-Log.md` for current state, and
+`docs/07-Roadmap.md` for milestones beyond M1.

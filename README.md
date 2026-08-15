@@ -95,9 +95,12 @@ npm run test        # includes the 37 ADR-012 invariant checks
 - Rotary Years 2026-27 and 2027-28, with 2027-28 current and 2026-27 locked
 - District 9218 · 3 regions · 6 clusters · 20 clubs affiliated for 2027-28
 - **300 synthetic members** with `JOIN` events, and the derived roster refreshed
-- 29 permissions and 10 positions with the authorisation matrix wired
+- 32 permissions and 10 positions, with 107 `position_permissions` wired from the authorisation matrix
 - 69 officer accounts — a president, secretary and treasurer per club, plus the DRR,
   DES, District Treasurer, PIME Chair, two assessors and three ADRRs
+
+Appointment terms are clamped to today rather than dated from 1 July 2027. Dated from the
+launch year the dataset produces a district nobody can sign in to until launch day.
 
 **Synthetic data only, always.** The generator is in
 [`apps/api/prisma/seed/synthetic.ts`](apps/api/prisma/seed/synthetic.ts) and it is
@@ -115,14 +118,15 @@ vitest, against a **real PostgreSQL** — `TEST_DATABASE_URL` must name a databa
 containing `test`, because the suite truncates every table between cases and refuses to
 run otherwise.
 
-Four suites are load-bearing rather than incidental:
+**282 tests.** Five suites are load-bearing rather than incidental:
 
-| Suite                             | Guards                                                              |
-| --------------------------------- | ------------------------------------------------------------------- |
-| `src/platform/no-pii.test.ts`     | Walks **every** registered route unauthenticated. Mandatory.        |
-| `src/platform/invariants.test.ts` | The 37 database guards of ADR-012                                   |
-| `src/platform/scope*.test.ts`     | District and year scoping, and the registry that keeps it complete  |
-| `prisma/seed.test.ts`             | The seed, end to end, including signing in as the seeded PIME Chair |
+| Suite                              | Guards                                                              |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| `src/platform/no-pii.test.ts`      | Walks **every** registered route unauthenticated. Mandatory.        |
+| `src/platform/invariants.test.ts`  | The 37 database guards of ADR-012                                   |
+| `src/platform/scope*.test.ts`      | District and year scoping, and the registry that keeps it complete  |
+| `src/modules/org/rollover.test.ts` | Year rollover, dry run and committed                                |
+| `prisma/seed.test.ts`              | The seed, end to end, including signing in as the seeded PIME Chair |
 
 The no-PII harness exists because the predecessor system published roughly four thousand
 members' names, photographs, phone numbers, email addresses, genders and residential areas
@@ -158,7 +162,8 @@ Never from an app process: every instance would race the others.
 
 The web client is a static bundle with no secrets in it. CI builds it and uploads it as an
 artifact; point the last step of the `web` job at the district's static host once that
-account exists.
+account exists. **This is now due** — M2 is the first milestone whose screens somebody
+outside the repository needs to open.
 
 **Required in staging and production**, beyond the defaults in
 [`.env.example`](.env.example):
@@ -183,9 +188,12 @@ crash-looping until then.
 ```
 apps/api/          Express 5 · Prisma · the platform layer
   src/platform/    context · scope · audit · errors · db · session · crypto · mail
-  src/modules/     admin · auth · governance · notifications
+                   · time (district-local dates) · system-context (work with no request)
+  src/modules/     admin · auth · governance · notifications · org
   prisma/          schema, migrations, invariant checks, seed
-apps/web/          Vite · React 18 · Tailwind
+apps/web/          Vite · React 18 · Tailwind v4 · TanStack Query
+  src/components/  ui (the whole design system) · Can · layout
+  src/features/    auth · dashboard · governance — mirrors the API modules
 packages/contracts/  Zod schemas shared by both — the single source of request shapes
 docs/              The design baseline, and the build log
 ```

@@ -1,6 +1,15 @@
 -- =====================================================================
 -- Rotaract District Information System (DIS)
--- Authoritative PostgreSQL 16 schema — design baseline v1.6
+-- Authoritative PostgreSQL 16 schema — design baseline v1.7
+--
+-- v1.7 (governance, M1): user_tokens.created_at, so an outstanding-invitations screen
+-- can say how long somebody has been sitting on an invitation without assuming the TTL
+-- has never changed. Migration 20260815010000_user_token_created_at.
+--
+-- v1.7 also adds the `session` table, which has existed in the database since M0
+-- session 3 and was never recorded here. Found by rebuilding from this file and
+-- diffing the catalog against the migrated database — which is the check that should
+-- run whenever this file is amended.
 --
 -- v1.5 (auth): users.mfa_last_used_step, so a TOTP code cannot be replayed within its
 -- validity window.
@@ -306,7 +315,10 @@ CREATE TABLE user_tokens (
   purpose     TEXT NOT NULL,                        -- 'RESET','INVITE','VERIFY'
   token_hash  TEXT NOT NULL,
   expires_at  TIMESTAMPTZ NOT NULL,
-  consumed_at TIMESTAMPTZ
+  consumed_at TIMESTAMPTZ,
+  -- v1.7. When the link was SENT. Expiry alone cannot answer "how long has this person
+  -- been sitting on an invitation" without assuming the TTL has never changed.
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- Tokens are looked up by hash on every reset and invite acceptance. Unique so a
 -- collision or a duplicated issue is an error rather than an ambiguous match.
@@ -1167,6 +1179,24 @@ CREATE TABLE notifications (
   attempts       INT NOT NULL DEFAULT 0
 );
 CREATE INDEX notif_due ON notifications (status, scheduled_for) WHERE status = 'QUEUED';
+
+-- The express-session store, written and read by connect-pg-simple (ADR-003).
+--
+-- Declared here, and in schema.prisma, because Prisma must OWN it: a table Prisma can
+-- represent and does not know about is proposed for dropping on the next migrate dev.
+-- The column names are the library's and cannot change.
+--
+-- `expire` deviates from connect-pg-simple's reference DDL, which uses a naive
+-- `timestamp`. The library compares that column against to_timestamp(), which yields
+-- timestamptz, so with a naive column the comparison resolves through the server's
+-- timezone — and this server is not UTC. Timestamptz makes session expiry exact, and
+-- matches the project-wide rule that a timestamp is always TIMESTAMPTZ.
+CREATE TABLE "session" (
+  sid    VARCHAR PRIMARY KEY NOT NULL,
+  sess   JSON NOT NULL,
+  expire TIMESTAMPTZ(6) NOT NULL
+);
+CREATE INDEX "IDX_session_expire" ON "session" (expire);
 
 CREATE TABLE export_jobs (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -12,8 +12,8 @@ The plan is built backwards from a pilot in March, not forwards from August. Tha
 
 | # | Milestone | Target | Definition of done |
 |---|---|---|---|
-| M0 | Foundations | Sep 2026 | Repo under district org, CI green, schema migrated, auth working, one seeded district |
-| M1 | Governance core | Oct 2026 | Positions, appointments, permissions, year context. A user's access derives entirely from appointments. |
+| M0 | Foundations ✅ | Sep 2026 | Repo under district org, CI green, schema migrated, auth working, one seeded district |
+| M1 | Governance core ✅ | Oct 2026 | Positions, appointments, permissions, year context. A user's access derives entirely from appointments. |
 | M2 | Reporting spine | Dec 2026 | Clubs, roster, membership events, activities with media. **A club could use it for real.** |
 | M3 | Offline + mobile polish | Jan 2027 | PWA installable, offline submission queue drains reliably, payload budgets met |
 | M4 | Finance | Feb 2027 | Budgets, transactions, dues, TRF |
@@ -24,34 +24,58 @@ The plan is built backwards from a pilot in March, not forwards from August. Tha
 | M9 | Onboarding | Jun 2027 | All D9218 clubs seeded, officers invited and trained, documentation published |
 | M10 | **Go live** | **1 Jul 2027** | Charter day |
 
+**M0 and M1 are complete** (August 2026, ahead of target). `docs/10-Build-Log.md` records
+what actually landed, including several things this roadmap put later: MFA with recovery
+codes and application-level key rotation were M8 concerns and arrived in M0.
+
 M2 is the real milestone. If December arrives and a club cannot submit a fellowship report end to end on a phone, the plan is behind and scope must be cut — from M4 and M7 first, never from M5.
 
 ---
 
 ## 2. Phase detail
 
-### M0 — Foundations (Aug–Sep 2026) — **in progress, sessions 1–3 of 6 complete**
+### M0 — Foundations (Aug 2026) — **complete**
 
-> **Status, 14 August 2026.** Monorepo and CI done and green. Schema translated, migrated
-> and verified; `schema.sql` amended to v1.6 after the translation surfaced real defects,
+> **Status, 15 August 2026 — done.** Monorepo and CI green. Schema translated, migrated and
+> verified; `schema.sql` amended to v1.7 after the translation surfaced real defects,
 > including an inverted predicate in `club_rosters` that discarded every membership
-> correction. Authentication done, with mail delivery, TOTP two-factor, encrypted secrets
-> and recovery codes. **Request context and scoping — the part this milestone exists for —
-> is next.** Not yet started: audit middleware, the no-PII harness, the seed, and staging
-> deployment. See `docs/10-Build-Log.md`.
+> correction. Authentication with mail delivery, TOTP, encrypted secrets and recovery codes.
+> Request context and the scoped data access layer — the part this milestone exists for.
+> Audit log, the no-PII harness, a one-command synthetic seed, and a staging deployment
+> configured but not yet launched.
+>
+> **One exit condition is NOT met: the repository is still on a personal account.** The
+> definition of done says "repo under district org", and ADR-011 explains why that is not
+> paperwork. It is the last open M0 item. See `docs/10-Build-Log.md`.
 
 
 Monorepo with `apps/api`, `apps/web`, `packages/contracts`. TypeScript strict everywhere. Prisma schema translated from `schema.sql`, first migration applied. Session auth, Argon2id, login and password reset. Request context middleware with district and year scoping wired in **before any feature is written** — retrofitting it is the mistake this whole architecture exists to avoid. Audit middleware. CI running lint, typecheck, tests, and `npm audit`. Deployed to staging on day one, not month six.
 
 *Exit test:* a user logs in on staging and `GET /auth/me` returns a correct context.
 
-### M1 — Governance core (Oct 2026)
+### M1 — Governance core (Aug 2026) — **complete**
+
+> **Status, 15 August 2026 — done, and the exit test passes.** Positions with an editable
+> permission matrix, appointments with district-local terms, committees with delegated
+> sub-committees, invitations, admin MFA reset, the audit read, and the year rollover with a
+> real dry run — one that runs the transaction and rolls it back, rather than computing a
+> preview separately. The web application landed with it: login through TOTP, a dashboard,
+> and a screen for each of the above.
+>
+> Two things this milestone's plan did not anticipate. Committee scope had to expand
+> downwards before a chair could run their own subtree, and the rollover step order given in
+> the session prompt cannot work — it locks the outgoing year before deactivating its
+> appointments, which is a write into a locked year. Both are recorded in the build log.
 
 Positions and permissions seeded from the D9218 RY2027-28 slate — that document is your fixture data, use it. Appointments with scope. Permission resolution middleware. Committees with sub-committees. Rotary Year open/lock, and the rollover job with dry-run.
 
 *Exit test:* create a club secretary appointment; that user can write to their own club and receives `404` for any other club.
 
-### M2 — Reporting spine (Nov–Dec 2026)
+### M2 — Reporting spine (Nov–Dec 2026) — **next**
+
+> **Due first:** the web bundle is uploaded as a CI artifact rather than published, because
+> the district's static host does not exist yet. M2 is the first milestone whose screens
+> somebody outside the repository needs to open.
 
 Clubs CRUD with RI IDs, affiliations, clusters, tier calculation. Persons with visibility defaults. Membership events, derived roster, membership stats. Activity types as configuration, dynamic form rendering from type config, activities with media upload, `sharp` processing, EXIF stripping, S3 storage. Verification workflow.
 

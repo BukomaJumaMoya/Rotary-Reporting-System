@@ -12,10 +12,15 @@ Every session prompt in the revised milestone documents assumes what is written 
 
 ## 1. What changed in M0
 
-**`docs/schema.sql` is v1.6, not v1.0.** Amendments are logged in that file's header.
+**`docs/schema.sql` is v1.7, not v1.0.** Amendments are logged in that file's header.
 The one that matters most: `club_rosters` filtered on `supersedes_event_id IS NULL`, which
 discarded every correction while still counting the row it corrected. Any code written
 against the v1.0 baseline needs re-reading.
+
+**Verify it after every amendment.** Build the schema twice — once from `docs/schema.sql`
+into a scratch database, once from the migrations — and diff the catalogs. M1 did this and
+found the `session` table had been in the database since M0 session 3 without ever being
+recorded in the file that calls itself authoritative.
 
 **ADR-012 removed stored derived columns.** `dues_invoices.status`,
 `member_dues.amount_paid` and `club_assessments.total_score / max_possible / rank_in_tier`
@@ -144,17 +149,37 @@ queue.
 Everything after inherits it: the scoring job (M5), goal snapshots (M7), the notification
 drain, export generation.
 
-**Jobs have no request, so they need a system context.** Built in M1 session 5 with
-rollover, because rollover is the first thing that iterates every club without a session.
-The shape:
+**Jobs have no request, so they need a system context. BUILT** in M1 session 6, with
+rollover — the first thing that iterates every club without a session.
+`apps/api/src/platform/system-context.ts`:
 
 ```ts
-systemContext(districtId, rotaryYearId, reason: string): RequestContext
+systemContext({ districtId, rotaryYearId, reason }): Promise<SystemContext>
 ```
 
-It carries a synthetic actor that `identifyActor()` names, so `audit_log` records *why* a
-system write happened, not merely that one did. Jobs must never use `unscopedPrisma` — a
-job that skips the scope is a job that will one day run against the wrong district.
+Full permissions within the named district, the locked-year check honoured exactly as a
+user context honours it, and a MANDATORY reason that `identifyActor()` puts on every audit
+row — so the log records *why* a system write happened, not merely that one did. Jobs must
+never use `unscopedPrisma`: a job that skips the scope is a job that will one day run
+against the wrong district.
+
+**A transaction spanning two contexts needs `scopedTransaction()`.** A Prisma transaction
+client cannot be `$extends`-ed — measured, not assumed — so `db(a)` and `db(b)` can never
+share one. Rollover needs exactly that: last year's appointments and next year's
+affiliations, atomically, with the dry run rolling both back.
+
+```ts
+await scopedTransaction(async (scopedFor) => {
+  const prior = scopedFor(priorYearCtx);
+  const next = scopedFor(targetYearCtx);
+  // …one transaction, two scopes
+});
+```
+
+It applies the scope through `rewriteArgs` — the same function the extension uses, not a
+second copy — and refuses `via` models loudly, because their parent check needs a query of
+its own. It does not audit either; a caller needing an audit row inside a transaction
+writes one explicitly.
 
 ---
 
@@ -217,6 +242,14 @@ Amend these as you reach them rather than working around them.
 |---|---|
 | `01-SRS.md` FR-5.3, FR-6 | Describes invoice status and assessment totals as stored state |
 | `03-Data-Model.md` §6 | ERD shows `total_score`, `max_possible`, `rank_in_tier` as columns |
-| `05-API-Spec.md` §1 | Amended for the widened `RequestScopes` — check it is current |
 | `06-Assessment-Engine.md` §5 | `upsertScore` cannot use Prisma `upsert` on a scoped delegate |
-| `07-Roadmap.md` M0 | Understates what was built; M8 concerns (MFA, key rotation) landed early |
+
+**Amended in M1** and now current — do not work around these:
+
+| Document | What changed |
+|---|---|
+| `05-API-Spec.md` §1 | Widened `RequestScopes` (four arrays), `isYearWritable`, and the real domain-code list |
+| `05-API-Spec.md` §4 | The governance surface as built, with the M2 rows marked as not built |
+| `05-API-Spec.md` §10 | The M1 permissions, and the note that codes match exactly with no wildcard |
+| `07-Roadmap.md` M0, M1 | Both marked complete, with what actually landed |
+| `schema.sql` | v1.7 — `user_tokens.created_at`, and the `session` table that was always missing |
