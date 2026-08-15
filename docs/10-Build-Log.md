@@ -96,8 +96,8 @@ full history is in §4.
 | M2 session | State | Commit |
 |---|---|---|
 | 1 — Background jobs (pg-boss) | **done** | `b11a348` |
-| 2 — Web deployment | **done** | this commit |
-| 3 — Clubs and affiliations | pending | |
+| 2 — Web deployment | **done** | `ff9d5a6` |
+| 3 — Clubs and affiliations | **done** | this commit |
 | 4 — Clubs UI | pending | |
 | 5 — Persons and visibility | pending | |
 | 6 — Membership events and roster | pending | |
@@ -202,8 +202,13 @@ apps/api/src/
                  committees.service                  delegated subtrees, depth 3
                  administration.service              invitations, MFA reset, audit read
                  persons.service                     names only — no contact fields
+    activity/    service — countForClub(), the one function org needs (M2 s9 fills the rest)
+    membership/  service — countRoster(), reading club_rosters (M2 s6 fills the rest)
     notifications/ service · templates — queue row, delivery, and the due-row read
-    org/         rollover.service · routes — the year rollover, dry run and committed
+    org/         routes — clubs, affiliations, clusters, regions, rollover
+                 clubs.{repository,service}  THE affiliation join, written once
+                 clusters.service            clusters, their clubs, and regions
+                 rollover.service            the year rollover, dry run and committed
   jobs/
     boss.ts      the pg-boss client, lifecycle, queue provisioning, typed enqueue()
     define.ts    defineJob() · jobContextSchema — every payload names a district and year
@@ -498,7 +503,7 @@ seen on another.
 
 **The dataset:** two Rotary Years with 2027-28 current and 2026-27 locked · district 9218
 · 3 regions · 6 clusters · 20 clubs affiliated for the year · 300 synthetic members with
-`JOIN` events and the roster refreshed · 32 permissions · 10 positions with 107
+`JOIN` events and the roster refreshed · 33 permissions · 10 positions with 109
 `position_permissions` wired from the §10 matrix · 69 officer accounts. About six seconds.
 
 **Appointment terms are clamped to today.** The seeded year is 2027-28, the launch year,
@@ -805,6 +810,55 @@ engines are ~215MB of it. Not worth contorting the build for; worth not lying ab
 **The deploy workflow's `web` job is gone.** The artifact upload it existed for has no
 purpose now, and the API job gained a check that fetches `/login` and greps for the root
 element — which is what would notice a deploy where the API came up and the client did not.
+
+#### Session 3 — clubs, affiliations and clusters
+
+**The affiliation join is written ONCE**, in `modules/org/clubs.repository.ts`, and every
+club read goes through it. Nine handlers each writing their own is nine chances to omit it,
+and a handler that omitted it would return every club in the world while looking exactly
+like a handler that had not. Everything reads FROM the affiliation side —
+`db(ctx).clubDistrictAffiliation` is district- and year-scoped by the layer, so the scope is
+applied rather than remembered.
+
+**Nested filters are still yours to write.** The layer does not rewrite a relation reached by
+`include` or by a nested `where`, so `deletedAt: null` on `club` and `rotaryYearId` on
+`clusterAssignments` are written by hand here, each with a comment saying why. The cluster
+placement is read in a SECOND query rather than joined, because `club_cluster_assignments`
+carries a year and no district: a club that moved mid-year could be assigned to a cluster
+elsewhere, and an unscoped `include` would put another district's cluster name on the page.
+
+**PRISMA 7 DOES NOT POPULATE `meta.target` ON P2002.** With `@prisma/adapter-pg` the error
+carries `code: 'P2002'` and `meta.modelName`, and the violated fields appear only in the
+message. Code matching on `meta.target` — which is what every example on the internet does —
+silently never fires, and the caller gets a 500 where a domain error was intended. Found by a
+test that asserted the 409, not by one that asserted the write failed. This is the same class
+of bug as the SQLSTATE nesting in M0 session 6.
+
+**`CLUB_AFFILIATED_ELSEWHERE` does not name the other district.** There is deliberately no
+query looking for the other row: reading across the district boundary to write a better
+error message is exactly the read this system does not permit itself, and the unique on
+`(club_id, rotary_year_id)` already knows the answer.
+
+**`club:update:district` was added** (33 permissions, 109 `position_permissions`). The API
+spec always said `club:update:own` **or** `:district` and only the first existed, so a DRR
+correcting a club's RI ID had no door — `club:update:own` is bounded by the caller's own
+appointments, which is precisely what makes it safe to give a secretary. `requireAnyPermission`
+in `platform/context.ts` is the "either of these" gate; WHICH clubs each one reaches is still
+a scope question the service answers, and it answers 404.
+
+**`recalculateTier` lives in `clubs.service` and rollover imports it.** Tier is on the
+affiliation and frozen within the year: a club that recruits its fortieth member in March is
+not re-tiered in March, because it is being scored against a framework published for its tier
+at the start of the year. Rollover is the one caller.
+
+**`modules/membership` and `modules/activity` exist as one function each.** The club summary
+needs a roster count and an activity count, and the dependency rule says no module queries
+another's tables — so each owning module exports a service function now rather than org
+reaching into `club_rosters` and `activities` and being unpicked in sessions 6 and 9.
+
+**Cluster membership is set WHOLE, never diffed** — the same reasoning as replacing a
+position's permission set. Two officers redrawing clusters from two browsers with
+client-computed diffs merge each other's work silently.
 
 ---
 

@@ -67,12 +67,17 @@ Declared in `apps/api/src/platform/errors.ts`, which is the list that is actuall
 **Built:** `INSUFFICIENT_SCOPE` · `YEAR_LOCKED` · `NOT_FOUND` · `VALIDATION_ERROR` ·
 `POSITION_IN_USE` · `POSITION_ALREADY_HELD` · `TEMPLATE_IMMUTABLE` · `UNKNOWN_PERMISSION` ·
 `DUPLICATE_CODE` · `INVALID_SCOPE_REFERENCE` · `SCOPE_TYPE_MISMATCH` · `COMMITTEE_TOO_DEEP` ·
-`ROLLOVER_NOT_CONFIRMED` · `PERIOD_OPEN` · `MEMBERSHIP_IMMUTABLE` · `AUDIT_IMMUTABLE` ·
-the auth codes in §2.
+`ROLLOVER_NOT_CONFIRMED` · `PERIOD_OPEN` · `RI_ID_ALREADY_CLAIMED` ·
+`CLUB_AFFILIATED_ELSEWHERE` · `IDEMPOTENT_REPLAY` · `MEMBERSHIP_IMMUTABLE` ·
+`AUDIT_IMMUTABLE` · the auth codes in §2.
 
 **Designed, not yet built:** `PERIOD_CLOSED` · `FRAMEWORK_LOCKED` · `TIER_NOT_APPLICABLE` ·
 `DUPLICATE_MEMBERSHIP_EVENT` · `MISSING_REQUIRED_FIELD_FOR_TYPE` · `ASSESSMENT_FINALISED` ·
-`DISPUTE_WINDOW_CLOSED` · `RI_ID_ALREADY_CLAIMED`.
+`DISPUTE_WINDOW_CLOSED`.
+
+`CLUB_AFFILIATED_ELSEWHERE` deliberately does NOT name the other district. Reading across
+the district boundary to write a better error message is exactly the read this system does
+not permit itself, and the unique on `(club_id, rotary_year_id)` already knows the answer.
 
 `MEMBERSHIP_IMMUTABLE` and `AUDIT_IMMUTABLE` are mapped from database guard SQLSTATEs
 (ADR-012). Prisma 7's driver adapter nests the code two levels deeper than the obvious
@@ -129,20 +134,35 @@ A member who has lost both the authenticator *and* the codes needs an administra
 
 ## 3. Organisation
 
+**Built in M2 session 3**, except the two rows marked otherwise.
+
 | Method | Path | Permission |
 |---|---|---|
-| `GET` | `/clubs` | `club:read:*` |
-| `GET` | `/clubs/:id` | `club:read:*` |
-| `POST` | `/clubs` | `club:create:district` |
-| `PATCH` | `/clubs/:id` | `club:update:own` or `:district` |
-| `GET` | `/clubs/:id/summary` | `club:read:*` — activity, roster, dues, score in one call |
+| `GET` | `/clubs` | `club:read:district` — `?tier=`, `?baseType=`, `?status=`, `?clusterId=`, `?q=` |
+| `GET` | `/clubs/:id` | `club:read:district` |
+| `POST` | `/clubs` | `club:create:district` — idempotent on a client-supplied `id` |
+| `PATCH` | `/clubs/:id` | `club:update:own` **or** `club:update:district` |
+| `GET` | `/clubs/:id/summary` | `club:read:district` — activity, roster, dues, score in one call |
 | `POST` | `/clubs/:id/affiliations` | `club:affiliate:district` |
-| `GET` | `/clusters` · `POST` `/clusters` | `cluster:read/manage:district` |
-| `POST` | `/clusters/:id/clubs` | `cluster:manage:district` |
-| `GET` | `/years` · `GET` `/years/current` | authenticated |
+| `GET` | `/clusters` · `GET` `/clusters/:id` | `club:read:district` |
+| `POST` | `/clusters` · `PATCH` `/clusters/:id` | `cluster:manage:district` |
+| `POST` | `/clusters/:id/clubs` | `cluster:manage:district` — replaces the WHOLE membership |
+| `GET` | `/regions` | `club:read:district` |
+| `GET` | `/years` · `GET` `/years/current` | authenticated — **not built** |
 | `POST` | `/admin/rollover` | `year:rollover:district` — **built in M1**; `dryRun` is required, not defaulted |
 
-`GET /clubs/:id/summary` exists specifically to avoid the mobile client making six round trips to render a club page. Design for the network, not for REST purity.
+**A club has no `district_id`.** Every read above reaches clubs through a join on
+`club_district_affiliations (district_id, rotary_year_id)`, written once in
+`modules/org/clubs.repository.ts`. A club affiliated elsewhere answers `404`, exactly as one
+that does not exist — and `tier`, `isConfirmed` and the cluster placement are all fields of
+the AFFILIATION rather than of the club.
+
+Cluster READS sit behind `club:read:district` rather than behind a cluster-read permission of
+their own. The club directory filters by cluster, so everyone who can read clubs needs the
+cluster list, and a permission held by exactly the same people as another only adds a row to
+the matrix. Writes need `cluster:manage:district`.
+
+`GET /clubs/:id/summary` exists specifically to avoid the mobile client making six round trips to render a club page. Design for the network, not for REST purity. `dues` and `score` are `null` until M4 and M5 fill them; their shape is fixed now so the client is not rewritten.
 
 ---
 
@@ -321,6 +341,12 @@ Every list endpoint accepts `?format=xlsx`, which queues an export job for large
 | `user:manage:district` | DES | Reset a member's second factor when they have lost both the authenticator and the codes |
 | `appointment:read:district` | most district roles | Read appointments and the positions catalogue |
 | `club:read:district` · `person:read:club` · `membership:read:club` · `activity:read:club` · `assessment:read:club` | broadly | The read half of each resource, separated from its write half |
+
+**Permissions added in M2:**
+
+| Permission | Held by | Why it exists |
+|---|---|---|
+| `club:update:district` | DRR, DES | The other half of `club:update:own`. A district officer correcting a club's RI ID needs a door that is not "be a member of that club" — and `club:update:own` is bounded by the caller's own appointments, which is precisely what makes it safe to give a secretary. |
 
 **This matrix is a starting position, not a definition.** It is seeded as
 `position_permissions` rows by `prisma/seed/reference.ts`, and the DES edits it through

@@ -130,6 +130,35 @@ export function requirePermission(code: string): RequestHandler {
 }
 
 /**
+ * Refuses a request whose caller holds NONE of the listed permissions.
+ *
+ *     router.patch('/clubs/:id', requireAnyPermission('club:update:own', 'club:update:district'), …)
+ *
+ * For an endpoint two different roles reach by two different routes — a club secretary
+ * editing their own club, and the DES editing anybody's. It answers only "may you do this
+ * at all"; WHICH clubs each of them may touch is a scope question the handler still has to
+ * ask, and the two permissions differ precisely in that answer.
+ *
+ * Codes are matched exactly here as everywhere else. A list is not a wildcard: every code
+ * in it is one somebody wrote down on purpose.
+ */
+export function requireAnyPermission(...codes: string[]): RequestHandler {
+  return (req, _res, next) => {
+    try {
+      const ctx = requireContext(req);
+      if (!codes.some((code) => ctx.permissions.has(code))) {
+        throw insufficientScope('You do not hold the permission this action requires', {
+          requiredAnyOf: codes,
+        });
+      }
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+}
+
+/**
  * True when the caller's scope covers this org unit.
  *
  * Every one of the five is answered, because records are owned at every one of them —

@@ -12,6 +12,14 @@ export const PERMISSIONS: { code: string; description: string }[] = [
   { code: 'club:read:district', description: 'View clubs affiliated to the district' },
   { code: 'club:create:district', description: 'Charter a new club' },
   { code: 'club:update:own', description: "Edit your own club's profile" },
+  {
+    code: 'club:update:district',
+    // The other half of `club:update:own`. A district officer correcting a club's RI ID or
+    // its charter date needs a door that is not "be a member of that club", and giving them
+    // `club:update:own` would not open one — that permission is bounded by the caller's own
+    // appointments, which is exactly what makes it safe to give a secretary.
+    description: "Edit any affiliated club's profile",
+  },
   { code: 'club:affiliate:district', description: 'Affiliate a club to the district for a year' },
   { code: 'cluster:manage:district', description: 'Create and redraw clusters' },
 
@@ -100,6 +108,7 @@ export const POSITIONS: PositionSeed[] = [
     isUniquePerScope: true,
     permissions: [
       'club:read:district',
+      'club:update:district',
       'club:create:district',
       'club:affiliate:district',
       'cluster:manage:district',
@@ -127,6 +136,7 @@ export const POSITIONS: PositionSeed[] = [
     isUniquePerScope: true,
     permissions: [
       'club:read:district',
+      'club:update:district',
       'person:read:club',
       'position:manage:district',
       'appointment:read:district',

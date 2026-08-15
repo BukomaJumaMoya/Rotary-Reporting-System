@@ -45,6 +45,21 @@ export const ErrorCode = {
   ROLLOVER_NOT_CONFIRMED: 'ROLLOVER_NOT_CONFIRMED',
   /** An assessment period is still OPEN for the year being closed. */
   PERIOD_OPEN: 'PERIOD_OPEN',
+  /** Another club already holds that RI Club ID. The id is RI's, and it identifies one club. */
+  RI_ID_ALREADY_CLAIMED: 'RI_ID_ALREADY_CLAIMED',
+  /**
+   * The club is already affiliated to a district for this Rotary Year, and one club has one
+   * district per year (axiom 2). Which district is deliberately not said: that would be a
+   * read across the boundary, made to write a better error message.
+   */
+  CLUB_AFFILIATED_ELSEWHERE: 'CLUB_AFFILIATED_ELSEWHERE',
+  /**
+   * A create was re-posted with an id that already exists.
+   *
+   * Not an error so much as an answer: offline clients generate their own ids precisely so
+   * a retry is safe, and the response carries the existing record (docs/05-API-Spec.md §1).
+   */
+  IDEMPOTENT_REPLAY: 'IDEMPOTENT_REPLAY',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   // Database guards (ADR-012). Mapped from SQLSTATE below.
   MEMBERSHIP_IMMUTABLE: 'MEMBERSHIP_IMMUTABLE',

@@ -18,7 +18,8 @@ import {
   signIn,
   type OrgFixture,
 } from '../../test/helpers.js';
-import { clearPendingConfirmations, tierFor } from './rollover.service.js';
+import { recalculateTier } from './clubs.service.js';
+import { clearPendingConfirmations } from './rollover.service.js';
 
 /**
  * Year rollover.
@@ -113,12 +114,12 @@ afterAll(async () => {
 
 describe('the tier rule', () => {
   it('is by size, except for institution-based clubs', () => {
-    expect(tierFor('CBC', 39)).toBe('T1');
-    expect(tierFor('CBC', 40)).toBe('T2');
+    expect(recalculateTier('CBC', 39)).toBe('T1');
+    expect(recalculateTier('CBC', 40)).toBe('T2');
     // A university club's year is a semester and its membership turns over completely,
     // so it is assessed against its own tier regardless of size.
-    expect(tierFor('IBC', 5)).toBe('IBC');
-    expect(tierFor('IBC', 500)).toBe('IBC');
+    expect(recalculateTier('IBC', 5)).toBe('IBC');
+    expect(recalculateTier('IBC', 500)).toBe('IBC');
   });
 });
 

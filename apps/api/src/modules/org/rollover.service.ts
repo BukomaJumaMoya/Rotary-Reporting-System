@@ -21,11 +21,16 @@ import { systemContext, withSystemActor } from '../../platform/system-context.js
  * then genuinely tested, because the run's own last act is to become unable to write.
  */
 
-/** T1 under forty members, T2 at forty or more; an institution-based club is its own tier. */
-export function tierFor(baseType: string, rosterSize: number): 'T1' | 'T2' | 'IBC' {
-  if (baseType === 'IBC') return 'IBC';
-  return rosterSize < 40 ? 'T1' : 'T2';
-}
+/**
+ * The tier rule lives in `clubs.service` and is called from HERE and nowhere else.
+ *
+ * Tier sits on the affiliation, not on the club, and is frozen within the year: a club that
+ * recruits its fortieth member in March is not re-tiered in March, because it is being
+ * scored against a framework published for its tier at the start of the year. Rollover is
+ * the one moment the number is allowed to move.
+ */
+import { recalculateTier } from './clubs.service.js';
+export { recalculateTier };
 
 interface PendingConfirmation {
   token: string;
@@ -275,7 +280,7 @@ async function runRollover(input: {
 
       for (const affiliation of affiliations) {
         const size = rosterSize.get(affiliation.clubId) ?? 0;
-        const tier = tierFor(affiliation.club.baseType, size);
+        const tier = recalculateTier(affiliation.club.baseType, size);
 
         if (tier !== affiliation.tier) {
           tierChanges.push({
