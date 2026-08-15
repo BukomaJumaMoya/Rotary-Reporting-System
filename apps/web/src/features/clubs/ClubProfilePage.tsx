@@ -31,7 +31,7 @@ import type { Club, ClubSummaryResponse } from './types';
 const TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'members', label: 'Members' },
-  { key: 'activities', label: 'Activities', milestone: 'activity reporting (M2 session 9)' },
+  { key: 'activities', label: 'Activities' },
   { key: 'finance', label: 'Finance', milestone: 'the finance module (M4)' },
   { key: 'documents', label: 'Documents', milestone: 'document management (M7)' },
   { key: 'scorecard', label: 'Scorecard', milestone: 'the assessment engine (M5)' },
@@ -103,6 +103,16 @@ export function ClubProfilePage() {
 
       {tab === 'overview' ? (
         <Overview club={club} rosterCount={rosterCount} activities={activities} />
+      ) : tab === 'activities' ? (
+        <Card>
+          <p className="text-ink-600 mb-3 text-sm">
+            {activities.total} activities reported this Rotary Year — {activities.verified}{' '}
+            verified.
+          </p>
+          <Link className="text-cranberry-600 underline" to={`/activities?hostScopeId=${club.id}`}>
+            Open the activity list for this club
+          </Link>
+        </Card>
       ) : tab === 'members' ? (
         <div className="flex flex-col gap-4">
           <MembershipStatsPanel clubId={club.id} />

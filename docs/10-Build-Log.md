@@ -6,7 +6,7 @@ was decided along the way, and what is deliberately unfinished.
 
 Last updated: 15 August 2026, after M1 session 7. **M0 and M1 are complete.**
 
-<!-- dis:state milestone=M2 schema=v1.9 tests=386 -->
+<!-- dis:state milestone=M2 schema=v1.9 tests=414 -->
 
 ---
 
@@ -102,8 +102,8 @@ full history is in §4.
 | 5 — Persons and visibility | **done** | `8310ab0` |
 | 6 — Membership events and roster | **done** | `29727b8` |
 | 7 — Membership UI | **done** | `1fd0bad` |
-| 8 — Activity types and media | **done** | this commit |
-| 9 — Activities API and reporting UI | pending | |
+| 8 — Activity types and media | **done** | `db0107a` |
+| 9 — Activities API and reporting UI | **done** | this commit |
 | 10 — M2 hardening | pending | |
 
 CI runs typecheck → lint → format:check → test → build → `npm audit` against a
@@ -204,8 +204,9 @@ apps/api/src/
                  appointments.{repository,service}   terms, uniqueness, revocation
                  committees.service                  delegated subtrees, depth 3
                  administration.service              invitations, MFA reset, audit read
-    activity/    routes · types.service — the configurable types (axiom 4)
-                 service — countForClub(), the one function org needs (M2 s9 fills the rest)
+    activity/    routes · service · types.service · media.service
+                 one model, configurable types, and the photographs on them
+    assessment/  service — markStale(), a deliberate no-op until M5
     membership/  routes · service — the event log, the roster, the statistics
                  analytics.ts  THE one raw-SQL file outside the assessment resolvers
     notifications/ service · templates — queue row, delivery, and the due-row read
@@ -252,7 +253,9 @@ apps/web/src/
                  (forgot, reset, accept invite), useAuth/useScope
     clubs/       ClubsPage (directory) · ClubProfilePage (tabs, one summary call)
                  ClubFormPage (charter and edit) · ClustersPage · types.ts
-    activities/  ActivityTypesPage — the field_config builder, with a live preview
+    activities/  ReportPage — THE screen: four steps, rendered from the type
+                 ActivityPages — list, detail with verification, calendar
+                 ActivityTypesPage — the field_config builder, with a live preview
     membership/  RecordEventPage — the screen a secretary uses most
                  MembershipPages — roster, history, statistics, transitions · types.ts
     dashboard/   DashboardPage — what this account may actually do
@@ -263,7 +266,7 @@ apps/web/src/
 Dockerfile · fly.toml · .github/workflows/deploy-staging.yml · README.md
 ```
 
-**386 tests**, all integration-style against real PostgreSQL. The suites that are load
+**414 tests**, all integration-style against real PostgreSQL. The suites that are load
 bearing rather than incidental: `no-pii.test.ts` (walks every route unauthenticated),
 `invariants.test.ts` (37 ADR-012 guards), `scope*.test.ts` (the data access layer),
 `audit.test.ts`, `rollover.test.ts` (dry run and committed), and `prisma/seed.test.ts`,
@@ -1043,6 +1046,44 @@ as a type with no extra fields rather than taking the reporting screen down.
 
 **The builder has a live preview** rendered with the same components the real form uses. A
 preview built from a different renderer is a preview that lies.
+
+#### Session 9 — activities and the reporting flow
+
+**There is no per-type branch anywhere.** Not in the service, not in the reporting screen.
+Requirements are read from the TYPE's row — `requires_*` and `field_config` — which is what
+makes adding an activity type a row rather than a release. `MISSING_REQUIRED_FIELD_FOR_TYPE`
+carries the field in `details.key`, so the message lands on the control.
+
+**`assessment.markStale()` exists and does nothing, on purpose.** An activity write
+invalidates whatever the club last scored, and M5 needs a body rather than a hunt through
+this module for call sites. It is a NOTIFICATION — ids in, nothing out — so
+`modules/activity` never learns anything about `club_assessments`, and the dependency rule
+still points one way.
+
+**A VERIFIED activity cannot be edited** (`PERIOD_CLOSED`): it has been counted, and editing
+it silently would change a number somebody has already read. A QUERIED one that is edited
+goes back to UNVERIFIED, because an edit after a query is a resubmission — that state is what
+makes verification two-way rather than write-only.
+
+**`extra` stores only the keys the type declared.** JSONB plus "store what was sent" is an
+unversioned schema nobody agreed to, and a scoring resolver reading an undeclared key is
+reading whatever one club decided to send.
+
+**International service is derived, never declared** — `country_code <> 'UG'` on a partner
+row, with the column NOT NULL and defaulted to UG so the derivation is total and
+conservative. A club cannot tick a box to claim it.
+
+**The reporting screen keeps its draft in `sessionStorage` and generates the activity id
+itself.** A secretary who taps a notification mid-report should not start again, and
+submitting twice on a bad connection must produce one activity. Photographs upload
+sequentially after the activity exists — a phone on 3G uploading four at once finishes none
+of them first.
+
+**`apiRequest` gained `formData`**, sent with NO `Content-Type` header: the browser has to
+set it itself so it can add the multipart boundary, and a hand-written `multipart/form-data`
+produces a request the server cannot parse.
+
+**Bundle: 96 KB gzipped**, against the 250 KB budget.
 
 **The doc-check axiom-3 grep learned about `corroborated_at`.** It is the one column the
 immutability guard lets through, so a `updateMany` naming only that column is legitimate and

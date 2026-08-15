@@ -70,10 +70,11 @@ Declared in `apps/api/src/platform/errors.ts`, which is the list that is actuall
 `ROLLOVER_NOT_CONFIRMED` · `PERIOD_OPEN` · `RI_ID_ALREADY_CLAIMED` ·
 `CLUB_AFFILIATED_ELSEWHERE` · `IDEMPOTENT_REPLAY` · `DUPLICATE_MEMBERSHIP_EVENT` ·
 `UNSUPPORTED_MEDIA_TYPE` · `FILE_TOO_LARGE` · `MISSING_REQUIRED_FIELD_FOR_TYPE` ·
+`PERIOD_CLOSED` ·
 `MEMBERSHIP_IMMUTABLE` ·
 `AUDIT_IMMUTABLE` · the auth codes in §2.
 
-**Designed, not yet built:** `PERIOD_CLOSED` · `FRAMEWORK_LOCKED` · `TIER_NOT_APPLICABLE` ·
+**Designed, not yet built:** `FRAMEWORK_LOCKED` · `TIER_NOT_APPLICABLE` ·
 `ASSESSMENT_FINALISED` · `DISPUTE_WINDOW_CLOSED`.
 
 `CLUB_AFFILIATED_ELSEWHERE` deliberately does NOT name the other district. Reading across
@@ -271,15 +272,34 @@ type and date and NO id are a double-tap: `DUPLICATE_MEMBERSHIP_EVENT`.
 | `GET` | `/activity-types` | `activity:read:club` — grouped by category. Drives dynamic form rendering. **Built M2 s8** |
 | `GET` | `/activity-types/flat` · `/activity-types/:id` | `activity:read:club` — the flat list, for the admin screen |
 | `POST` `PATCH` | `/activity-types` · `/activity-types/:id` | `activitytype:manage:district`. **Built M2 s8** |
-| `GET` | `/activities` | Filter: type, category, host, status, verification, date range |
-| `POST` | `/activities` | Validated against type config; idempotent |
-| `PATCH` | `/activities/:id` | Blocked once period closed |
-| `DELETE` | `/activities/:id` | Soft delete |
-| `POST` | `/activities/:id/media` | Multipart; server resizes, strips EXIF |
-| `POST` | `/activities/:id/partners` | |
-| `POST` | `/activities/:id/attendees` | Bulk |
-| `POST` | `/activities/:id/verify` | `activity:verify:district` — sets VERIFIED / QUERIED / REJECTED |
-| `GET` | `/activities/calendar` | Month view for planning |
+| `GET` | `/activities` | `activity:read:club` — type, category, host, status, verification, dates, `?q=` |
+| `GET` | `/activities/:id` | `activity:read:club` |
+| `POST` | `/activities` | `activity:create:club` — validated against the type; idempotent on a client UUID |
+| `PATCH` | `/activities/:id` | `activity:create:club` — refused once VERIFIED (`PERIOD_CLOSED`) |
+| `DELETE` | `/activities/:id` | `activity:create:club` — soft |
+| `GET` `POST` `DELETE` | `/activities/:id/media[/:mediaId]` | multipart; magic-byte sniffed, resized and EXIF-stripped on the worker |
+| `GET` `POST` | `/activities/:id/partners` | international service is DERIVED from `country_code` |
+| `POST` | `/activities/:id/attendees` | bulk, and idempotent |
+| `POST` | `/activities/:id/verify` | `activity:verify:district` — VERIFY / QUERY / REJECT |
+| `GET` | `/activities/calendar` | `activity:read:club` — `?month=YYYY-MM` |
+
+**Built in M2 session 9**, except the media pipeline, which landed in session 8.
+
+A missing requirement answers `MISSING_REQUIRED_FIELD_FOR_TYPE` with the field in
+`details.key`, so a client points at the control rather than at the form. Requirements are
+read from the TYPE's row — the `requires_*` flags and `field_config` — so there is no
+per-type branch in the service or in the reporting screen, and adding a type is a row.
+
+`host_scope_type` must be in the type's `allowed_host_scopes` AND `host_scope_id` must fall
+inside the caller's own scopes; `ctx.scopes` carries region and committee arrays, so a
+committee-hosted activity is a containment check against `committeeIds`. A host outside the
+caller's scope answers `404`.
+
+**`description` has no length limit.** The predecessor's limit was a logged complaint.
+
+An activity write marks the club's scorecard stale through `assessment.markStale()`, which is
+a no-op until M5 — a notification, not a query, so `modules/activity` never learns anything
+about `club_assessments`.
 
 `GET /activity-types` is the contract between configuration and UI: the client renders whatever fields the type declares. Adding an activity type never requires a client release.
 

@@ -11,7 +11,13 @@ import {
   ForgotPasswordPage,
   ResetPasswordPage,
 } from './features/auth/PasswordPages';
+import {
+  ActivitiesPage,
+  ActivityCalendarPage,
+  ActivityDetailPage,
+} from './features/activities/ActivityPages';
 import { ActivityTypesPage } from './features/activities/ActivityTypesPage';
+import { ReportPage } from './features/activities/ReportPage';
 import { ClubFormPage } from './features/clubs/ClubFormPage';
 import { ClubProfilePage } from './features/clubs/ClubProfilePage';
 import { ClubsPage } from './features/clubs/ClubsPage';
@@ -132,6 +138,42 @@ export function App() {
           element={
             <RequireAuth>
               <RecordEventPage />
+            </RequireAuth>
+          }
+        />
+        {/*
+          `/report` is the most important route in the system. One segment, no nesting: it
+          is what a secretary types, and what a notification links to.
+        */}
+        <Route
+          path="/report"
+          element={
+            <RequireAuth>
+              <ReportPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/activities"
+          element={
+            <RequireAuth>
+              <ActivitiesPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/activities/calendar"
+          element={
+            <RequireAuth>
+              <ActivityCalendarPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/activities/:id"
+          element={
+            <RequireAuth>
+              <ActivityDetailPage />
             </RequireAuth>
           }
         />

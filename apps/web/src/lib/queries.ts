@@ -60,6 +60,7 @@ export function useApiMutation<TVariables, TResult>(
 }
 
 export const queryKeys = {
+  activities: ['activities'] as const,
   activityTypes: ['activity-types'] as const,
   clubs: ['clubs'] as const,
   membership: ['membership'] as const,

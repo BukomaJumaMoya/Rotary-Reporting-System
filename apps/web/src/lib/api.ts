@@ -61,6 +61,12 @@ export function setUnauthenticatedHandler(handler: () => void): void {
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
+  /**
+   * A multipart upload. Sent INSTEAD of `body`, and deliberately with no `Content-Type`
+   * header — the browser has to set it itself so it can add the multipart boundary, and a
+   * hand-written `multipart/form-data` produces a request the server cannot parse.
+   */
+  formData?: FormData;
   query?: Record<string, string | number | boolean | undefined>;
   /**
    * Suppresses the global redirect on 401. Set by the sign-in call: a wrong password
@@ -89,7 +95,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     // every authenticated request 401s for reasons that look like a server bug.
     credentials: 'include',
     headers: options.body === undefined ? {} : { 'Content-Type': 'application/json' },
-    ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+    ...(options.formData
+      ? { body: options.formData }
+      : options.body === undefined
+        ? {}
+        : { body: JSON.stringify(options.body) }),
   });
 
   if (response.status === 204) return undefined as T;

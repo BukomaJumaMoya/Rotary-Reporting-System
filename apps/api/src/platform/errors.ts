@@ -67,6 +67,11 @@ export const ErrorCode = {
    * a retry is safe, and the response carries the existing record (docs/05-API-Spec.md §1).
    */
   IDEMPOTENT_REPLAY: 'IDEMPOTENT_REPLAY',
+  /**
+   * A write aimed at something already counted — a verified activity, or a period that has
+   * been closed. Editing it silently would change a number somebody has already read.
+   */
+  PERIOD_CLOSED: 'PERIOD_CLOSED',
   /** The uploaded bytes are not a format the system handles, whatever the filename said. */
   UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE',
   /** Past the 10MB cap, detected while reading rather than after the buffer exists. */

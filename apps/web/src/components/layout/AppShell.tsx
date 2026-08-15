@@ -28,8 +28,11 @@ const NAV_ITEMS: NavItem[] = [
   // Held by every position on the slate, club officers included: the directory is the one
   // screen everybody uses.
   { to: '/clubs', label: 'Clubs', permission: 'club:read:district', glyph: '⌂' },
-  // The most-used screen a club secretary has, so it is one tap from anywhere.
-  { to: '/membership/record', label: 'Record', permission: 'membership:write:club', glyph: '✚' },
+  { to: '/activities', label: 'Activities', permission: 'activity:read:club', glyph: '★' },
+  // THE screen. One tap from anywhere, because it is the one a secretary opens at eleven
+  // at night and the reason the whole system exists.
+  { to: '/report', label: 'Report', permission: 'activity:create:club', glyph: '✎' },
+  { to: '/membership/record', label: 'Members', permission: 'membership:write:club', glyph: '✚' },
   {
     to: '/membership/transitions',
     label: 'Transitions',
