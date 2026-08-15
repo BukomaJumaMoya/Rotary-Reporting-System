@@ -17,9 +17,9 @@ can reach for; these two are what you need before writing anything. `npm run doc
 verifies most of what follows against the code, so if it is green the claims here are not
 merely assertions.
 
-**Where the build is.** M0 (foundations) and M1 (governance core) are complete. M2 (the
-reporting spine — clubs, persons, membership events, activities with media) is next, and
-its session prompts are in `docs/13-ClaudeCode-M2-Sessions.md`.
+**Where the build is.** M0 (foundations) and M1 (governance core) are complete. **M2 (the
+reporting spine) is IN PROGRESS** — its session prompts are in
+`docs/13-ClaudeCode-M2-Sessions.md` and §1 records which of its ten sessions have landed.
 
 **Read in this order.** `CLAUDE.md` for the axioms and the non-negotiable rules → this
 section → §0a for what the last milestone changed about how you must write code → the
@@ -91,7 +91,20 @@ full history is in §4.
 | 4 — Committees, delegated sub-committees | **done** | `8a3c7df` |
 | 5 — Invitations, MFA reset, audit read | **done** | `7dd1702` |
 | 6 — System context and year rollover | **done** | `e04e786` |
-| 7 — Governance administration screens | **done** | this commit |
+| 7 — Governance administration screens | **done** | `c78de30` |
+
+| M2 session | State | Commit |
+|---|---|---|
+| 1 — Background jobs (pg-boss) | **done** | this commit |
+| 2 — Web deployment | pending | |
+| 3 — Clubs and affiliations | pending | |
+| 4 — Clubs UI | pending | |
+| 5 — Persons and visibility | pending | |
+| 6 — Membership events and roster | pending | |
+| 7 — Membership UI | pending | |
+| 8 — Activity types and media | pending | |
+| 9 — Activities API and reporting UI | pending | |
+| 10 — M2 hardening | pending | |
 
 CI runs typecheck → lint → format:check → test → build → `npm audit` against a
 `postgres:17` service container, and is green on `main`.
@@ -187,8 +200,18 @@ apps/api/src/
                  committees.service                  delegated subtrees, depth 3
                  administration.service              invitations, MFA reset, audit read
                  persons.service                     names only — no contact fields
-    notifications/ service · templates — delivery log built on notification_templates
+    notifications/ service · templates — queue row, delivery, and the due-row read
     org/         rollover.service · routes — the year rollover, dry run and committed
+  jobs/
+    boss.ts      the pg-boss client, lifecycle, queue provisioning, typed enqueue()
+    define.ts    defineJob() · jobContextSchema — every payload names a district and year
+    runner.ts    runJob(): validate → systemContext → withSystemActor → handler
+    work.ts      attachHandlers() — the real wiring, shared by the worker and its tests
+    registry.ts  JOBS — the one list of queues that exist
+    dead-letter.ts  a permanently failed job becomes a JOB_FAILED row in audit_log
+    sweep.ts     the safety net over notifications left QUEUED
+    notification.job.ts  the delivery job, and notifyThroughQueue() for callers with a ctx
+    worker.ts    the worker process entry point (npm run worker)
   test/
     global-setup.ts  applies migrations to TEST_DATABASE_URL
     helpers.ts       resetDatabase, org/position/appointment fixtures, signIn
@@ -670,6 +693,73 @@ dialog tells the truth before the server has to.
 
 ---
 
+### M2 — the reporting spine
+
+#### Session 1 — background jobs
+
+**pg-boss is pinned to the v10 line, not the current v12.** v11 and later declare
+`engines.node >= 22`, and this project's baseline is Node 20 — `node:20-slim` in the
+Dockerfile, `node-version: '20'` in both workflows. Taking v12 would have meant moving the
+runtime baseline as a side effect of adding a queue, which is not a decision that belongs
+in this session. Revisit when Node is bumped deliberately.
+
+**Its schema is a GENERATED migration, and the registry entry the session prompt asked for
+would have broken the build.** The prompt says to add every pg-boss table to
+`UNSCOPED_BY_DESIGN`. That assumption does not hold: `scope-registry.test.ts` parses
+`schema.prisma`, and its `phantom` check fails on any registry entry naming a model that is
+not there. pg-boss's tables live in the `pgboss` SCHEMA, are absent from `schema.prisma`,
+and Prisma has no `multiSchema` setting — so its differ never sees them, never proposes
+dropping them, and no registry entry is needed or possible. `migrate diff` still reports an
+empty migration; that was checked.
+
+`20260816000000_pgboss_schema/migration.sql` is the output of
+`PgBoss.getConstructionPlans('pgboss')` with pg-boss's own `BEGIN`/`COMMIT` stripped, since
+Prisma already runs each migration inside a transaction and a nested `COMMIT` would end
+Prisma's early. **Regenerate it the same way rather than editing it** — pg-boss checks
+`pgboss.version` before it will start, and a schema that differs from what the library
+expects is a worker that refuses to run. Upgrades come from `getMigrationPlans`.
+
+**Both processes run with `migrate: false`.** The schema is applied by the release command,
+once, before either takes traffic. Self-migration at start-up would race two machines, and
+the loser is an API sending into a schema the worker had not created yet.
+
+**Every job payload carries `districtId` and `rotaryYearId`, enforced by
+`jobContextSchema`.** `runJob` turns them into a `systemContext` and hands the HANDLER a
+context, never the ids — the same discipline as the HTTP side, where a handler may not read
+a district from a request body. Payloads are validated on RECEIPT, not merely on send: a
+queue row may have been written by an older deployment or by hand during an incident.
+
+**A payload that fails validation dead-letters immediately** instead of retrying. It will
+not parse on the fourth attempt either, and spending the retry budget to learn that only
+delays the record somebody has to read.
+
+**A dead letter becomes a `JOB_FAILED` row in `audit_log`**, not a new table. An
+administrator already has a screen that reads that log, it is already append-only, and
+`entity_id` is a UUID column — which is what a pg-boss job id is. **Job payloads must
+therefore carry identifiers and never personal data**: the payload is written into the
+audit row so the job can be understood and re-run.
+
+**Notification delivery moved to the queue, in two halves.** `queueNotification` writes the
+row; `deliverNotification` sends it and records the outcome. `deliverNotification` THROWS on
+a transport failure — that is what makes pg-boss retry — and returns false for failures a
+retry cannot fix (no template, no address, unfilled placeholders). `notify()` still does
+both inline, and the unauthenticated flows still use it: a member watching a password-reset
+form must not wait on a worker.
+
+**The QUEUED-row sweep is a worker timer, not a queued job.** A job would need a district
+and a year in its payload to build a context, and `notifications` is deliberately unscoped —
+password reset writes a row before any session, and therefore any district, exists.
+
+**`attachHandlers` lives in `work.ts`, not in `worker.ts`.** The queue tests drive the real
+wiring — retry, dead letter, payload rejection — rather than a copy of it that agrees with
+the worker only until somebody edits one of them.
+
+**`scripts/doc-check.mjs` now walks `apps/api/src/jobs`.** It did not, so the entire
+directory was invisible to the check whose purpose is to catch code that was written and
+never written down.
+
+---
+
 ## 4a. Axiom conformance
 
 **Rewritten at every milestone close, one row per axiom, before the milestone is called
@@ -710,9 +800,10 @@ re-checked whenever a new write path is added.
 | Thing | Why | Lands in |
 |---|---|---|
 | The repository and hosting accounts are on a PERSONAL account | ADR-011 names this as the failure the project exists to correct; it needs district-owned GitHub and Fly organisations with two administrators | **M0's last open exit condition** — carried: it needs a district decision and two named administrators, not a commit |
-| No worker process, no pg-boss | notifications deliver inline; the `notifications` row is already the queue | later |
+| ~~No worker process, no pg-boss~~ | **built in M2 session 1** | — |
 | The web bundle is uploaded as a CI artifact rather than published | the district's static host does not exist yet, and choosing one in a workflow file is how it gets chosen by accident | **due before M2 session 2** |
-| The worker process group in `fly.toml` is commented out | pg-boss is not built; a crash-looping machine would fail health checks and make every deploy look broken | with the jobs module |
+| ~~The worker process group in `fly.toml` is commented out~~ | **uncommented in M2 session 1**; two process groups from one image | — |
+| A dead-lettered job is recorded but not retryable from the UI | `JOB_FAILED` in `audit_log` carries the queue, the error and the payload, which is enough to re-run it by hand; a button needs a screen that does not exist | M7, with the admin surface |
 | `recordAction(EXPORT, …)` exists and is unused | there is no export module yet | M7 |
 | A malformed or unauthorised `?year=` fails EVERY authenticated route, including `/auth/logout` | context resolution is global and eager; sending `?year=` to logout is a client bug | not planned |
 | A nested create of a parent alongside its child is not scope-checked | there is no parent id to check; the parent's own write is stamped, so the child lands under a stamped row | not planned |

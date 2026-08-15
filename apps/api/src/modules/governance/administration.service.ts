@@ -10,8 +10,8 @@ import type {
 import { AuditAction, currentActor } from '../../platform/audit.js';
 import { db, prisma, recordAction } from '../../platform/db.js';
 import { AppError, ErrorCode, insufficientScope, notFound } from '../../platform/errors.js';
+import { notifyThroughQueue } from '../../jobs/notification.job.js';
 import { issueInvite } from '../auth/service.js';
-import { notify } from '../notifications/service.js';
 import { NotificationTemplate } from '../notifications/templates.js';
 
 /**
@@ -257,7 +257,10 @@ export async function resetMfa(
 
   const personNotified = Boolean(user.person.email);
   if (personNotified) {
-    await notify({
+    // Through the queue: the reset itself is done and the administrator should not wait on
+    // a mail server to be told so. The row is written synchronously either way, so the
+    // notification exists — and is auditable — before this returns.
+    await notifyThroughQueue(ctx, {
       personId: user.personId,
       templateCode: NotificationTemplate.AUTH_MFA_RESET,
       districtId: ctx.districtId,

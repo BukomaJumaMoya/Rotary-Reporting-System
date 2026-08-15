@@ -56,21 +56,29 @@ primary_region = "ams"
 
 # ─── The worker ─────────────────────────────────────────────────────────────────
 #
-# pg-boss and the worker process are not built yet (ADR-008; notifications currently
-# deliver inline and the `notifications` row is already the queue). The process group is
-# left here, commented, rather than deployed: a second machine running a script that does
-# not exist would crash-loop, fail health checks and make every deployment look broken.
+# Two process groups from ONE image. The worker drains pg-boss queues; the app serves
+# HTTP. Separate machines on purpose: a long job must not compete with a request for the
+# event loop, and a worker that crash-loops must not take the API down with it.
 #
-# Uncomment together with `npm run worker` when the jobs module lands.
+# The health check above belongs to the `app` group only — `[[http_service.checks]]` is
+# scoped by `http_service.processes`. The worker binds no port and is therefore not
+# health-checked over HTTP; Fly restarts it if the process exits. That asymmetry is the
+# point: a failing worker leaves the API serving, with notifications queued rather than
+# delivered, which is a degradation somebody can see in `notifications.status` rather than
+# an outage.
 #
-# [processes]
-#   app = "node apps/api/dist/server.js"
-#   worker = "node apps/api/dist/worker.js"
-#
-# [[vm]]
-#   size = "shared-cpu-1x"
-#   memory = "512mb"
-#   processes = ["worker"]
+# pg-boss's schema is created by the Prisma migration, which runs as the release command
+# above — so it exists before either group starts. Both processes run with
+# `migrate: false` (apps/api/src/jobs/boss.ts).
+
+[processes]
+  app = "node apps/api/dist/server.js"
+  worker = "node apps/api/dist/jobs/worker.js"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  processes = ["worker"]
 
 # ─── Secrets ────────────────────────────────────────────────────────────────────
 #

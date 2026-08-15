@@ -392,6 +392,10 @@ function checkCodeMap() {
   const sources = [
     ...walk('apps/api/src/platform'),
     ...walk('apps/api/src/modules'),
+    // The worker and its job definitions. Added in M2 session 1 — without it, an entire
+    // directory of the API is invisible to the check whose whole purpose is to notice
+    // code that was written and never written down.
+    ...walk('apps/api/src/jobs'),
     ...walk('apps/web/src'),
   ].filter(
     (f) =>

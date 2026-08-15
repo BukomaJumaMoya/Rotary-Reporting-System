@@ -17,6 +17,7 @@
     "dev:contracts": "npm run dev --workspace @dis/contracts",
     "dev:api": "npm run dev --workspace @dis/api",
     "dev:web": "npm run dev --workspace @dis/web",
+    "worker": "npm run build:contracts && npm run worker --workspace @dis/api",
     "build": "npm run build:contracts && npm run build --workspace @dis/api && npm run build --workspace @dis/web",
     "build:contracts": "npm run build --workspace @dis/contracts",
     "typecheck": "npm run build:contracts && npm run typecheck --workspace @dis/api --workspace @dis/web",

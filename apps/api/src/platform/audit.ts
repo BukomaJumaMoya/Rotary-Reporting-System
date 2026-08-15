@@ -40,6 +40,15 @@ export const AuditAction = {
   LOGIN: 'LOGIN',
   LOGOUT: 'LOGOUT',
   EXPORT: 'EXPORT',
+  /**
+   * A background job that exhausted its retries and dead-lettered.
+   *
+   * Recorded here rather than in a table of its own because an administrator already has
+   * a screen that reads this log, and a dead job nobody is told about is the failure mode
+   * that matters: in a system that scores clubs, a scoring job that quietly died is a club
+   * whose standing is wrong and nobody knows.
+   */
+  JOB_FAILED: 'JOB_FAILED',
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];
