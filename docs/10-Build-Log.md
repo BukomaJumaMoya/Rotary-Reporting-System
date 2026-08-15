@@ -100,8 +100,8 @@ full history is in §4.
 | 3 — Clubs and affiliations | **done** | `4013cc7` |
 | 4 — Clubs UI | **done** | `00429ec` |
 | 5 — Persons and visibility | **done** | `8310ab0` |
-| 6 — Membership events and roster | **done** | this commit |
-| 7 — Membership UI | pending | |
+| 6 — Membership events and roster | **done** | `29727b8` |
+| 7 — Membership UI | **done** | this commit |
 | 8 — Activity types and media | pending | |
 | 9 — Activities API and reporting UI | pending | |
 | 10 — M2 hardening | pending | |
@@ -247,6 +247,8 @@ apps/web/src/
                  (forgot, reset, accept invite), useAuth/useScope
     clubs/       ClubsPage (directory) · ClubProfilePage (tabs, one summary call)
                  ClubFormPage (charter and edit) · ClustersPage · types.ts
+    membership/  RecordEventPage — the screen a secretary uses most
+                 MembershipPages — roster, history, statistics, transitions · types.ts
     dashboard/   DashboardPage — what this account may actually do
     governance/  PositionsPage (catalogue + permission matrix)
                  AppointmentsPage · CommitteesPage · AdminPages
@@ -960,6 +962,32 @@ there is a test asserting another district's events do not reach the totals.
 would be safe; making it distinguish "created" from "already created" puts the burden back on
 exactly the connection that caused the retry. `DUPLICATE_MEMBERSHIP_EVENT` is for the same
 event posted twice with NO id.
+
+#### Session 7 — the membership screens
+
+**The record screen is built around ONE decision.** Event type first, largest, most common
+first; the form then adapts — a termination asks for a reason, a transfer for a counterparty,
+a transition for the Rotary club, and none of them asks for the others. The alternative is a
+form with fourteen fields of which four apply, which is where a secretary at eleven at night
+goes back to WhatsApp.
+
+**The person picker creates inline.** Typing a full name that matches nobody offers "add
+them", and the create happens as part of the submit. Forcing a separate "add member" journey
+first is how the tenth induction of the evening stops being recorded.
+
+**The client generates the event id**, so tapping Record twice on a bad connection produces
+one row. The server answers 200 rather than 409 for the replay, which means the screen does
+not have to distinguish them either.
+
+**Corrections are offered in the two shapes the log supports** — "this never happened" and
+"it happened, but differently" — named on the dialog rather than left to a type dropdown. The
+note is required, because an unexplained correction to an append-only log is what a dispute
+turns on eighteen months later.
+
+**Superseded events stay visible, dimmed, linked to what corrected them.** A history that
+hid them would be a history that had been edited, which is the thing the log exists not to be.
+
+**Bundle: 90 KB gzipped.**
 
 **The doc-check axiom-3 grep learned about `corroborated_at`.** It is the one column the
 immutability guard lets through, so a `updateMany` naming only that column is legitimate and

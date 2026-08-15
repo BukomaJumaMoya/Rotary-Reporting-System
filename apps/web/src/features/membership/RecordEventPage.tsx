@@ -1,0 +1,392 @@
+import { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ApiError, api } from '../../lib/api';
+import { Button, Card, Input, PageHeader, Select, SkeletonList } from '../../components/ui';
+import { cx } from '../../lib/cx';
+import { queryKeys, useApiMutation, useList } from '../../lib/queries';
+import { useAuth } from '../auth/useAuth';
+import type { ClubListResponse } from '../clubs/types';
+import type { MembershipEventResponse, PersonListResponse } from './types';
+
+/**
+ * Recording a membership event — the most-used screen a club secretary has.
+ *
+ * Optimised hard, because the alternative is a secretary who goes back to WhatsApp. Event
+ * type first and largest, most common first; the form then ADAPTS rather than showing every
+ * field every time; and the person is searchable-or-creatable inline, because forcing an
+ * "add person" journey first is how a two-tap job becomes a two-screen one.
+ *
+ * The client generates the event id, so tapping Save twice on a bad connection produces one
+ * row (ADR-006). The server answers 200 rather than 409 for the replay.
+ */
+
+/** Most common first. This order is the whole screen. */
+const EVENT_TYPES = [
+  { value: 'INDUCT', label: 'Induct', hint: 'A new member joins' },
+  { value: 'TRANSFER_IN', label: 'Transfer in', hint: 'From another club' },
+  { value: 'TRANSFER_OUT', label: 'Transfer out', hint: 'To another club' },
+  { value: 'TERMINATE', label: 'Terminate', hint: 'Membership ends' },
+  { value: 'TRANSITION_TO_ROTARY', label: 'To Rotary', hint: 'Joins a Rotary club' },
+  { value: 'REINSTATE', label: 'Reinstate', hint: 'A former member returns' },
+  { value: 'CATEGORY_CHANGE', label: 'Category', hint: 'Active, honorary, corporate' },
+  { value: 'JOIN', label: 'Join', hint: 'Historical — use Induct for new members' },
+] as const;
+
+const REASON_CODES = [
+  { value: 'RELOCATION', label: 'Relocated' },
+  { value: 'STUDIES_ENDED', label: 'Studies ended' },
+  { value: 'NON_PAYMENT', label: 'Dues unpaid' },
+  { value: 'AGE', label: 'Aged out' },
+  { value: 'INACTIVE', label: 'Stopped attending' },
+  { value: 'PERSONAL', label: 'Personal reasons' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+const CATEGORIES = [
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'HONORARY', label: 'Honorary' },
+  { value: 'CORPORATE', label: 'Corporate' },
+];
+
+type EventType = (typeof EVENT_TYPES)[number]['value'];
+
+const NEEDS_COUNTERPARTY = new Set<EventType>(['TRANSFER_IN', 'TRANSFER_OUT']);
+const NEEDS_REASON = new Set<EventType>(['TERMINATE', 'TRANSFER_OUT']);
+const NEEDS_ROTARY_CLUB = new Set<EventType>(['TRANSITION_TO_ROTARY']);
+
+export function RecordEventPage() {
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const { permissions } = useAuth();
+
+  const [clubId, setClubId] = useState(params.get('clubId') ?? '');
+  const [eventType, setEventType] = useState<EventType | ''>('');
+  const [personId, setPersonId] = useState('');
+  const [personSearch, setPersonSearch] = useState('');
+  const [newPerson, setNewPerson] = useState<{ firstName: string; lastName: string } | null>(null);
+  const [effectiveOn, setEffectiveOn] = useState(new Date().toISOString().slice(0, 10));
+  const [memberCategory, setMemberCategory] = useState('ACTIVE');
+  const [reasonCode, setReasonCode] = useState('');
+  const [reasonNote, setReasonNote] = useState('');
+  const [counterpartyClubId, setCounterpartyClubId] = useState('');
+  const [rotaryClubName, setRotaryClubName] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const clubs = useList<ClubListResponse>([...queryKeys.clubs, 'picker'], '/clubs', {
+    pageSize: 100,
+  });
+  const persons = useList<PersonListResponse>(
+    [...queryKeys.persons, 'picker'],
+    '/persons',
+    { pageSize: 20, ...(personSearch.length >= 2 ? { q: personSearch } : {}) },
+    { enabled: personSearch.length >= 2 },
+  );
+
+  const record = useApiMutation(
+    async (body: Record<string, unknown>) =>
+      api.post<MembershipEventResponse>('/membership/events', body),
+    {
+      invalidate: [queryKeys.membership, queryKeys.clubs],
+      successMessage: 'Recorded',
+    },
+  );
+
+  const createPerson = useApiMutation(
+    async (body: { firstName: string; lastName: string }) =>
+      api.post<{ data: { id: string } }>('/persons', body),
+    { invalidate: [queryKeys.persons] },
+  );
+
+  if (!permissions.has('membership:write:club')) {
+    return (
+      <Card>
+        <p className="text-ink-600 text-sm">
+          You do not have permission to record membership events.
+        </p>
+      </Card>
+    );
+  }
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setFieldErrors({});
+
+    // Create the person first if the secretary typed a new name rather than picking one.
+    // Inline, because forcing a separate "add member" journey turns a two-tap job into a
+    // two-screen one and is where a secretary gives up.
+    let subjectId = personId;
+    if (!subjectId && newPerson) {
+      const created = await createPerson.mutateAsync(newPerson).catch(() => null);
+      if (!created) return;
+      subjectId = created.data.id;
+      setPersonId(subjectId);
+    }
+    if (!subjectId || !clubId || !eventType) return;
+
+    record.mutate(
+      {
+        // The CLIENT generates the id, so tapping Save twice on a bad connection produces
+        // one row rather than two members.
+        id: crypto.randomUUID(),
+        personId: subjectId,
+        clubId,
+        eventType,
+        memberCategory,
+        effectiveOn,
+        reasonCode: NEEDS_REASON.has(eventType) && reasonCode ? reasonCode : null,
+        reasonNote: reasonNote.trim() === '' ? null : reasonNote.trim(),
+        counterpartyClubId: NEEDS_COUNTERPARTY.has(eventType) ? counterpartyClubId || null : null,
+        rotaryClubName: NEEDS_ROTARY_CLUB.has(eventType) ? rotaryClubName.trim() || null : null,
+      },
+      {
+        onSuccess: () => {
+          navigate(`/clubs/${clubId}/membership`);
+        },
+        onError: (error: unknown) => {
+          if (error instanceof ApiError) setFieldErrors(error.fieldErrors);
+        },
+      },
+    );
+  };
+
+  return (
+    <>
+      <PageHeader
+        title="Record a membership event"
+        description="The log is append-only. A mistake is corrected by recording another event, never by editing this one."
+      />
+
+      <form onSubmit={(event) => void submit(event)} className="flex flex-col gap-4">
+        {/* STEP 1. Type first and largest: it is the decision that shapes everything else. */}
+        <Card title="What happened?">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            {EVENT_TYPES.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setEventType(option.value)}
+                className={cx(
+                  'min-h-16 rounded-lg border p-3 text-left',
+                  eventType === option.value
+                    ? 'border-cranberry-500 bg-cranberry-50 text-cranberry-700'
+                    : 'border-ink-200 hover:bg-ink-50',
+                )}
+              >
+                <span className="block text-sm font-medium">{option.label}</span>
+                <span className="text-ink-500 block text-xs">{option.hint}</span>
+              </button>
+            ))}
+          </div>
+        </Card>
+
+        {eventType && (
+          <>
+            <Card title="Who, and where?">
+              <div className="flex flex-col gap-3">
+                <Select
+                  label="Club"
+                  value={clubId}
+                  placeholder="Choose a club"
+                  options={(clubs.data?.data ?? []).map((club) => ({
+                    value: club.id,
+                    label: club.name,
+                  }))}
+                  onChange={(changed) => setClubId(changed.target.value)}
+                />
+
+                <PersonPicker
+                  search={personSearch}
+                  onSearch={(value) => {
+                    setPersonSearch(value);
+                    setPersonId('');
+                    setNewPerson(null);
+                  }}
+                  results={persons.data?.data ?? []}
+                  isSearching={persons.isFetching}
+                  selectedId={personId}
+                  newPerson={newPerson}
+                  onSelect={(id) => {
+                    setPersonId(id);
+                    setNewPerson(null);
+                  }}
+                  onCreate={setNewPerson}
+                />
+
+                <Input
+                  label="Effective on"
+                  type="date"
+                  value={effectiveOn}
+                  error={fieldErrors['effectiveOn']}
+                  onChange={(changed) => setEffectiveOn(changed.target.value)}
+                />
+              </div>
+            </Card>
+
+            {/* STEP 3. The form ADAPTS. A termination does not ask for a Rotary club. */}
+            {(NEEDS_COUNTERPARTY.has(eventType) ||
+              NEEDS_REASON.has(eventType) ||
+              NEEDS_ROTARY_CLUB.has(eventType) ||
+              eventType === 'CATEGORY_CHANGE') && (
+              <Card title="Details">
+                <div className="flex flex-col gap-3">
+                  {NEEDS_COUNTERPARTY.has(eventType) && (
+                    <Select
+                      label={eventType === 'TRANSFER_IN' ? 'Transferred from' : 'Transferred to'}
+                      value={counterpartyClubId}
+                      placeholder="Choose a club in this district"
+                      hint="The other club is told, so both sides agree before the district's figures do."
+                      options={(clubs.data?.data ?? [])
+                        .filter((club) => club.id !== clubId)
+                        .map((club) => ({ value: club.id, label: club.name }))}
+                      onChange={(changed) => setCounterpartyClubId(changed.target.value)}
+                    />
+                  )}
+
+                  {NEEDS_ROTARY_CLUB.has(eventType) && (
+                    <Input
+                      label="Receiving Rotary club"
+                      required
+                      value={rotaryClubName}
+                      error={fieldErrors['rotaryClubName']}
+                      hint="Transitions are the most contested figure in the district's return."
+                      onChange={(changed) => setRotaryClubName(changed.target.value)}
+                    />
+                  )}
+
+                  {NEEDS_REASON.has(eventType) && (
+                    <Select
+                      label="Reason"
+                      value={reasonCode}
+                      placeholder="Choose a reason"
+                      options={REASON_CODES}
+                      onChange={(changed) => setReasonCode(changed.target.value)}
+                    />
+                  )}
+
+                  {eventType === 'CATEGORY_CHANGE' && (
+                    <Select
+                      label="New category"
+                      value={memberCategory}
+                      options={CATEGORIES}
+                      onChange={(changed) => setMemberCategory(changed.target.value)}
+                    />
+                  )}
+
+                  <Input
+                    label="Note"
+                    value={reasonNote}
+                    hint="Optional. Anything the district would want to know later."
+                    onChange={(changed) => setReasonNote(changed.target.value)}
+                  />
+                </div>
+              </Card>
+            )}
+
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="submit"
+                isLoading={record.isPending || createPerson.isPending}
+                disabled={!clubId || (!personId && !newPerson)}
+              >
+                Record
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => navigate(-1)}>
+                Cancel
+              </Button>
+            </div>
+          </>
+        )}
+      </form>
+    </>
+  );
+}
+
+/**
+ * Search, or type a name that is not there.
+ *
+ * The "or create" half is the point. A secretary inducting somebody who has never been in
+ * the system should not have to leave this screen, go and add a person, and come back —
+ * that journey is where the tenth induction of the evening stops being recorded.
+ */
+function PersonPicker({
+  search,
+  onSearch,
+  results,
+  isSearching,
+  selectedId,
+  newPerson,
+  onSelect,
+  onCreate,
+}: {
+  search: string;
+  onSearch: (value: string) => void;
+  results: { id: string; firstName: string; lastName: string; clubs?: { name: string }[] }[];
+  isSearching: boolean;
+  selectedId: string;
+  newPerson: { firstName: string; lastName: string } | null;
+  onSelect: (id: string) => void;
+  onCreate: (person: { firstName: string; lastName: string } | null) => void;
+}) {
+  const words = search.trim().split(/\s+/).filter(Boolean);
+  const canCreate = words.length >= 2 && !selectedId;
+
+  const selected = results.find((person) => person.id === selectedId);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Input
+        label="Member"
+        placeholder="Type a name"
+        value={search}
+        hint="Search for an existing member, or type a full name to add somebody new."
+        onChange={(event) => onSearch(event.target.value)}
+      />
+
+      {selected && (
+        <p className="text-success-700 text-sm">
+          Selected: {selected.firstName} {selected.lastName}
+        </p>
+      )}
+      {newPerson && (
+        <p className="text-success-700 text-sm">
+          Will add: {newPerson.firstName} {newPerson.lastName}
+        </p>
+      )}
+
+      {search.length >= 2 && !selectedId && !newPerson && (
+        <div className="border-ink-200 max-h-56 overflow-y-auto rounded-lg border">
+          {isSearching && <SkeletonList rows={2} />}
+          {results.map((person) => (
+            <button
+              key={person.id}
+              type="button"
+              onClick={() => onSelect(person.id)}
+              className="hover:bg-ink-50 flex min-h-11 w-full flex-col items-start px-3 py-2 text-left"
+            >
+              <span className="text-sm">
+                {person.firstName} {person.lastName}
+              </span>
+              {person.clubs?.[0] && (
+                <span className="text-ink-500 text-xs">{person.clubs[0].name}</span>
+              )}
+            </button>
+          ))}
+          {!isSearching && results.length === 0 && (
+            <p className="text-ink-500 px-3 py-2 text-sm">Nobody found.</p>
+          )}
+          {canCreate && (
+            <button
+              type="button"
+              onClick={() =>
+                onCreate({ firstName: words[0] ?? '', lastName: words.slice(1).join(' ') })
+              }
+              className="text-cranberry-600 hover:bg-ink-50 border-ink-200 min-h-11 w-full border-t px-3 py-2 text-left text-sm font-medium"
+            >
+              Add “{search.trim()}” as a new member
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

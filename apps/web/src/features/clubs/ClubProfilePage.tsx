@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Badge,
   Button,
@@ -11,6 +11,7 @@ import {
 } from '../../components/ui';
 import { cx } from '../../lib/cx';
 import { queryKeys, useList } from '../../lib/queries';
+import { ClubRosterPanel, MembershipStatsPanel } from '../membership/MembershipPages';
 import { useAuth, useScope } from '../auth/useAuth';
 import type { Club, ClubSummaryResponse } from './types';
 
@@ -29,7 +30,7 @@ import type { Club, ClubSummaryResponse } from './types';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
-  { key: 'members', label: 'Members', milestone: 'the membership log (M2 session 7)' },
+  { key: 'members', label: 'Members' },
   { key: 'activities', label: 'Activities', milestone: 'activity reporting (M2 session 9)' },
   { key: 'finance', label: 'Finance', milestone: 'the finance module (M4)' },
   { key: 'documents', label: 'Documents', milestone: 'document management (M7)' },
@@ -102,6 +103,16 @@ export function ClubProfilePage() {
 
       {tab === 'overview' ? (
         <Overview club={club} rosterCount={rosterCount} activities={activities} />
+      ) : tab === 'members' ? (
+        <div className="flex flex-col gap-4">
+          <MembershipStatsPanel clubId={club.id} />
+          <ClubRosterPanel clubId={club.id} />
+          <p className="text-ink-500 text-sm">
+            <Link className="text-cranberry-600 underline" to={`/clubs/${club.id}/membership`}>
+              See the full membership history
+            </Link>
+          </p>
+        </div>
       ) : (
         <Card>
           <EmptyState

@@ -61,6 +61,7 @@ export function useApiMutation<TVariables, TResult>(
 
 export const queryKeys = {
   clubs: ['clubs'] as const,
+  membership: ['membership'] as const,
   clusters: ['clusters'] as const,
   regions: ['regions'] as const,
   positions: ['positions'] as const,

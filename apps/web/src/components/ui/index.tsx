@@ -122,13 +122,16 @@ export function Input({ label, error, hint, className, id, ...rest }: InputProps
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   label: string;
   error?: string | undefined;
+  /** A line under the control, for the thing the label has no room to say. */
+  hint?: string | undefined;
   options: { value: string; label: string }[];
   placeholder?: string;
 }
 
-export function Select({ label, error, options, placeholder, id, ...rest }: SelectProps) {
+export function Select({ label, error, hint, options, placeholder, id, ...rest }: SelectProps) {
   const generatedId = useId();
   const selectId = id ?? generatedId;
+  const describedBy = error ? `${selectId}-error` : hint ? `${selectId}-hint` : undefined;
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -138,6 +141,7 @@ export function Select({ label, error, options, placeholder, id, ...rest }: Sele
       <select
         id={selectId}
         aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
         className={cx(
           'min-h-11 rounded-lg border bg-white px-3 text-base',
           error ? 'border-danger-600' : 'border-ink-300',
@@ -151,8 +155,13 @@ export function Select({ label, error, options, placeholder, id, ...rest }: Sele
           </option>
         ))}
       </select>
+      {hint && !error && (
+        <p id={`${selectId}-hint`} className="text-ink-500 text-xs">
+          {hint}
+        </p>
+      )}
       {error && (
-        <p role="alert" className="text-danger-700 text-xs">
+        <p id={`${selectId}-error`} role="alert" className="text-danger-700 text-xs">
           {error}
         </p>
       )}

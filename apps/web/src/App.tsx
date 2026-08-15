@@ -16,6 +16,8 @@ import { ClubProfilePage } from './features/clubs/ClubProfilePage';
 import { ClubsPage } from './features/clubs/ClubsPage';
 import { ClustersPage } from './features/clubs/ClustersPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
+import { MembershipHistoryPage, TransitionsPage } from './features/membership/MembershipPages';
+import { RecordEventPage } from './features/membership/RecordEventPage';
 import { AuditPage, InvitationsPage, RolloverPage } from './features/governance/AdminPages';
 import { AppointmentsPage } from './features/governance/AppointmentsPage';
 import { CommitteesPage } from './features/governance/CommitteesPage';
@@ -113,6 +115,30 @@ export function App() {
           element={
             <RequireAuth>
               <ClubFormPage mode="edit" />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/clubs/:id/membership"
+          element={
+            <RequireAuth>
+              <MembershipHistoryPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/membership/record"
+          element={
+            <RequireAuth>
+              <RecordEventPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/membership/transitions"
+          element={
+            <RequireAuth>
+              <TransitionsPage />
             </RequireAuth>
           }
         />
