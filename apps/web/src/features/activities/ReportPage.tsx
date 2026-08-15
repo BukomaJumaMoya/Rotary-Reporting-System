@@ -5,6 +5,7 @@ import { ApiError, api, apiRequest } from '../../lib/api';
 import { Button, Card, Input, PageHeader, Select, SkeletonList } from '../../components/ui';
 import { cx } from '../../lib/cx';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
+import { uuid } from '../../lib/uuid';
 import { useAuth } from '../auth/useAuth';
 import type { ClubListResponse } from '../clubs/types';
 
@@ -22,7 +23,8 @@ import type { ClubListResponse } from '../clubs/types';
  * draft on the server is a row somebody has to clean up.
  *
  * The activity id is generated HERE, so submitting twice on a bad connection produces one
- * activity (ADR-006).
+ * activity (ADR-006) — through `uuid()`, never `crypto.randomUUID()`, which is
+ * secure-context only and therefore undefined on any http:// origin that is not localhost.
  */
 
 const DRAFT_KEY = 'dis:report-draft';
@@ -47,7 +49,7 @@ interface Draft {
 function emptyDraft(): Draft {
   return {
     step: 1,
-    activityId: crypto.randomUUID(),
+    activityId: uuid(),
     activityTypeId: '',
     clubId: '',
     title: '',

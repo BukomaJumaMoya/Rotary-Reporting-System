@@ -4,6 +4,7 @@ import { ApiError, api } from '../../lib/api';
 import { Button, Card, Input, PageHeader, Select, SkeletonList } from '../../components/ui';
 import { cx } from '../../lib/cx';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
+import { uuid } from '../../lib/uuid';
 import { useAuth } from '../auth/useAuth';
 import type { ClubListResponse } from '../clubs/types';
 import type { MembershipEventResponse, PersonListResponse } from './types';
@@ -127,7 +128,7 @@ export function RecordEventPage() {
       {
         // The CLIENT generates the id, so tapping Save twice on a bad connection produces
         // one row rather than two members.
-        id: crypto.randomUUID(),
+        id: uuid(),
         personId: subjectId,
         clubId,
         eventType,
