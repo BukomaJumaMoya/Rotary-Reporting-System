@@ -69,12 +69,12 @@ Declared in `apps/api/src/platform/errors.ts`, which is the list that is actuall
 `DUPLICATE_CODE` · `INVALID_SCOPE_REFERENCE` · `SCOPE_TYPE_MISMATCH` · `COMMITTEE_TOO_DEEP` ·
 `ROLLOVER_NOT_CONFIRMED` · `PERIOD_OPEN` · `RI_ID_ALREADY_CLAIMED` ·
 `CLUB_AFFILIATED_ELSEWHERE` · `IDEMPOTENT_REPLAY` · `DUPLICATE_MEMBERSHIP_EVENT` ·
+`UNSUPPORTED_MEDIA_TYPE` · `FILE_TOO_LARGE` · `MISSING_REQUIRED_FIELD_FOR_TYPE` ·
 `MEMBERSHIP_IMMUTABLE` ·
 `AUDIT_IMMUTABLE` · the auth codes in §2.
 
 **Designed, not yet built:** `PERIOD_CLOSED` · `FRAMEWORK_LOCKED` · `TIER_NOT_APPLICABLE` ·
-`MISSING_REQUIRED_FIELD_FOR_TYPE` · `ASSESSMENT_FINALISED` ·
-`DISPUTE_WINDOW_CLOSED`.
+`ASSESSMENT_FINALISED` · `DISPUTE_WINDOW_CLOSED`.
 
 `CLUB_AFFILIATED_ELSEWHERE` deliberately does NOT name the other district. Reading across
 the district boundary to write a better error message is exactly the read this system does
@@ -268,8 +268,9 @@ type and date and NO id are a double-tap: `DUPLICATE_MEMBERSHIP_EVENT`.
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/activity-types` | Drives dynamic form rendering |
-| `POST` | `/activity-types` · `PATCH` | `activitytype:manage:district` |
+| `GET` | `/activity-types` | `activity:read:club` — grouped by category. Drives dynamic form rendering. **Built M2 s8** |
+| `GET` | `/activity-types/flat` · `/activity-types/:id` | `activity:read:club` — the flat list, for the admin screen |
+| `POST` `PATCH` | `/activity-types` · `/activity-types/:id` | `activitytype:manage:district`. **Built M2 s8** |
 | `GET` | `/activities` | Filter: type, category, host, status, verification, date range |
 | `POST` | `/activities` | Validated against type config; idempotent |
 | `PATCH` | `/activities/:id` | Blocked once period closed |
@@ -281,6 +282,21 @@ type and date and NO id are a double-tap: `DUPLICATE_MEMBERSHIP_EVENT`.
 | `GET` | `/activities/calendar` | Month view for planning |
 
 `GET /activity-types` is the contract between configuration and UI: the client renders whatever fields the type declares. Adding an activity type never requires a client release.
+
+`field_config` is `{ fields: [{ key, label, type, required, options?, helpText? }] }` — an
+OBJECT rather than a bare array, so the format can gain a sibling key later without every
+stored row needing a migration. Five field kinds and no more: every addition is a thing the
+renderer, the validator and the builder UI must all agree about, and "just one more field
+kind" is how a configuration format becomes a programming language. `code` is immutable
+after creation, and a shared template answers `TEMPLATE_IMMUTABLE` on any write.
+
+**Media.** Uploads are multipart, capped at 10MB while reading, and their content type is
+decided by MAGIC BYTES — never the extension, never the `Content-Type` header, both of which
+are attacker-supplied strings. The database stores storage KEYS, never URLs, so the provider
+or CDN can change without a data migration; reads are short-lived signed URLs. A pg-boss job
+produces a 400px thumbnail and a 1200px display variant in WebP and **strips every piece of
+metadata**, because phone photographs carry GPS and this system exists partly to correct a
+predecessor that published members' locations.
 
 ---
 

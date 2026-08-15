@@ -67,6 +67,15 @@ export const ErrorCode = {
    * a retry is safe, and the response carries the existing record (docs/05-API-Spec.md §1).
    */
   IDEMPOTENT_REPLAY: 'IDEMPOTENT_REPLAY',
+  /** The uploaded bytes are not a format the system handles, whatever the filename said. */
+  UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE',
+  /** Past the 10MB cap, detected while reading rather than after the buffer exists. */
+  FILE_TOO_LARGE: 'FILE_TOO_LARGE',
+  /**
+   * An activity is missing a field its TYPE declares as required — either a `requires_*`
+   * flag or an entry in `field_config`. `details.key` names it.
+   */
+  MISSING_REQUIRED_FIELD_FOR_TYPE: 'MISSING_REQUIRED_FIELD_FOR_TYPE',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   // Database guards (ADR-012). Mapped from SQLSTATE below.
   MEMBERSHIP_IMMUTABLE: 'MEMBERSHIP_IMMUTABLE',

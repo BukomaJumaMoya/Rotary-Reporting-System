@@ -37,6 +37,12 @@ const NAV_ITEMS: NavItem[] = [
     glyph: '⇢',
   },
   {
+    to: '/admin/activity-types',
+    label: 'Types',
+    permission: 'activitytype:manage:district',
+    glyph: '⚙',
+  },
+  {
     to: '/admin/clusters',
     label: 'Clusters',
     permission: 'cluster:manage:district',

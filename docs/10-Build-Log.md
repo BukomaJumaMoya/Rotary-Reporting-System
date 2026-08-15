@@ -6,7 +6,7 @@ was decided along the way, and what is deliberately unfinished.
 
 Last updated: 15 August 2026, after M1 session 7. **M0 and M1 are complete.**
 
-<!-- dis:state milestone=M2 schema=v1.9 tests=374 -->
+<!-- dis:state milestone=M2 schema=v1.9 tests=386 -->
 
 ---
 
@@ -101,8 +101,8 @@ full history is in §4.
 | 4 — Clubs UI | **done** | `00429ec` |
 | 5 — Persons and visibility | **done** | `8310ab0` |
 | 6 — Membership events and roster | **done** | `29727b8` |
-| 7 — Membership UI | **done** | this commit |
-| 8 — Activity types and media | pending | |
+| 7 — Membership UI | **done** | `1fd0bad` |
+| 8 — Activity types and media | **done** | this commit |
 | 9 — Activities API and reporting UI | pending | |
 | 10 — M2 hardening | pending | |
 
@@ -182,6 +182,7 @@ apps/api/src/
     config.ts    every env var, validated with Zod at startup; process exits if invalid
     context.ts   context middleware, requireContext, requirePermission, requireScope
     crypto.ts    AES-256-GCM for secrets, with key rotation (ADR-013)
+    images.ts    sharp: 400px thumb, 1200px display, WebP, ALL metadata stripped
     db.ts        prisma (scoped models removed from its TYPE) · db(ctx) · unscopedPrisma
                  · scopedTransaction() · recordAction()
     errors.ts    AppError, stable codes, error handler, SQLSTATE → domain code mapping
@@ -189,6 +190,8 @@ apps/api/src/
     scope.ts     the scope registry, the Prisma extensions, the locked-year check
     security-headers.ts  CSP and friends, for a same-origin SPA. No inline script.
     session.ts   express-session + connect-pg-simple, cookie policy
+    storage.ts   object storage — KEYS never URLs; S3-compatible and local drivers
+    upload.ts    multipart, MAGIC-BYTE sniffing, a 10MB cap enforced while reading
     web-client.ts  serves apps/web/dist; middleware, so it cannot shadow /api
     system-context.ts  systemContext() for work with no request; a MANDATORY reason
     time.ts      district-local midnight; isTermCurrent, isoDate, fromIsoDate
@@ -201,7 +204,8 @@ apps/api/src/
                  appointments.{repository,service}   terms, uniqueness, revocation
                  committees.service                  delegated subtrees, depth 3
                  administration.service              invitations, MFA reset, audit read
-    activity/    service — countForClub(), the one function org needs (M2 s9 fills the rest)
+    activity/    routes · types.service — the configurable types (axiom 4)
+                 service — countForClub(), the one function org needs (M2 s9 fills the rest)
     membership/  routes · service — the event log, the roster, the statistics
                  analytics.ts  THE one raw-SQL file outside the assessment resolvers
     notifications/ service · templates — queue row, delivery, and the due-row read
@@ -219,6 +223,7 @@ apps/api/src/
     registry.ts  JOBS — the one list of queues that exist
     dead-letter.ts  a permanently failed job becomes a JOB_FAILED row in audit_log
     erasure.job.ts  anonymises a person once the district has approved it
+    media.job.ts    resizes an upload and strips its EXIF
     sweep.ts     the safety net over notifications left QUEUED
     notification.job.ts  the delivery job, and notifyThroughQueue() for callers with a ctx
     worker.ts    the worker process entry point (npm run worker)
@@ -247,6 +252,7 @@ apps/web/src/
                  (forgot, reset, accept invite), useAuth/useScope
     clubs/       ClubsPage (directory) · ClubProfilePage (tabs, one summary call)
                  ClubFormPage (charter and edit) · ClustersPage · types.ts
+    activities/  ActivityTypesPage — the field_config builder, with a live preview
     membership/  RecordEventPage — the screen a secretary uses most
                  MembershipPages — roster, history, statistics, transitions · types.ts
     dashboard/   DashboardPage — what this account may actually do
@@ -257,7 +263,7 @@ apps/web/src/
 Dockerfile · fly.toml · .github/workflows/deploy-staging.yml · README.md
 ```
 
-**374 tests**, all integration-style against real PostgreSQL. The suites that are load
+**386 tests**, all integration-style against real PostgreSQL. The suites that are load
 bearing rather than incidental: `no-pii.test.ts` (walks every route unauthenticated),
 `invariants.test.ts` (37 ADR-012 guards), `scope*.test.ts` (the data access layer),
 `audit.test.ts`, `rollover.test.ts` (dry run and committed), and `prisma/seed.test.ts`,
@@ -988,6 +994,55 @@ turns on eighteen months later.
 hid them would be a history that had been edited, which is the thing the log exists not to be.
 
 **Bundle: 90 KB gzipped.**
+
+#### Session 8 — activity types and the media pipeline
+
+**The sharp trap was handled in the same commit, as the prompt insists.**
+`@img/sharp-linux-x64`, `@img/sharp-libvips-linux-x64` and `@img/sharp-win32-x64` are pinned
+in the root `optionalDependencies` beside esbuild's, because npm does not persist transitive
+optional platform binaries and the next workspace-scoped install would prune them — taking
+`npm run dev` down with them. Verified after installing: `tsx` still runs and sharp still
+resizes.
+
+**THE GPS FIXTURE NEEDED `IFD3`, NOT A KEY CALLED `GPS`.** sharp passes `withExif` straight
+to libvips, which numbers its EXIF directories — ifd0 the image, ifd1 the thumbnail, ifd2 the
+EXIF sub-IFD, ifd3 the GPS one. A fixture written with a `GPS` key produces a JPEG with no
+location in it at all, and the test that proves EXIF is stripped would have passed while
+proving nothing. The test now asserts the fixture carries GPS BEFORE processing it, which is
+what makes the assertion after it mean something.
+
+**And the detector had to parse, not grep.** "Does this EXIF block have a GPS IFD" cannot be
+answered by searching for the string `GPS`: EXIF is a binary TIFF structure and the word does
+not appear. A substring check reports "no location" on every photograph ever taken — a
+location test that always passes, which is the same vacuous-harness failure as M0's route
+walker. It now walks IFD0 looking for tag `0x8825`.
+
+**The processed DISPLAY variant replaces the original and the original is deleted.** Keeping
+the original would keep its EXIF, which is the shape of a leak that looks fixed.
+
+**Content type comes from MAGIC BYTES.** Not the extension, not the `Content-Type` header —
+both are attacker-supplied strings, and an HTML document called `photo.jpg`, served back from
+a domain that holds a session cookie, is stored XSS. The 10MB cap is enforced WHILE READING:
+checking `Content-Length` trusts a header, and checking afterwards means the buffer exists.
+
+**Storage holds KEYS, never URLs**, and keys are generated — `<prefix>/<yyyy>/<mm>/<uuid>.<ext>`
+— never a user's filename. The incumbent kept spaces and apostrophes in stored names; a
+user-supplied filename in a storage key is also a path traversal waiting for somebody to try
+`../`. Reads are short-lived signed URLs, because a photograph of a member is not public and
+a permanent URL is permanent for whoever ends up holding it.
+
+**`storage()` refuses the local driver in production.** The application filesystem does not
+survive a redeployment (ADR-007), and a deploy that quietly lost every photograph since the
+last one is not a failure anybody notices in time.
+
+**`field_config` is `{ fields: [...] }`, an object rather than a bare array**, so the format
+can gain a sibling key later without every stored row needing a migration. Five field kinds
+and no more: every addition is a thing the renderer, the validator and the builder must all
+agree about. It is parsed on the way OUT as well as in — a row that no longer parses renders
+as a type with no extra fields rather than taking the reporting screen down.
+
+**The builder has a live preview** rendered with the same components the real form uses. A
+preview built from a different renderer is a preview that lies.
 
 **The doc-check axiom-3 grep learned about `corroborated_at`.** It is the one column the
 immutability guard lets through, so a `updateMany` naming only that column is legitimate and

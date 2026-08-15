@@ -11,6 +11,7 @@ import {
   ForgotPasswordPage,
   ResetPasswordPage,
 } from './features/auth/PasswordPages';
+import { ActivityTypesPage } from './features/activities/ActivityTypesPage';
 import { ClubFormPage } from './features/clubs/ClubFormPage';
 import { ClubProfilePage } from './features/clubs/ClubProfilePage';
 import { ClubsPage } from './features/clubs/ClubsPage';
@@ -147,6 +148,14 @@ export function App() {
           Every admin screen gates on <Can> INSIDE itself as well as being routed here.
           The route is convenience; the server is the boundary, and it refuses regardless.
         */}
+        <Route
+          path="/admin/activity-types"
+          element={
+            <RequireAuth>
+              <ActivityTypesPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/admin/clusters"
           element={

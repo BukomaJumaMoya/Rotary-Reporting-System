@@ -81,6 +81,26 @@ const environmentSchema = z.object({
    */
   CSP_MEDIA_ORIGINS: z.string().default(''),
 
+  // ─── Object storage (ADR-007) ──────────────────────────────────────────────
+  //
+  // The application filesystem does not survive a redeployment, so uploads never touch it
+  // in production. `local` exists for development and tests, and `storage()` refuses to
+  // hand it back when NODE_ENV is production — a deploy that quietly lost every photograph
+  // since the last one is not a failure anybody notices in time.
+  STORAGE_DRIVER: z.enum(['s3', 'local']).default('local'),
+  LOCAL_STORAGE_DIR: z.string().default('.tmp/storage'),
+  S3_ENDPOINT: z.string().optional(),
+  S3_REGION: z.string().default('auto'),
+  S3_BUCKET: z.string().optional(),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  /**
+   * How long a media URL stays valid. Short deliberately: a photograph of a member is not
+   * public, and a long-lived signed URL is a public URL with extra steps — it outlives the
+   * session that minted it and works for whoever ends up holding it.
+   */
+  MEDIA_URL_TTL_SECONDS: z.coerce.number().int().positive().max(3600).default(600),
+
   // Mail. `log` prints instead of sending (development); `capture` keeps messages in
   // memory (tests); `smtp` delivers.
   MAIL_TRANSPORT: z.enum(['smtp', 'log', 'capture']).default('log'),

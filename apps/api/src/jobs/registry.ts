@@ -1,5 +1,6 @@
 import type { AnyJobDefinition } from './boss.js';
 import { erasureJob } from './erasure.job.js';
+import { mediaProcessingJob } from './media.job.js';
 import { notificationDeliveryJob } from './notification.job.js';
 
 /**
@@ -11,7 +12,11 @@ import { notificationDeliveryJob } from './notification.job.js';
  *
  * The scoring job (M5), goal snapshots (M7) and export generation (M7) join this list.
  */
-export const JOBS: readonly AnyJobDefinition[] = [notificationDeliveryJob, erasureJob];
+export const JOBS: readonly AnyJobDefinition[] = [
+  notificationDeliveryJob,
+  erasureJob,
+  mediaProcessingJob,
+];
 
 export function jobByName(name: string): AnyJobDefinition | undefined {
   return JOBS.find((job) => job.name === name);
