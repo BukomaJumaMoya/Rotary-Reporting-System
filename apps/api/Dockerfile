@@ -12,7 +12,35 @@
 # an unpleasant thing to debug on a staging box at midnight. The extra ~40MB is worth
 # not having that conversation.
 
-# ─── Stage 1: dependencies and build ────────────────────────────────────────────
+# ─── Stage 1: the web client ────────────────────────────────────────────────────
+#
+# A stage of its own, so React, Vite and Tailwind never reach the runtime image. They are
+# `dependencies` of @dis/web rather than devDependencies, so `npm prune --omit=dev` in the
+# API stage would not remove them — only never installing them there does.
+#
+# The SPA is served by the API from the same origin (M2 session 2), which is why it is in
+# this image at all. `apps/web/src/lib/api.ts` addresses the API as a relative `/api/v1`,
+# so the bundle carries no environment-specific URL and the same artefact works in staging
+# and in production.
+FROM node:20-slim AS web
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY packages/contracts/package.json packages/contracts/
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+
+RUN npm ci --include-workspace-root --workspace @dis/web --workspace @dis/contracts \
+      --ignore-scripts
+
+COPY tsconfig.base.json ./
+COPY packages/contracts packages/contracts
+COPY apps/web apps/web
+
+RUN npm run build:contracts \
+ && npm run build --workspace @dis/web
+
+# ─── Stage 2: API dependencies and build ────────────────────────────────────────
 FROM node:20-slim AS build
 WORKDIR /app
 
@@ -39,9 +67,13 @@ COPY apps/api/prisma.config.ts apps/api/
 # on import — exit 139, no stack, no message. The API's own postinstall (`prisma generate`)
 # is why the schema and prisma.config.ts are copied above.
 #
-# Scoped to the two workspaces this image runs. The web client is a static bundle built
-# elsewhere, and pulling Vite, React and Tailwind into an API image costs a few hundred
-# megabytes of deploy for nothing.
+# The workspace flags scope which workspaces are LINKED and which lifecycle scripts run.
+# They do NOT scope what `npm ci` installs: it resolves the whole lockfile, so @dis/web's
+# runtime dependencies land in the root node_modules whatever is named here. `npm prune
+# --omit=dev` below removes Vite, Tailwind and esbuild, which are devDependencies; React,
+# react-router and TanStack Query are not, and survive at about 15MB of a 393MB tree.
+# Measured, not assumed, because the comment that used to be here claimed otherwise.
+# Not worth contorting the build for — the Prisma CLI and its engines are ~215MB of it.
 RUN npm ci --include-workspace-root --workspace @dis/api --workspace @dis/contracts
 
 COPY tsconfig.base.json ./
@@ -60,7 +92,7 @@ RUN npm run db:generate \
 # dependencies from a tree whose native modules are already built.
 RUN npm prune --omit=dev
 
-# ─── Stage 2: runtime ───────────────────────────────────────────────────────────
+# ─── Stage 3: runtime ───────────────────────────────────────────────────────────
 FROM node:20-slim AS runtime
 WORKDIR /app
 
@@ -87,6 +119,11 @@ COPY --from=build --chown=node:node /app/apps/api/package.json ./apps/api/packag
 # would need a proxy. A large image on a deploy nobody watches beats a migration path
 # that depends on a tunnel staying up.
 COPY --from=build --chown=node:node /app/apps/api/prisma ./apps/api/prisma
+
+# The SPA. `platform/web-client.ts` resolves `apps/web/dist` relative to itself, which is
+# the same two levels up in `dist/` as in `src/`, so this path is the one it looks for.
+# Static files only — none of the toolchain that produced them.
+COPY --from=web --chown=node:node /app/apps/web/dist ./apps/web/dist
 
 EXPOSE 8080
 

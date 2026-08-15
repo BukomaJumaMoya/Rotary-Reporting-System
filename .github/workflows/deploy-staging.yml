@@ -62,36 +62,12 @@ jobs:
           echo "staging did not answer /api/v1/admin/health"
           exit 1
 
-  web:
-    name: Web
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-
-      - run: npm ci
-      - run: npm run build --workspace @dis/web
-        env:
-          VITE_API_BASE_URL: https://rotaract-dis-staging.fly.dev
-
-      # The web client is a static bundle — no server, no secrets in it. Uploaded as an
-      # artifact rather than pushed anywhere: the static host is not chosen yet, and
-      # choosing one in a workflow file is how it gets chosen by accident. Point the
-      # final step at Cloudflare Pages or Fly static once the district's account exists
-      # (ADR-011).
-      - uses: actions/upload-artifact@v4
-        with:
-          name: web-staging
-          path: apps/web/dist
-          retention-days: 7
+      # The SPA now ships INSIDE this image and is served by the API from the same origin
+      # (M2 session 2), so there is no separate web job and no artifact to download. This
+      # step is what would notice a deploy where the API came up and the client did not —
+      # a deep link, refreshed, which is exactly the case a catch-all gets wrong.
+      - name: Confirm the web client is served, including on a deep route
+        run: |
+          curl --fail --silent --show-error https://rotaract-dis-staging.fly.dev/login \
+            | grep -q 'id="root"'
+          echo "web client is served"

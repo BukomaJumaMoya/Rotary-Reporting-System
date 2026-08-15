@@ -219,18 +219,26 @@ segfaults on musl with no output. `argon2` needs install scripts to run; use
 
 ---
 
-## 6. Two decisions still open
+## 6. One decision still open
 
-Both are recorded here so a session does not silently pick one.
+Recorded here so a session does not silently pick one.
 
 **Published ranks.** ADR-012 made rank a view. A club published at rank 3 becomes rank 4
 when another club's dispute is upheld, with no record it was ever 3. Recommendation: an
 immutable `assessment_period_results` snapshot written at period finalisation, keeping the
 live view for current standings. **Decide before M5 session 5.**
 
-**Where the web app is served.** Options: from the existing Fly app alongside the API (one
-deploy, one account, no CORS) or a dedicated static host (better CDN, another account to
-hold under district identity). **Decide before M2 session 2.**
+### Decided
+
+**Where the web app is served — from the existing Fly app, alongside the API** (M2 session
+2). One deploy, one account to hold under district identity, same origin: no CORS, no
+second cookie domain, and no second thing to have an outage. A dedicated static host would
+buy a better CDN and cost another account, and ADR-011 is about there being FEWER accounts
+each with two administrators, not more.
+
+The client is served as MIDDLEWARE after every API router (`platform/web-client.ts`), never
+as `app.get('*')` — a catch-all route would appear in the walker the unauthenticated-PII
+harness uses, and would answer an unmatched `/api/...` with `index.html` and a 200.
 
 ---
 

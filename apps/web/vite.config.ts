@@ -13,6 +13,15 @@ export default defineConfig({
     },
   },
   build: {
+    // No inline module-preload polyfill. Vite injects one as an INLINE script once a build
+    // has more than one chunk, and the Content-Security-Policy the API serves
+    // (platform/security-headers.ts) allows no inline script at all. Every browser this
+    // system targets — Android Chrome, current Safari — supports modulepreload natively,
+    // so the polyfill would buy nothing and cost the strictest directive in the policy.
+    // Route-level code splitting lands in session 10; this is what keeps it from silently
+    // breaking the page.
+    modulePreload: { polyfill: false },
+
     // Members report from metered Android data. The budget in CLAUDE.md is 250 KB of
     // initial JS, measured GZIPPED — which is what crosses the wire.
     //

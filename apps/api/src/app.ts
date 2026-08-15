@@ -6,7 +6,9 @@ import { orgRouter } from './modules/org/routes.js';
 import { auditActorMiddleware } from './platform/audit.js';
 import { resolveRequestContext } from './platform/context.js';
 import { errorHandler, notFoundHandler } from './platform/errors.js';
+import { securityHeaders } from './platform/security-headers.js';
 import { createSessionMiddleware } from './platform/session.js';
+import { serveWebClient } from './platform/web-client.js';
 import { config } from './platform/config.js';
 
 /** Registers a router and records where it was mounted. */
@@ -51,6 +53,10 @@ export function createApp(mountExtra?: (mount: MountFn) => void): Express {
     app.set('trust proxy', config.TRUST_PROXY_HOPS);
   }
 
+  // Before anything that can produce a response, so a 404 and an error page carry the
+  // policy as surely as the application does.
+  app.use(securityHeaders);
+
   // 100kb: every request body in this API is a form. A larger limit only widens what an
   // unauthenticated caller can make the process parse.
   app.use(express.json({ limit: '100kb' }));
@@ -80,6 +86,12 @@ export function createApp(mountExtra?: (mount: MountFn) => void): Express {
   mountExtra?.(mount);
 
   app.set(MOUNTS_KEY, mounts);
+
+  // AFTER every API router and BEFORE the terminal handlers. Nothing here can shadow an
+  // endpoint, and an unmatched `/api/...` still falls through to a JSON 404 rather than
+  // being answered with index.html — which is how a client ends up reporting "unexpected
+  // token <" instead of the 404 the server actually gave it.
+  serveWebClient(app);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

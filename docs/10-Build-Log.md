@@ -95,8 +95,8 @@ full history is in §4.
 
 | M2 session | State | Commit |
 |---|---|---|
-| 1 — Background jobs (pg-boss) | **done** | this commit |
-| 2 — Web deployment | pending | |
+| 1 — Background jobs (pg-boss) | **done** | `b11a348` |
+| 2 — Web deployment | **done** | this commit |
 | 3 — Clubs and affiliations | pending | |
 | 4 — Clubs UI | pending | |
 | 5 — Persons and visibility | pending | |
@@ -187,7 +187,9 @@ apps/api/src/
     errors.ts    AppError, stable codes, error handler, SQLSTATE → domain code mapping
     mail.ts      smtp | log | capture transports
     scope.ts     the scope registry, the Prisma extensions, the locked-year check
+    security-headers.ts  CSP and friends, for a same-origin SPA. No inline script.
     session.ts   express-session + connect-pg-simple, cookie policy
+    web-client.ts  serves apps/web/dist; middleware, so it cannot shadow /api
     system-context.ts  systemContext() for work with no request; a MANDATORY reason
     time.ts      district-local midnight; isTermCurrent, isoDate, fromIsoDate
     validate.ts  validateBody, withBody (typed body), parseQuery, pathParam
@@ -758,6 +760,52 @@ the worker only until somebody edits one of them.
 directory was invisible to the check whose purpose is to catch code that was written and
 never written down.
 
+#### Session 2 — the web client, served from the API
+
+**The open decision in Build-Conventions §6 is closed.** The SPA is served from the
+existing Fly app: one deploy, one account to hold under district identity, same origin and
+therefore no CORS and no second cookie domain. A dedicated static host would buy a better
+CDN and cost another account, and ADR-011 is about there being FEWER accounts each with two
+administrators, not more.
+
+**The client is MIDDLEWARE, not a catch-all route.** `app.get('*', …)` would appear in the
+walker the unauthenticated-PII harness uses — which discovers routes precisely so nobody
+maintains a list — and a catch-all in that list is a path the harness probes forever. An
+`app.use` handler has no `.stack`, so it is invisible to both `discoverRoutes` and
+`assertAllRoutersDiscovered`. There is a test asserting exactly that.
+
+**An unmatched `/api/...` is still a JSON 404.** The one-line version of this feature
+returns `index.html` for everything, answers 200 to a mistyped endpoint, and reaches the
+client as "unexpected token <" — which sends whoever is debugging it to look at their JSON
+parser instead of at the 404 the server meant to send. A missing `/assets/...` 404s for the
+same reason, and a non-GET to an unknown path does too.
+
+**`index.html` is `no-cache`; `/assets/*` is immutable for a year.** Vite hashes every
+asset filename, so a cached entry point is the only thing that can make a deploy invisible.
+On metered data this is a repeat visit costing nothing instead of 80 KB.
+
+**The CSP allows NO inline script**, which is only possible because `modulePreload.polyfill`
+is now off in `vite.config.ts`. Vite injects that polyfill as an inline script as soon as a
+build has more than one chunk — so route-level code splitting in session 10 would otherwise
+have broken the page in a way that looks like a bundler problem and is a header problem.
+Inline STYLE is allowed: React sets `style` attributes at runtime, `style-src-attr` governs
+them, and no nonce can cover that.
+
+`CSP_MEDIA_ORIGINS` exists and is empty. Object storage arrives in session 8 and serves
+photographs from another host; that host goes in the variable rather than into a policy
+somebody quietly loosens.
+
+**The Dockerfile builds the client in a stage of its own**, so Vite, Tailwind and esbuild
+never reach the runtime image. What that does NOT do — and the comment that used to be
+there claimed it did — is keep React out: `npm ci --workspace` scopes linking and lifecycle
+scripts, not what gets installed, so @dis/web's runtime dependencies land in the root
+`node_modules` regardless. Measured at ~15MB of a 393MB tree in an 815MB image whose Prisma
+engines are ~215MB of it. Not worth contorting the build for; worth not lying about.
+
+**The deploy workflow's `web` job is gone.** The artifact upload it existed for has no
+purpose now, and the API job gained a check that fetches `/login` and greps for the root
+element — which is what would notice a deploy where the API came up and the client did not.
+
 ---
 
 ## 4a. Axiom conformance
@@ -801,7 +849,7 @@ re-checked whenever a new write path is added.
 |---|---|---|
 | The repository and hosting accounts are on a PERSONAL account | ADR-011 names this as the failure the project exists to correct; it needs district-owned GitHub and Fly organisations with two administrators | **M0's last open exit condition** — carried: it needs a district decision and two named administrators, not a commit |
 | ~~No worker process, no pg-boss~~ | **built in M2 session 1** | — |
-| The web bundle is uploaded as a CI artifact rather than published | the district's static host does not exist yet, and choosing one in a workflow file is how it gets chosen by accident | **due before M2 session 2** |
+| ~~The web bundle is uploaded as a CI artifact rather than published~~ | **decided and built in M2 session 2**: served from the API container, same origin, one deploy | — |
 | ~~The worker process group in `fly.toml` is commented out~~ | **uncommented in M2 session 1**; two process groups from one image | — |
 | A dead-lettered job is recorded but not retryable from the UI | `JOB_FAILED` in `audit_log` carries the queue, the error and the payload, which is enough to re-run it by hand; a button needs a screen that does not exist | M7, with the admin surface |
 | `recordAction(EXPORT, …)` exists and is unused | there is no export module yet | M7 |

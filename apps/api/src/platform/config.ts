@@ -65,6 +65,22 @@ const environmentSchema = z.object({
    */
   APP_BASE_URL: z.string().url().default('http://localhost:5173'),
 
+  /**
+   * The built SPA, served from this container on the same origin as the API (M2 session
+   * 2). Defaults to `apps/web/dist` next to the API, which is where both the monorepo and
+   * the Docker image put it; set it only to serve a bundle from somewhere else.
+   */
+  WEB_CLIENT_DIR: z.string().optional(),
+
+  /**
+   * Extra origins the page may load images from and fetch, space separated.
+   *
+   * Empty today. Object storage arrives with the media pipeline (M2 session 8) and serves
+   * photographs from another host through signed URLs — at which point that host goes
+   * here, rather than into a Content-Security-Policy that has been quietly loosened.
+   */
+  CSP_MEDIA_ORIGINS: z.string().default(''),
+
   // Mail. `log` prints instead of sending (development); `capture` keeps messages in
   // memory (tests); `smtp` delivers.
   MAIL_TRANSPORT: z.enum(['smtp', 'log', 'capture']).default('log'),
