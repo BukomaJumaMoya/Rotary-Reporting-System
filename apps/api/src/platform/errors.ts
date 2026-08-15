@@ -54,6 +54,13 @@ export const ErrorCode = {
    */
   CLUB_AFFILIATED_ELSEWHERE: 'CLUB_AFFILIATED_ELSEWHERE',
   /**
+   * The same person, club, event type and date twice. A double-tap, not two facts — and
+   * without this, one slow save on a bad connection is a member counted twice in the
+   * retention arithmetic. A correction is exempt: superseding an event necessarily repeats
+   * its key in order to say something different about it.
+   */
+  DUPLICATE_MEMBERSHIP_EVENT: 'DUPLICATE_MEMBERSHIP_EVENT',
+  /**
    * A create was re-posted with an id that already exists.
    *
    * Not an error so much as an answer: offline clients generate their own ids precisely so

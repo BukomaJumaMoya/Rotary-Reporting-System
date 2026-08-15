@@ -7,6 +7,7 @@ import type {
   RequestContext,
   UpdateAppointmentRequest,
 } from '@dis/contracts';
+import { db } from '../../platform/db.js';
 import { AppError, ErrorCode, notFound } from '../../platform/errors.js';
 import { fromIsoDate, isoDate, isTermCurrent } from '../../platform/time.js';
 import * as repository from './appointments.repository.js';
@@ -296,4 +297,25 @@ export async function listForPerson(
     data: await present(ctx, rows),
     meta: { page: query.page, pageSize: query.pageSize, total },
   };
+}
+
+/**
+ * The people currently holding a CLUB-scoped appointment for one club.
+ *
+ * Exported for `modules/membership`, which has to tell the receiving club that a transfer
+ * naming them has been recorded. Appointments are governance's table, so membership asks
+ * rather than joining — the dependency rule, and the reason the day appointments gain a
+ * "notifications off" flag there is one place to honour it.
+ *
+ * Names only: the caller wants somebody to notify, not a directory.
+ */
+export async function listClubOfficerPersonIds(
+  ctx: RequestContext,
+  clubId: string,
+): Promise<string[]> {
+  const rows = await db(ctx).appointment.findMany({
+    where: { scopeType: 'CLUB', scopeId: clubId, isActive: true },
+    select: { personId: true },
+  });
+  return [...new Set(rows.map((row) => row.personId))];
 }

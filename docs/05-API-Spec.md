@@ -68,11 +68,12 @@ Declared in `apps/api/src/platform/errors.ts`, which is the list that is actuall
 `POSITION_IN_USE` · `POSITION_ALREADY_HELD` · `TEMPLATE_IMMUTABLE` · `UNKNOWN_PERMISSION` ·
 `DUPLICATE_CODE` · `INVALID_SCOPE_REFERENCE` · `SCOPE_TYPE_MISMATCH` · `COMMITTEE_TOO_DEEP` ·
 `ROLLOVER_NOT_CONFIRMED` · `PERIOD_OPEN` · `RI_ID_ALREADY_CLAIMED` ·
-`CLUB_AFFILIATED_ELSEWHERE` · `IDEMPOTENT_REPLAY` · `MEMBERSHIP_IMMUTABLE` ·
+`CLUB_AFFILIATED_ELSEWHERE` · `IDEMPOTENT_REPLAY` · `DUPLICATE_MEMBERSHIP_EVENT` ·
+`MEMBERSHIP_IMMUTABLE` ·
 `AUDIT_IMMUTABLE` · the auth codes in §2.
 
 **Designed, not yet built:** `PERIOD_CLOSED` · `FRAMEWORK_LOCKED` · `TIER_NOT_APPLICABLE` ·
-`DUPLICATE_MEMBERSHIP_EVENT` · `MISSING_REQUIRED_FIELD_FOR_TYPE` · `ASSESSMENT_FINALISED` ·
+`MISSING_REQUIRED_FIELD_FOR_TYPE` · `ASSESSMENT_FINALISED` ·
 `DISPUTE_WINDOW_CLOSED`.
 
 `CLUB_AFFILIATED_ELSEWHERE` deliberately does NOT name the other district. Reading across
@@ -233,19 +234,35 @@ because contact fields are absent unless the caller may see them.
 
 ## 5. Membership
 
-| Method | Path | Notes |
+**Built in M2 session 6.**
+
+| Method | Path | Permission |
 |---|---|---|
-| `GET` | `/membership/events` | Filter by club, person, type, date range |
-| `POST` | `/membership/events` | Append-only; idempotent on client UUID |
-| `POST` | `/membership/events/:id/correct` | Creates a `CORRECTION` superseding the original |
-| `GET` | `/membership/roster` | `?clubId=&asOf=` — derived, supports historical dates |
-| `GET` | `/membership/stats` | Opening, joiners, leavers, net, retention %, transitions |
-| `GET` | `/membership/transitions` | Transitions to Rotary with corroboration state |
-| `POST` | `/membership/transitions/:id/corroborate` | Receiving-side confirmation |
+| `GET` | `/membership/events` | `membership:read:club` — `?clubId=`, `?personId=`, `?eventType=`, `?from=`, `?to=` |
+| `POST` | `/membership/events` | `membership:write:club` — append-only; idempotent on a client UUID |
+| `POST` | `/membership/events/:id/correct` | `membership:write:club` — appends an event superseding the original |
+| `GET` | `/membership/roster` | `membership:read:club` — `?clubId=&asOf=`; `asOf` reconstructs from the log |
+| `GET` | `/membership/stats` | `membership:read:club` — opening, joiners, leavers, net, retention, transitions |
+| `GET` | `/membership/transitions` | `membership:read:club` — `?corroborated=true|false` |
+| `POST` | `/membership/transitions/:id/corroborate` | `membership:write:club` — receiving-side confirmation |
 
-There is no `PUT` or `DELETE` on events. The absence is the design.
+**There is no `PUT` and no `DELETE`, and the absence is the design.** The database enforces
+it: `membership_events_no_mutate` raises SQLSTATE DIS01 → `MEMBERSHIP_IMMUTABLE`, so a route
+added later that tried to update one is refused rather than silently rewriting a club's
+history. `corroborated_at` is the single column the guard lets through, because corroborating
+a transition necessarily happens after the event was recorded.
 
----
+**Corrections come in two shapes.** To fix a FACT, append the corrected event with its real
+type — a mistyped join date is a second `JOIN` carrying the right one. To RETRACT a fact,
+append an event of type `CORRECTION`. Either way the original row stays.
+
+**A replayed create answers `200`, not `409`.** The client generated the id precisely so a
+retry would be safe; making it distinguish "created" from "already created" puts the burden
+back on exactly the connection that caused the retry. Two events with the same person, club,
+type and date and NO id are a double-tap: `DUPLICATE_MEMBERSHIP_EVENT`.
+
+**`?asOf=` reconstructs from the event log, not from `club_rosters`.** The view is today.
+"Who were we in March" is the question a disputed scorecard turns on.
 
 ## 6. Activities
 

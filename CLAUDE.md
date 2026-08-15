@@ -110,7 +110,10 @@ Modules talk through exported service functions. No module imports another's rep
 - Tests read responses **through the contract schemas** (`errorBody`, `meBody` in `src/test/helpers.ts`) rather than casting, so every assertion also proves the envelope shape.
 - Never leak stack traces, SQL or internal IDs to a client.
 - Soft delete via `deleted_at` on governed entities. Every query filters it.
-- Raw SQL lives **only** in `modules/assessment/resolvers/`. Everywhere else uses Prisma.
+- Raw SQL lives **only** in `modules/assessment/resolvers/` and
+  `modules/membership/analytics.ts`. Everywhere else uses Prisma. Raw SQL bypasses the scope
+  extension completely, so those files bind `districtId`, `rotaryYearId` and `clubId` from
+  the context by hand, in every query.
 - List endpoints paginate by default (25, max 100) and accept `?format=xlsx`.
 
 ---
@@ -203,7 +206,7 @@ permission, an error code or a table.
 ## Current phase
 
 **M0 — Foundations and M1 — Governance core are both complete** (August 2026).
-`docs/schema.sql` is at v1.8.
+`docs/schema.sql` is at v1.9.
 
 M0: monorepo and CI, schema translated and migrated, session authentication with lockout,
 mail delivery, TOTP with encrypted secrets and recovery codes, the request context and

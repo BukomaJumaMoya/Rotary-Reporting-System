@@ -627,6 +627,23 @@ export const NOTIFICATION_TEMPLATES: {
   body: string;
 }[] = [
   {
+    code: 'MEMBERSHIP_TRANSFER_RECORDED',
+    channel: 'EMAIL',
+    subject: 'A transfer naming your club has been recorded',
+    body: [
+      'Hello {{firstName}},',
+      '',
+      '{{fromClub}} has recorded the transfer of {{memberName}} to {{toClub}}, effective {{effectiveOn}}.',
+      '',
+      // A transfer is ONE club's account of a two-sided event. Without this message the
+      // receiving club finds out when the district's figures fail to add up in April,
+      // which is the conversation it exists to prevent.
+      'If that is not what happened, say so now rather than in April: the district relies on both sides agreeing.',
+      '',
+      'Rotaract District 9218',
+    ].join('\n'),
+  },
+  {
     code: 'ACTIVITY_VERIFIED',
     channel: 'EMAIL',
     subject: 'Your activity report has been verified',

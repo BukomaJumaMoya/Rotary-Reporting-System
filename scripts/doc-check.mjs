@@ -511,10 +511,20 @@ function checkAxioms() {
   }
 
   // Axiom 3 — membership is an append-only event log.
+  //
+  // `corroborated_at` is the ONE column the database guard lets through, because
+  // corroborating a transition to Rotary necessarily happens after the event was recorded.
+  // A mutation whose `data` names only that column is therefore legitimate; anything else
+  // is the axiom being broken. The database refuses the rest regardless — this check is
+  // here to catch it in review rather than at runtime.
+  const CORROBORATION_ONLY = /updateMany\(\{\s*where:[^}]*\},\s*data:\s*\{\s*corroboratedAt:/;
   for (const file of walk('apps/api/src/modules')) {
     if (!/\.ts$/.test(file) || file.includes('.test.')) continue;
     const src = read(file);
-    if (/\bmembershipEvent\.(update|delete|upsert|updateMany|deleteMany)\b/.test(src))
+    const mutations = src.match(
+      /\bmembershipEvent\.(update|delete|upsert|updateMany|deleteMany)\b/g,
+    );
+    if (mutations && !(mutations.length === 1 && CORROBORATION_ONLY.test(src)))
       problems.push(`AXIOM 3: ${file} mutates membershipEvent.`);
     if (/\bclubRoster\.(create|update|delete|upsert|createMany|updateMany|deleteMany)\b/.test(src))
       problems.push(`AXIOM 3: ${file} writes to clubRoster, which is a derived view.`);
@@ -524,6 +534,10 @@ function checkAxioms() {
   for (const file of walk('apps/api/src')) {
     if (!/\.ts$/.test(file) || file.includes('.test.')) continue;
     if (file.includes('/modules/assessment/resolvers/')) continue;
+    // Membership statistics and the as-at roster reconstruction: DISTINCT ON over the
+    // supersede chain, which Prisma cannot express. One file, exempted by name rather
+    // than by directory, with the scoping written out in it (M2 s6).
+    if (file.endsWith('/modules/membership/analytics.ts')) continue;
     if (file.includes('/platform/')) continue; // the layer that owns the client
     if (file.includes('/src/test/')) continue; // fixtures truncate tables; that is their job
     if (/\$queryRaw|\$executeRaw/.test(read(file)))

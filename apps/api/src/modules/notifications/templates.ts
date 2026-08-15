@@ -7,6 +7,8 @@ export const NotificationTemplate = {
   AUTH_PASSWORD_RESET: 'AUTH_PASSWORD_RESET',
   AUTH_INVITE: 'AUTH_INVITE',
   AUTH_MFA_RESET: 'AUTH_MFA_RESET',
+  /** Sent to the RECEIVING club when a transfer naming them is recorded (M2 s6). */
+  MEMBERSHIP_TRANSFER_RECORDED: 'MEMBERSHIP_TRANSFER_RECORDED',
 } as const;
 
 export type NotificationTemplateCode =

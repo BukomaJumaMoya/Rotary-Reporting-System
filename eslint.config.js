@@ -53,6 +53,11 @@ export default tseslint.config(
     ignores: [
       'apps/api/src/platform/**',
       'apps/api/src/modules/governance/**',
+      // The one raw-SQL file outside the assessment resolvers. A raw query cannot be
+      // scoped by the extension at all, so using `db(ctx)` there would suggest a
+      // protection that is not present; the file binds district, year and club as
+      // parameters by hand and says so at the top.
+      'apps/api/src/modules/membership/analytics.ts',
       'apps/api/src/test/**',
       'apps/api/src/**/*.test.ts',
     ],

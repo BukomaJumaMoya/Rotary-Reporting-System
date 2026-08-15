@@ -12,7 +12,7 @@ Every session prompt in the revised milestone documents assumes what is written 
 
 ## 1. What changed in M0
 
-**`docs/schema.sql` is v1.8, not v1.0.** Amendments are logged in that file's header.
+**`docs/schema.sql` is v1.9, not v1.0.** Amendments are logged in that file's header.
 The one that matters most: `club_rosters` filtered on `supersedes_event_id IS NULL`, which
 discarded every correction while still counting the row it corrected. Any code written
 against the v1.0 baseline needs re-reading.
@@ -260,4 +260,4 @@ Amend these as you reach them rather than working around them.
 | `05-API-Spec.md` §4 | The governance surface as built, with the M2 rows marked as not built |
 | `05-API-Spec.md` §10 | The M1 permissions, and the note that codes match exactly with no wildcard |
 | `07-Roadmap.md` M0, M1 | Both marked complete, with what actually landed |
-| `schema.sql` | v1.8 — `user_tokens.created_at`, the `session` table that was always missing, and (M2) `person_erasure_requests` |
+| `schema.sql` | v1.9 — `user_tokens.created_at`, the `session` table that was always missing, and in M2 `person_erasure_requests` plus the `club_rosters` correction fix |

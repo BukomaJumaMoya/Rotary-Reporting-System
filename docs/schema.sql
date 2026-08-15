@@ -1,6 +1,14 @@
 -- =====================================================================
 -- Rotaract District Information System (DIS)
--- Authoritative PostgreSQL 16 schema — design baseline v1.8
+-- Authoritative PostgreSQL 16 schema — design baseline v1.9
+--
+-- v1.9 (membership, M2 s6): club_rosters again. A CORRECTION is a RETRACTION, not a
+-- state, and ranking it as one meant that retracting a wrongly-recorded TERMINATE left
+-- the member off the roster — the club corrected the mistake and the member stayed
+-- deleted. It now excludes its target through the live predicate and is then itself
+-- excluded from the ranking, so state falls back to the previous live event. Both
+-- readings of "this never happened" behave the way the phrase means.
+-- Migration 20260816010000_club_rosters_corrections.
 --
 -- v1.8 (people, M2 s5): person_erasure_requests. A member's request to be erased is
 -- REVIEWED before anything happens — erasure is irreversible and the request arrives
@@ -524,6 +532,11 @@ WITH live AS (
   SELECT DISTINCT ON (person_id, club_id)
          person_id, club_id, district_id, event_type, member_category, effective_on
   FROM live
+  -- v1.9: a CORRECTION is a RETRACTION, not a state. It has already done its work
+  -- by superseding its target. Ranking it left a member whose wrongly-recorded
+  -- TERMINATE had been retracted still off the roster — the club corrected the
+  -- mistake and the member stayed deleted.
+  WHERE event_type <> 'CORRECTION'
   ORDER BY person_id, club_id, effective_on DESC, created_at DESC
 )
 SELECT person_id, club_id, district_id, member_category, effective_on AS since

@@ -6,7 +6,7 @@ was decided along the way, and what is deliberately unfinished.
 
 Last updated: 15 August 2026, after M1 session 7. **M0 and M1 are complete.**
 
-<!-- dis:state milestone=M2 schema=v1.8 tests=354 -->
+<!-- dis:state milestone=M2 schema=v1.9 tests=374 -->
 
 ---
 
@@ -99,8 +99,8 @@ full history is in §4.
 | 2 — Web deployment | **done** | `ff9d5a6` |
 | 3 — Clubs and affiliations | **done** | `4013cc7` |
 | 4 — Clubs UI | **done** | `00429ec` |
-| 5 — Persons and visibility | **done** | this commit |
-| 6 — Membership events and roster | pending | |
+| 5 — Persons and visibility | **done** | `8310ab0` |
+| 6 — Membership events and roster | **done** | this commit |
 | 7 — Membership UI | pending | |
 | 8 — Activity types and media | pending | |
 | 9 — Activities API and reporting UI | pending | |
@@ -202,7 +202,8 @@ apps/api/src/
                  committees.service                  delegated subtrees, depth 3
                  administration.service              invitations, MFA reset, audit read
     activity/    service — countForClub(), the one function org needs (M2 s9 fills the rest)
-    membership/  service — countRoster(), reading club_rosters (M2 s6 fills the rest)
+    membership/  routes · service — the event log, the roster, the statistics
+                 analytics.ts  THE one raw-SQL file outside the assessment resolvers
     notifications/ service · templates — queue row, delivery, and the due-row read
     people/      routes · service · repository
                  serialiser.ts  THE person serialiser — one gate, used everywhere
@@ -254,7 +255,7 @@ apps/web/src/
 Dockerfile · fly.toml · .github/workflows/deploy-staging.yml · README.md
 ```
 
-**354 tests**, all integration-style against real PostgreSQL. The suites that are load
+**374 tests**, all integration-style against real PostgreSQL. The suites that are load
 bearing rather than incidental: `no-pii.test.ts` (walks every route unauthenticated),
 `invariants.test.ts` (37 ADR-012 guards), `scope*.test.ts` (the data access layer),
 `audit.test.ts`, `rollover.test.ts` (dry run and committed), and `prisma/seed.test.ts`,
@@ -274,7 +275,7 @@ only as guards, each with a stable SQLSTATE and a conformance test. This removed
 
 **ADR-013 — secret encryption and key management** (`02-Architecture.md`).
 
-**`docs/schema.sql` is now v1.8** — v1.7 through M1, v1.8 in M2 session 5. The translation surfaced real defects in the v1.0
+**`docs/schema.sql` is now v1.9** — v1.7 through M1, then M2 sessions 5 and 6. The translation surfaced real defects in the v1.0
 baseline; every amendment is logged in the file's own header. The substantive one:
 `club_rosters` filtered on `supersedes_event_id IS NULL`, which discarded every correction
 while continuing to count the row it corrected.
@@ -661,8 +662,8 @@ a recursive query with no natural bound, and no district committee structure nee
 the club or cluster named. Admin MFA reset is behind `user:mfa:reset:district` and writes a
 notification to the account holder — a reset nobody is told about is the attack.
 
-**`user_tokens.created_at` was added** — migration `20260815010000`, and the amendment that
-took the authoritative schema to v1.7 at the time — so the
+**`user_tokens.created_at` was added** — migration `20260815010000`, an amendment to the
+authoritative schema at the time — so the
 outstanding-invitations screen can say how long somebody has sat on an invitation without
 inferring it from a TTL that may have changed since.
 
@@ -917,12 +918,52 @@ is deleted and the pickers read the new endpoint, getting names because contact 
 absent unless the caller may see them.
 
 **Erasure is a REVIEW plus a job.** Irreversible, and the request arrives from a session —
-which is the thing an attacker takes. `person_erasure_requests` (schema.sql v1.8) holds the
+which is the thing an attacker takes. `person_erasure_requests` — the v1.8 amendment — holds the
 review; approving enqueues `person-erasure`, which runs under a system context so the audit
 log says an approved request caused it rather than attributing a whole record being blanked
 to whoever pressed the button. It ANONYMISES: the person row survives under the same id, so
 `membership_events` still points at something real and a club's retention rate for a past
 year does not change retroactively.
+
+#### Session 6 — the membership event log
+
+**A SECOND DEFECT IN `club_rosters`, found by the hand-computed statistics fixture.** v1.0 had
+the supersede predicate inverted; this is the other half of the same idea. `ranked` took the
+latest LIVE event per (person, club) and kept the person if its type was a joining one — and a
+`CORRECTION` is a live event that is not a joining type. So retracting anything left the
+person OFF the roster: correct when what was retracted was a `JOIN` ("this member never
+joined"), and exactly wrong when it was a `TERMINATE` recorded against the wrong person. The
+club would correct the mistake and the member would stay deleted.
+
+A CORRECTION is a RETRACTION, not a state. It still excludes its target through the `live`
+predicate and is then itself excluded from the ranking, so state falls back to the previous
+live event. Retract a JOIN and no joining event is left; retract a TERMINATE and the JOIN
+underneath is the latest live event again. schema.sql v1.9, migration
+`20260816010000_club_rosters_corrections`, and `analytics.ts` carries the same predicate
+because two definitions of "who is a member" is one definition that will disagree with the
+roster.
+
+**A retraction no longer inherits its target's reason code** either — `RELOCATION` on a
+retracted termination was reappearing in the statistics breakdown as though somebody had
+left for it.
+
+**Raw SQL is now permitted in ONE file outside the assessment resolvers**:
+`modules/membership/analytics.ts`, exempted by name in `eslint.config.js`, `doc-check.mjs`
+and CLAUDE.md. The as-at reconstruction needs `DISTINCT ON` over the supersede chain, which
+Prisma cannot express, and the statistics are four aggregates over one filtered set — four
+separately-filtered Prisma queries are four chances for the filters to disagree, in
+arithmetic that decides awards. **Raw SQL bypasses the scope extension completely**, so every
+query there binds `districtId`, `rotaryYearId` and `clubId` from the context by hand, and
+there is a test asserting another district's events do not reach the totals.
+
+**A replayed create answers 200, not 409.** The client generated the id precisely so a retry
+would be safe; making it distinguish "created" from "already created" puts the burden back on
+exactly the connection that caused the retry. `DUPLICATE_MEMBERSHIP_EVENT` is for the same
+event posted twice with NO id.
+
+**The doc-check axiom-3 grep learned about `corroborated_at`.** It is the one column the
+immutability guard lets through, so a `updateMany` naming only that column is legitimate and
+anything else is not — the check now distinguishes them rather than being switched off.
 
 **THE pg-BOSS MIGRATION WAS NOT REPLAYABLE, and this bit immediately.** Prisma resets its
 shadow database by dropping the PUBLIC schema; it has no `multiSchema` setting, so it does
