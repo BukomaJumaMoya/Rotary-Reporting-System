@@ -4,7 +4,7 @@
 describe what the system *should* be; this one records what has actually been built, what
 was decided along the way, and what is deliberately unfinished.
 
-Last updated: 15 August 2026, after M1 session 7. **M0 and M1 are complete.**
+Last updated: 15 August 2026, after M2 session 10. **M0, M1 and M2 are complete.**
 
 <!-- dis:state milestone=M2 schema=v1.9 tests=414 -->
 
@@ -17,9 +17,13 @@ can reach for; these two are what you need before writing anything. `npm run doc
 verifies most of what follows against the code, so if it is green the claims here are not
 merely assertions.
 
-**Where the build is.** M0 (foundations) and M1 (governance core) are complete. **M2 (the
-reporting spine) is IN PROGRESS** — its session prompts are in
-`docs/13-ClaudeCode-M2-Sessions.md` and §1 records which of its ten sessions have landed.
+**Where the build is.** M0 (foundations), M1 (governance core) and M2 (the reporting
+spine) are complete. **M3 — offline and mobile — is next**, and its session prompts are in
+`docs/14-ClaudeCode-M3-M4-Sessions.md`.
+
+A real club could use the system now: clubs, members, the membership event log and its
+derived roster, configurable activity types, activity reporting with photographs, and
+verification. What it cannot yet do is work without a signal, which is what M3 is for.
 
 **Read in this order.** `CLAUDE.md` for the axioms and the non-negotiable rules → this
 section → §0a for what the last milestone changed about how you must write code → the
@@ -39,9 +43,14 @@ surprising; it is written to answer "why is it like this".
 4. Every new database guard needs a check in `apps/api/prisma/checks/invariants.sql`, and
    the suite asserts an exact count — adding a guard without a check fails the build.
 
-**Open items that shape the next milestone** are in §5. Two are not code: the repository is
-still on a personal account (ADR-011, M0's last unmet exit condition), and the web bundle
-has nowhere to publish to.
+**Open items that shape the next milestone** are in §5. One is not code: the repository and
+the hosting accounts are still on a personal account (ADR-011, M0's last unmet exit
+condition). It needs a district decision and two named administrators, not a commit.
+
+**The M2 exit test has not been run.** A real club secretary filing a fellowship report with
+a photograph, on an Android phone, unassisted, in under three minutes — and watched. Every
+part of that path is built and tested; whether it takes three minutes for somebody who has
+never seen it is not something the test suite can answer.
 
 ---
 
@@ -51,24 +60,39 @@ has nowhere to publish to.
 one.** Its purpose is that a fresh session does not rediscover a rule by breaking it. The
 full history is in §4.
 
-**After M1, when writing code:**
+**After M2, when writing code:**
 
-- **Two scopes in one transaction need `scopedTransaction()`.** A Prisma transaction client
-  cannot be `$extends`-ed, so `db(a)` and `db(b)` can never share one. It does not audit —
-  write the audit row yourself, as rollover does.
-- **Work with no request uses `systemContext({ districtId, rotaryYearId, reason })`**, never
-  `unscopedPrisma`. The reason is mandatory and reaches `audit_log`.
-- **Any date that decides authority goes through `platform/time.ts`.** Comparing a term
-  against UTC is wrong by a three-hour window in Kampala, and rollover lands on exactly that
-  boundary.
-- **`isCurrent` and `isActive` are different questions.** Active means not revoked; current
-  means the term covers today where the district is.
-- **Committee scope expands downwards**, so a chair covers their own subtree. Nothing
-  expands upwards.
-- **Permission codes match exactly.** There is no wildcard, and adding one would turn a typo
-  in a seeded row into a silent grant.
+- **Every response containing a person goes through `serialisePerson`** —
+  `modules/people/serialiser.ts` — INCLUDING the nested ones inside activities, rosters,
+  attendees and appointments. Contact data leaks through relations, not through the endpoint
+  anybody reviews. Withheld fields are ABSENT, not null. Tell it `rosterClubIds` when you
+  know them; omitting them falls back to the visibility flags, which is the safe direction.
+- **Every background job payload carries `districtId` and `rotaryYearId`** and is validated
+  on RECEIPT. `runJob` hands the handler a `systemContext`, never the ids — the same
+  discipline as `withBody` on the HTTP side.
+- **Raw SQL now has TWO homes**: `modules/assessment/resolvers/` and
+  `modules/membership/analytics.ts`. It bypasses the scope extension completely, so those
+  files bind district, year and club from the context BY HAND in every query. ESLint and
+  `doc-check.mjs` both name the exemption; adding a third home means editing both.
+- **A module that needs another module's numbers calls an exported service function.** The
+  club summary reads a roster count and an activity count through `membership` and
+  `activity`, never by querying `club_rosters` or `activities`. `assessment.markStale()`
+  exists as a no-op for the same reason: M5 fills in a body rather than hunting for call
+  sites.
+- **Prisma 7 does not populate `meta.target` on P2002.** Match on `meta.modelName`. Code
+  matching `target` — which is what every example does — silently never fires, and the
+  caller gets a 500 where a domain error was intended.
+- **A CORRECTION is a retraction, not a state.** It supersedes its target and is then
+  excluded from the ranking, so `club_rosters` and the as-at reconstruction both carry
+  `WHERE event_type <> 'CORRECTION'`. Two definitions of "who is a member" is one that will
+  disagree with the roster.
+- **Uploads are typed by MAGIC BYTES**, capped while reading, stored under a GENERATED key,
+  and stripped of every piece of metadata by the worker. Never trust a filename, never trust
+  a `Content-Type`, never keep the original after the variants exist.
+- **`clubs.meeting_day` is 0 = Sunday**, matching Postgres `EXTRACT(DOW)`. The column has
+  been `CHECK (0..6)` since M0 and the contract assumed ISO 1..7 until M2 s10 found it.
 
-**No axiom changed in M1.** The conformance review is in §4a.
+**No axiom changed in M2.** The conformance review is in §4a.
 
 ---
 
@@ -1164,6 +1188,31 @@ naive timestamps. The rest is judgement and belongs here.
 **A row may legitimately say an axiom was bent.** Recording that is the point; an axiom
 nobody may ever qualify becomes an axiom people route around silently.
 
+### As at M2 close
+
+| # | Axiom | Holds? | What M2 did to it |
+|---|---|---|---|
+| 1 | The Rotary Year is a dimension, not a filter | **holds** | Six new modules, and not one of them names `rotaryYearId` in a Prisma query — the layer stamps and filters it. The one place it IS named by hand is `modules/membership/analytics.ts`, where raw SQL bypasses the extension; every query there binds it explicitly and there is a test proving another district's events stay out of the totals. |
+| 2 | District affiliation is temporal | **holds** | The first surface actually built on it. `clubs` still has no `district_id`, and "the clubs of this district this year" is a join written once in `clubs.repository.ts`. `CLUB_AFFILIATED_ELSEWHERE` refuses a second affiliation without reading the other district's row to say so. |
+| 3 | Membership is an event log | **holds, and the view was fixed again** | No `PUT`, no `DELETE`, and the database guard proves it for paths nobody has written. `club_rosters` had a SECOND defect — a CORRECTION ranked as a state, so retracting a wrongly-recorded TERMINATE left the member deleted. Found by a hand-computed fixture; schema.sql v1.9. |
+| 4 | One activity model | **holds** | One table, one service, and no per-type branch anywhere — not in the validator, not in the reporting form. Requirements are read from the type's row, so adding a type is an insert. `field_config` is the contract between configuration and UI. |
+| 5 | The assessment rubric is data | **not yet exercised** | No assessment code exists beyond `markStale()`, which is a deliberate no-op. M5. The *activity type* analogue was honoured: requirements are rows a district officer edits, never constants. |
+| 6 | Personal data is private by default | **holds, and now has one gate** | `serialisePerson` is the single place the decision is made, used by every module that returns a person. Contact fields are ABSENT rather than null. `person:read:contact` is bounded by scope, visibility flags still default closed, erasure anonymises rather than deletes, and EXIF — including GPS — is stripped from every photograph, proven against a genuinely GPS-tagged fixture. |
+
+**Bent, deliberately, and why.** One thing, and it is the raw-SQL convention. CLAUDE.md said
+raw SQL lives only in `modules/assessment/resolvers/`; `modules/membership/analytics.ts` is
+now a second home, because the as-at reconstruction needs `DISTINCT ON` over the supersede
+chain and the statistics are four aggregates that have to reconcile. The exemption is named
+in three places — ESLint, `doc-check.mjs` and CLAUDE.md — so a third home cannot be added
+quietly, and the file's own header states that the scope layer is not protecting it.
+
+Two things worth re-checking at M3 close. `?year=` is still a read door and every new write
+path this milestone went through `db(ctx)`, so the lock held; the offline sync in M3 is the
+first thing that will want to write with a client-supplied timestamp, and that is exactly the
+shape a backdating permission takes. And `serialisePerson`'s `rosterClubIds` default is safe
+only while callers that CAN supply it do — a nested person serialised without it falls back
+to the flags, which is correct but quieter than a refusal.
+
 ### As at M1 close
 
 | # | Axiom | Holds? | What M1 did to it |
@@ -1193,6 +1242,11 @@ re-checked whenever a new write path is added.
 | ~~The worker process group in `fly.toml` is commented out~~ | **uncommented in M2 session 1**; two process groups from one image | — |
 | A dead-lettered job is recorded but not retryable from the UI | `JOB_FAILED` in `audit_log` carries the queue, the error and the payload, which is enough to re-run it by hand; a button needs a screen that does not exist | M7, with the admin surface |
 | `recordAction(EXPORT, …)` exists and is unused | there is no export module yet | M7 |
+| The M2 exit test has not been run | a real club secretary filing a report on a phone in under three minutes, WATCHED. Every part of the path is built and tested; whether it takes three minutes for somebody who has never seen it is not a thing the suite can answer | before M3 |
+| A verification comment is logged, not stored | there is no `activity_comments` table, and adding one for a single string belongs with M5's dispute surface, where comments already have a home | M5 |
+| A dead-lettered job cannot be re-run from the UI | `JOB_FAILED` in `audit_log` carries the queue, the error and the payload, which is enough to re-run by hand | M7 |
+| No list endpoint accepts `?format=xlsx` yet | the export module queues a job and returns a signed URL; every list is written to take the parameter | M7 |
+| Media is never re-processed if the worker was down at upload | the row keeps its original key and reports `isProcessed: false`, so the state is visible rather than silent; a sweep would be a second scheduler for one case | M3, with the offline queue |
 | A malformed or unauthorised `?year=` fails EVERY authenticated route, including `/auth/logout` | context resolution is global and eager; sending `?year=` to logout is a client bug | not planned |
 | A nested create of a parent alongside its child is not scope-checked | there is no parent id to check; the parent's own write is stamped, so the child lands under a stamped row | not planned |
 | Permission codes match exactly — no `club:read:*` wildcard | a matcher would turn a typo in a seeded row into a silent grant | not planned |

@@ -205,35 +205,43 @@ permission, an error code or a table.
 
 ## Current phase
 
-**M0 — Foundations and M1 — Governance core are both complete** (August 2026).
-`docs/schema.sql` is at v1.9.
+**M0 — Foundations, M1 — Governance core and M2 — the reporting spine are all complete**
+(August 2026). `docs/schema.sql` is at v1.9; 414 tests.
 
 M0: monorepo and CI, schema translated and migrated, session authentication with lockout,
 mail delivery, TOTP with encrypted secrets and recovery codes, the request context and
 scoped data access layer, the audit log, the unauthenticated-PII harness, a one-command
-synthetic seed, and a staging deployment that is configured but not yet launched.
+synthetic seed, and a staging deployment.
 
 M1: positions and their permission matrix, appointments with district-local terms,
 committees with delegated sub-committees, invitations, admin MFA reset, the audit read, the
 year rollover with a real dry run, and the web application with its governance screens.
 
-**Two items remain outside the code. The first is organisational rather than technical:** the repository and
-the hosting accounts are on a personal account. ADR-011 and `docs/08-Incumbent-Assessment.md`
-both name that as the specific failure this project exists to correct. Create the
-district-owned GitHub and Fly organisations with two administrators, move the repository,
-then `fly launch` and add `FLY_API_TOKEN`.
+M2: the pg-boss worker and its typed job registry; the SPA served from the API container;
+clubs, affiliations and clusters; persons with ONE visibility serialiser, subject access and
+reviewed erasure; the membership event log with its derived roster and statistics;
+configurable activity types with a `field_config` builder; the media pipeline with magic-byte
+sniffing and EXIF stripping; activities with reporting and verification; and a seed at the
+real shape — 68 clubs, 3,000 members, a year of activity.
 
-**The second is now due:** the web bundle is uploaded as a CI artifact rather than
-published, because the district's static host does not exist yet. Choose it deliberately —
-choosing it inside a workflow file is how it gets chosen by accident. Needed before M2
-session 2.
+**Two items remain outside the code.**
 
-**Next: M2 — the reporting spine.** Clubs with RI IDs and affiliations, persons with
-visibility defaults, the membership event log and its derived roster, and activities with
-media. The first features built on the governance core, and the first to touch personal data
-at scale — read the personal-data rules above before starting. `sharp` lands here, and with
-it the npm optional-binary trap described below.
+The first is organisational: the repository and the hosting accounts are on a personal
+account. ADR-011 and `docs/08-Incumbent-Assessment.md` both name that as the specific failure
+this project exists to correct. Create the district-owned GitHub and Fly organisations with
+two administrators, move the repository, then `fly launch` and add `FLY_API_TOKEN`.
 
-See `docs/09-ClaudeCode-M0-Sessions.md` and `docs/12-ClaudeCode-M1-Sessions.md` for the
-session prompts already used, `docs/10-Build-Log.md` for current state, and
-`docs/07-Roadmap.md` for milestones beyond M1.
+The second is the **M2 exit test, which has not been run**: a real club secretary filing a
+fellowship report with a photograph, on an Android phone, unassisted, in under three minutes
+— and watched. Not a developer friend; they navigate around problems a real user walks
+straight into. Every part of that path is built and tested. Whether it takes three minutes
+for somebody who has never seen it is not a question the suite can answer.
+
+**Next: M3 — offline and mobile.** The first milestone where a write can arrive from a
+device that has been out of signal for a day. Client-generated ids and idempotent creates are
+already in place across clubs, membership events and activities for exactly this reason —
+`docs/14-ClaudeCode-M3-M4-Sessions.md`.
+
+See `docs/09-ClaudeCode-M0-Sessions.md`, `docs/12-ClaudeCode-M1-Sessions.md` and
+`docs/13-ClaudeCode-M2-Sessions.md` for the session prompts already used,
+`docs/10-Build-Log.md` for current state, and `docs/07-Roadmap.md` for milestones beyond M2.

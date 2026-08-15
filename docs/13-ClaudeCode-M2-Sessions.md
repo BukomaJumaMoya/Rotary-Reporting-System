@@ -2,6 +2,27 @@
 
 **Supersedes the earlier M2 document.** Assumes `Build-Conventions-v1.6.md`.
 
+**STATUS: complete.** All ten sessions built, tested and committed — `b11a348`, `ff9d5a6`,
+`4013cc7`, `00429ec`, `8310ab0`, `29727b8`, `1fd0bad`, `db0107a`, `23f6134` and `358f893`.
+414 tests; `docs:check --strict --with-db` clean.
+
+**Five assumptions in the prompts turned out not to hold against the build**, and are
+corrected in the code with the reasoning attached:
+
+1. **Session 1** — pg-boss's tables must NOT go in `UNSCOPED_BY_DESIGN`. They live in their
+   own Postgres schema, are absent from `schema.prisma`, and `scope-registry.test.ts` fails
+   on a registry entry naming a model that is not there.
+2. **Session 5** — there was no serialiser to reuse. The M1 audit endpoint redacts contact
+   fields unconditionally, which is right for a log and cannot become a visibility-aware
+   serialiser without giving one policy two homes. It was built here instead.
+3. **Session 6** — the statistics needed raw SQL outside the assessment resolvers, which
+   CLAUDE.md forbade. The exemption is now named in ESLint, `doc-check.mjs` and CLAUDE.md.
+4. **Session 6** — `club_rosters` had a second defect of the same family as v1.0's: a
+   CORRECTION ranked as a state, so retracting a wrongly-recorded TERMINATE left the member
+   off the roster. schema.sql v1.9.
+5. **Session 10** — `clubs.meeting_day` is `CHECK (0..6)` and the session-3 contract said
+   1..7, so a club meeting on Sunday was a 500 waiting to happen.
+
 **The longest milestone — roughly a third of total build effort.** Ten sessions. Not
 conceptually hard; a lot of surface area.
 
@@ -397,16 +418,18 @@ Consolidation. No new features.
 
 ## M2 exit checklist
 
-- [ ] A club secretary files a fellowship report with a photo, on a phone, in under 3 minutes
-- [ ] Worker process running; jobs use `systemContext`, never `unscopedPrisma`
-- [ ] SPA served from the API container; deep-link refresh works; `/api` 404s stay JSON
-- [ ] Activity types configurable with no deployment
-- [ ] `sharp` platform binaries pinned; `npm run dev` still works
-- [ ] EXIF stripped from all processed images
-- [ ] Corrections reflected correctly in the roster
-- [ ] Membership statistics reconcile against hand-computed fixtures
-- [ ] Contact details respect visibility, including nested
-- [ ] Seed at real scale: 68 clubs, 3000 persons, a year of data
-- [ ] Bundle under 250KB gzipped
+- [ ] **A club secretary files a fellowship report with a photo, on a phone, in under 3
+      minutes** — the one item NOT done. Every part of the path is built and tested; get an
+      actual secretary to do it and watch them, before M3.
+- [x] Worker process running; jobs use `systemContext`, never `unscopedPrisma`
+- [x] SPA served from the API container; deep-link refresh works; `/api` 404s stay JSON
+- [x] Activity types configurable with no deployment
+- [x] `sharp` platform binaries pinned; `npm run dev` still works
+- [x] EXIF stripped from all processed images — proven against a GPS-tagged fixture
+- [x] Corrections reflected correctly in the roster — and a second defect found and fixed
+- [x] Membership statistics reconcile against hand-computed fixtures
+- [x] Contact details respect visibility, including nested
+- [x] Seed at real scale: 68 clubs, 3000 persons, a year of data
+- [x] Bundle under 250KB gzipped — 96 KB
 
 **Next:** M3 offline and mobile.
