@@ -282,24 +282,8 @@ export type AddCommitteeMemberRequest = z.infer<typeof addCommitteeMemberRequest
 
 // ---------------------------------------------------------------------------
 // Person lookup
-//
-// NAMES ONLY. Enough to choose somebody in an appointment or committee picker, and
-// nothing more — no email, no phone, no photo. The cheapest way to keep contact fields
-// out of a response is not to select them, and a picker has never needed them.
 // ---------------------------------------------------------------------------
 
-export const personSummarySchema = z.object({
-  id: z.uuid(),
-  firstName: z.string(),
-  lastName: z.string(),
-  /** Their current club, so two people with the same name can be told apart. */
-  clubName: z.string().nullable(),
-});
-export type PersonSummary = z.infer<typeof personSummarySchema>;
-
-export const personSummaryListResponseSchema = listResponseSchema(personSummarySchema);
-
-export const personSearchQuerySchema = paginationQuerySchema.extend({
-  q: z.string().trim().min(1).max(80).optional(),
-});
-export type PersonSearchQuery = z.infer<typeof personSearchQuerySchema>;
+// Moved to `people.ts` in M2 session 5: `personSchema` replaces it, and every response
+// carrying a person now goes through one serialiser rather than through a second shape
+// that happened to select fewer columns.

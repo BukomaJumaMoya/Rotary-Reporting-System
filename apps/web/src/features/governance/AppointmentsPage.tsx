@@ -260,7 +260,7 @@ function CreateAppointmentDialog({ onClose }: { onClose: () => void }) {
                     <span>
                       {person.firstName} {person.lastName}
                     </span>
-                    <span className="text-ink-500 text-xs">{person.clubName}</span>
+                    <span className="text-ink-500 text-xs">{person.clubs?.[0]?.name}</span>
                   </button>
                 </li>
               ))}

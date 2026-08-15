@@ -8,7 +8,7 @@ import type {
   InvitationResult,
   PaginationMeta,
   Permission,
-  PersonSummary,
+  Person,
   Position,
   RolloverReport,
 } from '@dis/contracts';
@@ -30,7 +30,7 @@ export type {
   Invitation,
   InvitationResult,
   Permission,
-  PersonSummary,
+  Person,
   Position,
   RolloverReport,
 };
@@ -46,7 +46,7 @@ export type AppointmentListResponse = ListOf<Appointment>;
 export type CommitteeMemberListResponse = ListOf<CommitteeMember>;
 export type InvitationListResponse = ListOf<Invitation>;
 export type AuditListResponse = ListOf<AuditEntry>;
-export type PersonListResponse = ListOf<PersonSummary>;
+export type PersonListResponse = ListOf<Person>;
 
 export interface CommitteeTreeResponse {
   data: CommitteeNode[];

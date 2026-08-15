@@ -168,18 +168,38 @@ the matrix. Writes need `cluster:manage:district`.
 
 ## 4. People and governance
 
-**The design target.** The table immediately below is what this surface should become; the
-one after it is what exists today. Where they differ, the second is the truth.
+**Built in M2 session 5** — the people surface, with one serialiser behind all of it:
 
 | Method | Path | Permission |
 |---|---|---|
-| `GET` | `/persons` | `person:read:club` or wider — **returns contact fields only where visibility allows** |
-| `GET` | `/persons/:id` | scope-checked |
+| `GET` | `/persons` | `person:read:club` — scoped through `club_rosters`; `?q=`, `?clubId=` |
+| `GET` | `/persons/:id` | `person:read:club` — 404 outside the caller's scope |
 | `POST` | `/persons` | `person:create:club` |
-| `PATCH` | `/persons/:id` | own record, or `person:update:club` |
-| `PATCH` | `/persons/:id/visibility` | own record only |
-| `GET` | `/persons/:id/export` | own record only — subject access request |
-| `POST` | `/persons/:id/erasure` | own record; queues review |
+| `PATCH` | `/persons/:id` | own record, or `person:update:club` within scope |
+| `GET` `PATCH` | `/persons/:id/visibility` | **OWN RECORD ONLY.** No permission overrides it. |
+| `GET` | `/persons/me/visibility` | the caller's own, without knowing their person id |
+| `GET` | `/persons/:id/export` | own record only — subject access. No administrative version. |
+| `POST` | `/persons/:id/erasure` | own record; queues for review |
+| `GET` | `/erasure-requests` | `person:erase:district` |
+| `POST` | `/erasure-requests/:id/review` | `person:erase:district` — approving QUEUES the job |
+
+**Contact fields are ABSENT, not null**, when the caller may not see them. A field that is
+always present and sometimes empty is one a client renders as a blank line and a developer
+later assumes is nullable in the database; absence says "not for you" and cannot be mistaken
+for "not set". `isRedacted` tells the client something was withheld, so it can say so.
+
+Three ways to see contact details and only three: you are the person; you hold
+`person:read:contact` and are district-wide; or you hold it and one of that person's clubs
+is in your scope. That last is what makes the permission safe to give a club secretary.
+
+**One serialiser, used by every endpoint that returns a person — including the nested ones**
+inside activities, rosters, attendees and appointments. Contact data leaks through relations,
+not through the endpoint anybody reviews. The audit endpoint deliberately does NOT use it: it
+redacts contact values unconditionally, because the log answers "who changed what and when"
+and the old phone number is not part of that answer.
+
+**Erasure ANONYMISES rather than deletes.** `membership_events` is append-only and a club's
+retention rate for a past year must not change retroactively because a member left.
 
 **Built in M1** — the governance surface, as it exists:
 
@@ -201,13 +221,11 @@ one after it is what exists today. Where they differ, the second is the truth.
 | `GET` | `/audit` | `audit:read:district` — contact values redacted from every diff |
 | `POST` | `/admin/rollover` | `year:rollover:district` — `dryRun` is REQUIRED |
 
-**`GET /persons` returns names only.** No email, no phone, no photo — a picker needs to tell
-two people with the same name apart and has never needed anything else. The full person
-surface with visibility handling arrives in M2, and the rows above marked *(M2)* below are
-not built yet.
-
-*(M2)* `GET /persons/:id` · `POST /persons` · `PATCH /persons/:id` ·
-`PATCH /persons/:id/visibility` · `GET /persons/:id/export` · `POST /persons/:id/erasure`.
+`GET /persons` used to live in the governance router, returning names only. It moved to
+`modules/people` in M2 session 5 — two routers cannot both answer `/persons`, Express matches
+in mount order, and the one that never ran would have been the one with the visibility rules
+in it. The pickers now read the same endpoint as everything else and simply get names,
+because contact fields are absent unless the caller may see them.
 
 **There is no unauthenticated person endpoint.** Not a reduced one, not a name-only one. If a public directory is ever wanted, it becomes a separate, explicitly-designed, opt-in surface with its own review — not a permission relaxation on this route.
 

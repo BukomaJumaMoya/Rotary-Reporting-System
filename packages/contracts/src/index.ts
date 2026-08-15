@@ -5,3 +5,4 @@ export * from './context.js';
 export * from './governance.js';
 export * from './health.js';
 export * from './org.js';
+export * from './people.js';

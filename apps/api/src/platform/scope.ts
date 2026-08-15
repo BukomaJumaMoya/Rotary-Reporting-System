@@ -91,6 +91,12 @@ export const CONTEXT_BOUND_MODELS = {
   Committee: { district: 'required', year: true },
   CommitteeMember: { via: { relation: 'committee', model: 'Committee', fk: 'committeeId' } },
 
+  // --- People ---------------------------------------------------------------
+  // NOT year-scoped: a request made in June is still the same request in July, and the
+  // district reviews it whenever it gets to it. The district IS scoped, because the
+  // district that reviews an erasure is the one the member belonged to when they asked.
+  PersonErasureRequest: { district: 'required' },
+
   // --- Membership -----------------------------------------------------------
   MembershipEvent: { district: 'required', year: true },
   // A view, and scoped exactly like a table: derived state is still data (ADR-012).

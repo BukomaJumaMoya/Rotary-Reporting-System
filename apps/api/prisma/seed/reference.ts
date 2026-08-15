@@ -28,6 +28,17 @@ export const PERMISSIONS: { code: string; description: string }[] = [
   { code: 'person:create:club', description: 'Register a new member' },
   { code: 'person:update:club', description: 'Edit a member record in your scope' },
   {
+    code: 'person:read:contact',
+    // The door past `person_visibility`. Safe to give a club secretary precisely because it
+    // is bounded by SCOPE: it reaches the contact details of people on their own club's
+    // roster and nobody else's. A district-wide holder reaches the district.
+    description: 'View contact details of members in your scope, whatever their visibility',
+  },
+  {
+    code: 'person:erase:district',
+    description: "Review a member's request to have their record erased",
+  },
+  {
     code: 'person:invite:district',
     description: 'Invite anyone in the district to create an account',
   },
@@ -113,6 +124,7 @@ export const POSITIONS: PositionSeed[] = [
       'club:affiliate:district',
       'cluster:manage:district',
       'person:read:club',
+      'person:read:contact',
       'appointment:read:district',
       'appointment:manage:district',
       'committee:manage:district',
@@ -138,6 +150,8 @@ export const POSITIONS: PositionSeed[] = [
       'club:read:district',
       'club:update:district',
       'person:read:club',
+      'person:read:contact',
+      'person:erase:district',
       'position:manage:district',
       'appointment:read:district',
       'appointment:manage:district',
@@ -249,6 +263,7 @@ export const POSITIONS: PositionSeed[] = [
       'club:read:district',
       'club:update:own',
       'person:read:club',
+      'person:read:contact',
       'person:create:club',
       'person:update:club',
       'membership:read:club',
@@ -270,6 +285,7 @@ export const POSITIONS: PositionSeed[] = [
       'club:read:district',
       'club:update:own',
       'person:read:club',
+      'person:read:contact',
       'person:create:club',
       'person:update:club',
       'person:invite:club',

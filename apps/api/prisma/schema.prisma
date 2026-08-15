@@ -106,6 +106,7 @@ model District {
   mediaAppearances      MediaAppearance[]
   notifications         Notification[]
   exportJobs            ExportJob[]
+  erasureRequests       PersonErasureRequest[]
 
   @@map("districts")
 }
@@ -317,6 +318,7 @@ model Person {
   trfContributions    TrfContribution[]
   assessorAssignments AssessorAssignment[]
   notifications       Notification[]
+  erasureRequests     PersonErasureRequest[]
 
   @@map("persons")
 }
@@ -338,6 +340,49 @@ model PersonVisibility {
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("person_visibility")
+}
+
+enum ErasureStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+
+  @@map("erasure_status")
+}
+
+/// A member asking to be erased, and the review that has to happen first.
+///
+/// Erasure ANONYMISES, it does not delete: `membership_events` is an
+/// append-only log and a club's roster history has to survive one member
+/// leaving it. The job replaces the names with 'Former member', nulls every
+/// contact field, and keeps the person_id — so every event, appointment and
+/// attendance still refers to a real row.
+///
+/// It is reviewed rather than immediate because a request is irreversible and
+/// arrives from a session, and a session is the thing an attacker takes. The
+/// district reviews, then a job does the work under a system context.
+model PersonErasureRequest {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// The district that reviews it — the requester's at the time of asking.
+  districtId        String        @map("district_id") @db.Uuid
+  personId          String        @map("person_id") @db.Uuid
+  requestedByUserId String?       @map("requested_by_user_id") @db.Uuid
+  status            ErasureStatus @default(PENDING)
+  reason            String?
+  reviewedByUserId  String?       @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt        DateTime?     @map("reviewed_at") @db.Timestamptz(6)
+  reviewNote        String?       @map("review_note")
+  completedAt       DateTime?     @map("completed_at") @db.Timestamptz(6)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  district    District @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  person      Person   @relation(fields: [personId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  requestedBy User?    @relation("ErasureRequestedBy", fields: [requestedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reviewedBy  User?    @relation("ErasureReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([districtId, status], map: "erasure_district_status")
+  @@map("person_erasure_requests")
 }
 
 /// Versioned: when the privacy policy changes, existing consent does not
@@ -398,6 +443,8 @@ model User {
   uploadedDocuments          Document[]             @relation("DocumentUploadedBy")
   exportJobs                 ExportJob[]
   auditEntries               AuditLogEntry[]
+  requestedErasures          PersonErasureRequest[] @relation("ErasureRequestedBy")
+  reviewedErasures           PersonErasureRequest[] @relation("ErasureReviewedBy")
 
   @@map("users")
 }

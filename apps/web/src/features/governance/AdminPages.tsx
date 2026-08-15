@@ -95,7 +95,7 @@ export function InvitationsPage() {
                 <Checkbox
                   key={person.id}
                   label={`${person.firstName} ${person.lastName}`}
-                  description={person.clubName ?? undefined}
+                  description={person.clubs?.[0]?.name}
                   checked={selected.has(person.id)}
                   onChange={(isOn) => toggle(person.id, isOn)}
                 />

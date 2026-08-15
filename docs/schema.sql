@@ -1,6 +1,18 @@
 -- =====================================================================
 -- Rotaract District Information System (DIS)
--- Authoritative PostgreSQL 16 schema — design baseline v1.7
+-- Authoritative PostgreSQL 16 schema — design baseline v1.8
+--
+-- v1.8 (people, M2 s5): person_erasure_requests. A member's request to be erased is
+-- REVIEWED before anything happens — erasure is irreversible and the request arrives
+-- from a session, which is the thing an attacker takes — and the work then runs as a
+-- job under a system context. Erasure ANONYMISES rather than deletes: membership_events
+-- is append-only and a club's retention rate for a past year must not change
+-- retroactively because a member left. Migration 20260815101123_person_erasure_requests.
+--
+-- The pgboss SCHEMA also exists from M2 s1, created by migration
+-- 20260816000000_pgboss_schema from pg-boss's own construction plans. It is deliberately
+-- NOT recorded here: it is not this system's schema, it is a library's, and transcribing
+-- it would create a second definition that drifts on the next pg-boss upgrade.
 --
 -- v1.7 (governance, M1): user_tokens.created_at, so an outstanding-invitations screen
 -- can say how long somebody has been sitting on an invitation without assuming the TTL
@@ -323,6 +335,36 @@ CREATE TABLE user_tokens (
 -- Tokens are looked up by hash on every reset and invite acceptance. Unique so a
 -- collision or a duplicated issue is an error rather than an ambiguous match.
 CREATE UNIQUE INDEX user_tokens_hash ON user_tokens (token_hash);
+
+-- A member asking to be erased, and the review that has to happen first.
+--
+-- Reviewed rather than immediate: erasure is irreversible and the request arrives from a
+-- session, which is the thing an attacker takes. A district officer reading it first
+-- costs a day and prevents a member's whole record being blanked by somebody who
+-- borrowed their phone.
+--
+-- The work then ANONYMISES rather than deletes. membership_events is append-only and a
+-- club's retention rate for 2027-28 is a fact about the club; deleting the person would
+-- change it retroactively. The person row survives under the same id with the names
+-- replaced and every contact column nulled, so every event, appointment and attendance
+-- still points at something real.
+CREATE TYPE erasure_status AS ENUM ('PENDING','APPROVED','REJECTED','COMPLETED');
+
+CREATE TABLE person_erasure_requests (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- The district that reviews it: the requester's at the time of asking.
+  district_id          UUID NOT NULL REFERENCES districts(id),
+  person_id            UUID NOT NULL REFERENCES persons(id),
+  requested_by_user_id UUID REFERENCES users(id),
+  status               erasure_status NOT NULL DEFAULT 'PENDING',
+  reason               TEXT,
+  reviewed_by_user_id  UUID REFERENCES users(id),
+  reviewed_at          TIMESTAMPTZ,
+  review_note          TEXT,
+  completed_at         TIMESTAMPTZ,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX erasure_district_status ON person_erasure_requests (district_id, status);
 
 -- =====================================================================
 -- 3. GOVERNANCE — positions, appointments, committees

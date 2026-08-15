@@ -24,6 +24,17 @@
 -- lives in the job payload, which runJob() turns into a systemContext.
 --
 -- To upgrade pg-boss: new migration from PgBoss.getMigrationPlans('pgboss', <from>).
+--
+-- The DROP below is not paranoia and it is not destructive in any database that matters.
+-- Prisma's shadow database is reset by dropping the PUBLIC schema — it has no multiSchema
+-- setting, so it does not know `pgboss` exists and leaves it behind. The next replay of
+-- this migration then fails on `CREATE TYPE pgboss.job_state` with 42710, and every
+-- `migrate dev` and `migrate diff` from that point on is broken for a reason that looks
+-- like nothing to do with pg-boss. A migration runs exactly once per database, recorded in
+-- _prisma_migrations, so on a real database this line is a no-op against a schema that has
+-- never existed.
+
+DROP SCHEMA IF EXISTS pgboss CASCADE;
 
 SET LOCAL lock_timeout = '30s';
     SET LOCAL idle_in_transaction_session_timeout = '30s';

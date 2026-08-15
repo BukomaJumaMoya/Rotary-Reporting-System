@@ -3,6 +3,7 @@ import { adminRouter } from './modules/admin/routes.js';
 import { authRouter } from './modules/auth/routes.js';
 import { governanceRouter } from './modules/governance/routes.js';
 import { orgRouter } from './modules/org/routes.js';
+import { peopleRouter } from './modules/people/routes.js';
 import { auditActorMiddleware } from './platform/audit.js';
 import { resolveRequestContext } from './platform/context.js';
 import { errorHandler, notFoundHandler } from './platform/errors.js';
@@ -82,6 +83,7 @@ export function createApp(mountExtra?: (mount: MountFn) => void): Express {
   mount('/api/v1/auth', authRouter);
   mount('/api/v1', governanceRouter);
   mount('/api/v1', orgRouter);
+  mount('/api/v1', peopleRouter);
 
   mountExtra?.(mount);
 

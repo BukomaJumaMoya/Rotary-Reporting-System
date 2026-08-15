@@ -6,7 +6,7 @@ was decided along the way, and what is deliberately unfinished.
 
 Last updated: 15 August 2026, after M1 session 7. **M0 and M1 are complete.**
 
-<!-- dis:state milestone=M1 schema=v1.7 tests=282 -->
+<!-- dis:state milestone=M2 schema=v1.8 tests=354 -->
 
 ---
 
@@ -98,8 +98,8 @@ full history is in §4.
 | 1 — Background jobs (pg-boss) | **done** | `b11a348` |
 | 2 — Web deployment | **done** | `ff9d5a6` |
 | 3 — Clubs and affiliations | **done** | `4013cc7` |
-| 4 — Clubs UI | **done** | this commit |
-| 5 — Persons and visibility | pending | |
+| 4 — Clubs UI | **done** | `00429ec` |
+| 5 — Persons and visibility | **done** | this commit |
 | 6 — Membership events and roster | pending | |
 | 7 — Membership UI | pending | |
 | 8 — Activity types and media | pending | |
@@ -201,10 +201,11 @@ apps/api/src/
                  appointments.{repository,service}   terms, uniqueness, revocation
                  committees.service                  delegated subtrees, depth 3
                  administration.service              invitations, MFA reset, audit read
-                 persons.service                     names only — no contact fields
     activity/    service — countForClub(), the one function org needs (M2 s9 fills the rest)
     membership/  service — countRoster(), reading club_rosters (M2 s6 fills the rest)
     notifications/ service · templates — queue row, delivery, and the due-row read
+    people/      routes · service · repository
+                 serialiser.ts  THE person serialiser — one gate, used everywhere
     org/         routes — clubs, affiliations, clusters, regions, rollover
                  clubs.{repository,service}  THE affiliation join, written once
                  clusters.service            clusters, their clubs, and regions
@@ -216,6 +217,7 @@ apps/api/src/
     work.ts      attachHandlers() — the real wiring, shared by the worker and its tests
     registry.ts  JOBS — the one list of queues that exist
     dead-letter.ts  a permanently failed job becomes a JOB_FAILED row in audit_log
+    erasure.job.ts  anonymises a person once the district has approved it
     sweep.ts     the safety net over notifications left QUEUED
     notification.job.ts  the delivery job, and notifyThroughQueue() for callers with a ctx
     worker.ts    the worker process entry point (npm run worker)
@@ -252,7 +254,7 @@ apps/web/src/
 Dockerfile · fly.toml · .github/workflows/deploy-staging.yml · README.md
 ```
 
-**282 tests**, all integration-style against real PostgreSQL. The suites that are load
+**354 tests**, all integration-style against real PostgreSQL. The suites that are load
 bearing rather than incidental: `no-pii.test.ts` (walks every route unauthenticated),
 `invariants.test.ts` (37 ADR-012 guards), `scope*.test.ts` (the data access layer),
 `audit.test.ts`, `rollover.test.ts` (dry run and committed), and `prisma/seed.test.ts`,
@@ -272,7 +274,7 @@ only as guards, each with a stable SQLSTATE and a conformance test. This removed
 
 **ADR-013 — secret encryption and key management** (`02-Architecture.md`).
 
-**`docs/schema.sql` is now v1.7.** The translation surfaced real defects in the v1.0
+**`docs/schema.sql` is now v1.8** — v1.7 through M1, v1.8 in M2 session 5. The translation surfaced real defects in the v1.0
 baseline; every amendment is logged in the file's own header. The substantive one:
 `club_rosters` filtered on `supersedes_event_id IS NULL`, which discarded every correction
 while continuing to count the row it corrected.
@@ -505,7 +507,7 @@ seen on another.
 
 **The dataset:** two Rotary Years with 2027-28 current and 2026-27 locked · district 9218
 · 3 regions · 6 clusters · 20 clubs affiliated for the year · 300 synthetic members with
-`JOIN` events and the roster refreshed · 33 permissions · 10 positions with 109
+`JOIN` events and the roster refreshed · 35 permissions · 10 positions with 114
 `position_permissions` wired from the §10 matrix · 69 officer accounts. About six seconds.
 
 **Appointment terms are clamped to today.** The seeded year is 2027-28, the launch year,
@@ -659,7 +661,8 @@ a recursive query with no natural bound, and no district committee structure nee
 the club or cluster named. Admin MFA reset is behind `user:mfa:reset:district` and writes a
 notification to the account holder — a reset nobody is told about is the attack.
 
-**`user_tokens.created_at` was added** (migration `20260815010000`, schema.sql v1.7) so the
+**`user_tokens.created_at` was added** — migration `20260815010000`, and the amendment that
+took the authoritative schema to v1.7 at the time — so the
 outstanding-invitations screen can say how long somebody has sat on an invitation without
 inferring it from a TTL that may have changed since.
 
@@ -841,7 +844,7 @@ query looking for the other row: reading across the district boundary to write a
 error message is exactly the read this system does not permit itself, and the unique on
 `(club_id, rotary_year_id)` already knows the answer.
 
-**`club:update:district` was added** (33 permissions, 109 `position_permissions`). The API
+**`club:update:district` was added** (permission count now 35 after session 5). The API
 spec always said `club:update:own` **or** `:district` and only the first existed, so a DRR
 correcting a club's RI ID had no door — `club:update:own` is bounded by the caller's own
 appointments, which is precisely what makes it safe to give a secretary. `requireAnyPermission`
@@ -880,6 +883,54 @@ called conditionally; the query can be held back.
 
 **Bundle: 85 KB gzipped initial JS**, against a 250 KB budget. Room, but the budget is for
 the whole of M2 — media and the reporting flow are still to come (session 10 re-measures).
+
+#### Session 5 — persons, visibility and subject access
+
+**The session prompt said to reuse the serialiser the M1 audit endpoint already uses. There
+was not one.** The audit endpoint redacts contact fields UNCONDITIONALLY from a blanket
+list, which is the right rule for a log — it answers "who changed what and when", and the
+old phone number is not part of that answer — but it is not a visibility-aware serialiser
+and could not become one without giving the same policy two homes. So the serialiser was
+BUILT here, in `modules/people/serialiser.ts`, and the audit endpoint deliberately still
+does not use it. Both rules are written down in both files.
+
+**Withheld fields are ABSENT, not null.** A field that is always present and sometimes empty
+is one a client renders as a blank line and a developer later assumes is nullable in the
+database. `isRedacted` says something was withheld, so a screen can say so rather than look
+broken.
+
+**`rosterClubIds` defaults to EMPTY, and that is the safe direction.** A club-scoped caller
+holding `person:read:contact` sees contact details for people on their own clubs' rosters.
+For a person nested inside somebody else's response — an activity's attendees — the caller's
+scope was never checked against that person's club, so the serialiser is told nothing and
+falls back to the visibility flags. A serialiser that assumed its caller's scope covered
+anybody it had not been told about would open every nested person to a club secretary.
+
+**Two permissions added, 35 in total.** `person:read:contact` is the door past
+`person_visibility`, and it is safe to give a club secretary precisely because it is bounded
+by SCOPE. `person:erase:district` is the review.
+
+**`GET /persons` MOVED from governance to people.** Two routers cannot both answer the same
+path — Express matches in mount order, so the second simply never runs, and the one that
+never ran would have been the one with the visibility rules in it. `modules/governance/persons.service.ts`
+is deleted and the pickers read the new endpoint, getting names because contact fields are
+absent unless the caller may see them.
+
+**Erasure is a REVIEW plus a job.** Irreversible, and the request arrives from a session —
+which is the thing an attacker takes. `person_erasure_requests` (schema.sql v1.8) holds the
+review; approving enqueues `person-erasure`, which runs under a system context so the audit
+log says an approved request caused it rather than attributing a whole record being blanked
+to whoever pressed the button. It ANONYMISES: the person row survives under the same id, so
+`membership_events` still points at something real and a club's retention rate for a past
+year does not change retroactively.
+
+**THE pg-BOSS MIGRATION WAS NOT REPLAYABLE, and this bit immediately.** Prisma resets its
+shadow database by dropping the PUBLIC schema; it has no `multiSchema` setting, so it does
+not know `pgboss` exists and leaves it behind. The next `migrate dev` then fails on
+`CREATE TYPE pgboss.job_state` with SQLSTATE 42710, and every `migrate dev` and
+`migrate diff` after it is broken for a reason that looks like nothing to do with pg-boss.
+The migration now begins `DROP SCHEMA IF EXISTS pgboss CASCADE`, which is a no-op on any
+database where the migration has not already run.
 
 ---
 
@@ -931,7 +982,7 @@ re-checked whenever a new write path is added.
 | A malformed or unauthorised `?year=` fails EVERY authenticated route, including `/auth/logout` | context resolution is global and eager; sending `?year=` to logout is a client bug | not planned |
 | A nested create of a parent alongside its child is not scope-checked | there is no parent id to check; the parent's own write is stamped, so the child lands under a stamped row | not planned |
 | Permission codes match exactly — no `club:read:*` wildcard | a matcher would turn a typo in a seeded row into a silent grant | not planned |
-| A person's contact details have no endpoint at all, not even an authenticated one | `person_visibility` is enforced nowhere yet because nothing reads the fields; the flags exist and default closed | M2 |
+| ~~A person's contact details have no endpoint at all~~ | **built in M2 session 5**: one serialiser, three ways to see contact, absent-not-null | — |
 | Committee scope expands downwards but a sub-committee chair cannot see the parent | nothing expands upwards, deliberately | not planned |
 | Rollover does not carry appointments forward | an appointment is a decision for the incoming DRR to make, not a default | not planned |
 

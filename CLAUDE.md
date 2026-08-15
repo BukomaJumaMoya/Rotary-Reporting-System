@@ -203,7 +203,7 @@ permission, an error code or a table.
 ## Current phase
 
 **M0 — Foundations and M1 — Governance core are both complete** (August 2026).
-`docs/schema.sql` is at v1.7.
+`docs/schema.sql` is at v1.8.
 
 M0: monorepo and CI, schema translated and migrated, session authentication with lockout,
 mail delivery, TOTP with encrypted secrets and recovery codes, the request context and

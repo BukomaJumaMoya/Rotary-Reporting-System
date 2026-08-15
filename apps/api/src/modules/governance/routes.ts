@@ -3,7 +3,6 @@ import {
   auditListQuerySchema,
   createInvitationsRequestSchema,
   invitationListQuerySchema,
-  personSearchQuerySchema,
   appointmentListQuerySchema,
   committeeListQuerySchema,
   createAppointmentRequestSchema,
@@ -23,7 +22,6 @@ import { asyncHandler, parseQuery, pathParam, withBody } from '../../platform/va
 import * as administration from './administration.service.js';
 import * as appointments from './appointments.service.js';
 import * as committees from './committees.service.js';
-import * as persons from './persons.service.js';
 import * as positions from './positions.service.js';
 
 /**
@@ -341,16 +339,11 @@ governanceRouter.get(
   }),
 );
 
-/**
- * Person lookup for pickers. NAMES ONLY — an appointment picker needs to tell two people
- * with the same name apart, and has never needed a phone number.
+/*
+ * `GET /persons` used to live here, returning names only.
+ *
+ * It moved to `modules/people` in M2 session 5, which is the module that owns persons and
+ * the one place `serialisePerson` is applied. Two routers cannot both answer `/persons`:
+ * Express matches in mount order, so the second would simply never run — and the one that
+ * never ran would be the one with the visibility rules in it.
  */
-governanceRouter.get(
-  '/persons',
-  requirePermission('person:read:club'),
-  asyncHandler(async (req, res) => {
-    const ctx = requireContext(req);
-    const query = parseQuery(personSearchQuerySchema, req);
-    res.status(200).json(await persons.searchPersons(ctx, query));
-  }),
-);
