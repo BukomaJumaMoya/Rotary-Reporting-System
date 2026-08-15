@@ -39,7 +39,8 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]['key'];
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+// 0 = Sunday, matching the column and Postgres EXTRACT(DOW).
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export function ClubProfilePage() {
   const { id = '' } = useParams();
@@ -174,7 +175,7 @@ function Overview({
             label="Day and time"
             value={
               club.meetingDay
-                ? `${DAYS[club.meetingDay - 1] ?? ''}${club.meetingTime ? `, ${club.meetingTime}` : ''}`
+                ? `${DAYS[club.meetingDay] ?? ''}${club.meetingTime ? `, ${club.meetingTime}` : ''}`
                 : null
             }
           />

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { hashPassword } from '../../src/modules/auth/passwords.js';
 import { issueInvite } from '../../src/modules/auth/service.js';
 import { config, isProduction } from '../../src/platform/config.js';
@@ -22,6 +23,7 @@ import {
   PREVIOUS_YEAR_LABEL,
   REGIONS,
   ROTARY_YEARS,
+  TOTAL_CLUBS,
   TOTAL_MEMBERS,
 } from './organisation.js';
 import { random, syntheticPerson } from './synthetic.js';
@@ -250,8 +252,187 @@ async function seedOrganisation(): Promise<OrgIds> {
 interface SeededMember {
   personId: string;
   clubSlug: string;
+  clubId: string;
   firstName: string;
   lastName: string;
+}
+
+/** Why members leave, in roughly the proportions a Rotaract district actually sees. */
+const LEAVING_REASONS = [
+  'RELOCATION',
+  'STUDIES_ENDED',
+  'NON_PAYMENT',
+  'NON_PAYMENT',
+  'INACTIVE',
+  'PERSONAL',
+];
+
+/**
+ * A year of membership CHURN on top of the joins.
+ *
+ * Without it every club retains 100% of its members, every statistic is the same number,
+ * and M5 would be calibrated against a district where nobody ever leaves. About one member
+ * in fourteen goes — terminated, transferred, or on to Rotary — and one departure in forty
+ * is retracted, so the supersede path is exercised by the DATASET rather than only by a test.
+ */
+async function seedMembershipChurn(
+  org: OrgIds,
+  members: SeededMember[],
+  rng: ReturnType<typeof random>,
+): Promise<void> {
+  let leavers = 0;
+  let transitions = 0;
+  let corrections = 0;
+
+  for (const member of members) {
+    if (!rng.chance(0.07)) continue;
+
+    const kind = rng.int(1, 10);
+    const eventType = kind <= 6 ? 'TERMINATE' : kind <= 8 ? 'TRANSFER_OUT' : 'TRANSITION_TO_ROTARY';
+
+    // Spread across the Rotary Year, so a from/to window and the as-at reconstruction have
+    // something to slice.
+    const offset = rng.int(1, 10);
+    const effectiveOn = new Date(
+      Date.UTC(2027 + (6 + offset > 11 ? 1 : 0), (6 + offset) % 12, rng.int(1, 28)),
+    );
+
+    const event = await unscopedPrisma.membershipEvent.create({
+      data: {
+        districtId: org.districtId,
+        rotaryYearId: org.currentYearId,
+        personId: member.personId,
+        clubId: member.clubId,
+        eventType,
+        memberCategory: 'ACTIVE',
+        effectiveOn,
+        reasonCode: eventType === 'TRANSITION_TO_ROTARY' ? null : rng.pick(LEAVING_REASONS),
+        ...(eventType === 'TRANSITION_TO_ROTARY'
+          ? { rotaryClubName: `Rotary Club of ${member.clubSlug.replace('rc-', '')}` }
+          : {}),
+      },
+      select: { id: true },
+    });
+
+    leavers += 1;
+    if (eventType === 'TRANSITION_TO_ROTARY') transitions += 1;
+
+    // One in forty is retracted. A CORRECTION supersedes its target and is not itself a
+    // state, so the member goes back onto the roster — the behaviour schema v1.9 fixed, and
+    // worth having in the dataset rather than only in a test.
+    if (rng.chance(0.025)) {
+      await unscopedPrisma.membershipEvent.create({
+        data: {
+          districtId: org.districtId,
+          rotaryYearId: org.currentYearId,
+          personId: member.personId,
+          clubId: member.clubId,
+          eventType: 'CORRECTION',
+          memberCategory: 'ACTIVE',
+          effectiveOn,
+          reasonNote: 'Recorded against the wrong member',
+          supersedesEventId: event.id,
+        },
+      });
+      corrections += 1;
+      leavers -= 1;
+    }
+  }
+
+  log(
+    `  membership churn: ${leavers} departures (${transitions} to Rotary), ` +
+      `${corrections} retracted`,
+  );
+}
+
+/**
+ * A year of reported activity.
+ *
+ * Every club reports something most months. Two thirds are verified, which gives the
+ * verification queue and the club summary something to show — and which M5 needs, because a
+ * dataset where everything is verified scores identically to one where nothing is.
+ */
+async function seedActivities(org: OrgIds, members: SeededMember[]): Promise<number> {
+  const rng = random(2027);
+
+  const types = await unscopedPrisma.activityType.findMany({
+    where: { districtId: org.districtId, isActive: true },
+    select: { id: true, code: true, allowedHostScopes: true },
+  });
+  const clubTypes = types.filter((type) => type.allowedHostScopes.includes('CLUB'));
+  if (clubTypes.length === 0) return 0;
+
+  const areas = await unscopedPrisma.areaOfFocus.findMany({ select: { id: true } });
+
+  const membersByClub = new Map<string, SeededMember[]>();
+  for (const member of members) {
+    membersByClub.set(member.clubId, [...(membersByClub.get(member.clubId) ?? []), member]);
+  }
+
+  const activityRows = [];
+  const areaRows = [];
+  const attendeeRows = [];
+
+  for (const club of CLUBS) {
+    const clubId = org.clubIdsBySlug.get(club.slug);
+    if (!clubId) continue;
+
+    const roster = membersByClub.get(clubId) ?? [];
+
+    // Ten months of the Rotary Year. A bigger club reports more, which is the correlation
+    // M5's per-member criteria depend on.
+    for (let month = 0; month < 10; month += 1) {
+      const howMany = rng.int(1, club.memberCount > 40 ? 4 : 2);
+
+      for (let n = 0; n < howMany; n += 1) {
+        const type = rng.pick(clubTypes);
+        const startsAt = new Date(
+          Date.UTC(2027 + (6 + month > 11 ? 1 : 0), (6 + month) % 12, rng.int(1, 28), 17, 0),
+        );
+        const verified = rng.chance(0.66);
+        const id = randomUUID();
+
+        activityRows.push({
+          id,
+          districtId: org.districtId,
+          rotaryYearId: org.currentYearId,
+          activityTypeId: type.id,
+          hostScopeType: 'CLUB' as const,
+          hostScopeId: clubId,
+          title: `${club.name.replace('Rotaract Club of ', '')}: ${type.code
+            .toLowerCase()
+            .replace(/_/g, ' ')}`,
+          startsAt,
+          venue: club.meetingVenue,
+          status: 'HELD' as const,
+          attendanceMembers: rng.int(5, Math.max(6, club.memberCount)),
+          attendanceGuests: rng.int(0, 6),
+          beneficiariesCount: rng.chance(0.4) ? rng.int(20, 400) : null,
+          verification: verified ? ('VERIFIED' as const) : ('UNVERIFIED' as const),
+          verifiedAt: verified ? startsAt : null,
+        });
+
+        if (areas.length > 0 && rng.chance(0.5)) {
+          areaRows.push({ activityId: id, areaOfFocusId: rng.pick(areas).id });
+        }
+
+        // A few attendees, so the roster join the scoring engine makes has rows to find.
+        const attending = roster.slice(0, rng.int(0, Math.min(6, roster.length)));
+        for (const member of attending) {
+          attendeeRows.push({ activityId: id, personId: member.personId, role: 'MEMBER' as const });
+        }
+      }
+    }
+  }
+
+  // createMany, not a loop of creates. At this scale the difference is a seed that takes
+  // seconds and one that takes minutes, and the seed is run by hand often enough to matter.
+  await unscopedPrisma.activity.createMany({ data: activityRows });
+  await unscopedPrisma.activityAreaOfFocus.createMany({ data: areaRows, skipDuplicates: true });
+  await unscopedPrisma.activityAttendee.createMany({ data: attendeeRows, skipDuplicates: true });
+
+  log(`  activities: ${activityRows.length} reported, ${attendeeRows.length} attendance records`);
+  return activityRows.length;
 }
 
 async function seedMembers(org: OrgIds): Promise<SeededMember[]> {
@@ -307,11 +488,14 @@ async function seedMembers(org: OrgIds): Promise<SeededMember[]> {
       members.push({
         personId: row.id,
         clubSlug: club.slug,
+        clubId,
         firstName: person.firstName,
         lastName: person.lastName,
       });
     }
   }
+
+  await seedMembershipChurn(org, members, rng);
 
   // club_rosters is a MATERIALISED view; without this it is empty and every membership
   // read returns nothing, which looks like a bug in the reader.
@@ -529,8 +713,15 @@ export async function seedDatabase(): Promise<SeedSummary> {
   // Credentials stripped: the seed prints in terminals and CI logs.
   log(`Seeding ${config.DATABASE_URL.replace(/\/\/[^@]*@/, '//***@')}`);
 
-  if (TOTAL_MEMBERS !== 300) {
-    throw new Error(`Club member counts total ${TOTAL_MEMBERS}, expected 300`);
+  // The real shape (M2 session 10): 68 clubs and 3,000 members. Asserted rather than
+  // merely computed — M5's scoring and the load test both need a dataset of a KNOWN size,
+  // and a seed that quietly produced 2,847 members would make every performance number an
+  // answer to a different question.
+  if (TOTAL_CLUBS !== 68) {
+    throw new Error(`Seed has ${TOTAL_CLUBS} clubs, expected D9218's confirmed 68`);
+  }
+  if (TOTAL_MEMBERS !== 3000) {
+    throw new Error(`Club member counts total ${TOTAL_MEMBERS}, expected 3000`);
   }
 
   await reset();
@@ -556,6 +747,7 @@ export async function seedDatabase(): Promise<SeedSummary> {
   );
 
   const members = await seedMembers(org);
+  await seedActivities(org, members);
   const signIns = await seedOfficers(members, positionIds, org);
 
   return {

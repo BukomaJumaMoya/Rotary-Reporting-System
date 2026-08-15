@@ -285,7 +285,180 @@ export const CLUBS: ClubSeed[] = [
   },
 ];
 
-/** 300 members exactly, so the seed's own arithmetic is checked rather than assumed. */
+/**
+ * The rest of D9218's confirmed list, to 68 clubs.
+ *
+ * Generated from curated Ugandan place and institution names rather than written out
+ * longhand: forty-eight more literals would be forty-eight more chances to mistype a slug,
+ * and the shape — name, cluster, size — is all any of them contributes. The names are real
+ * places; the RI ids stay in the same synthetic block, contiguous with the first twenty, so
+ * nothing here can be reconciled against RI's register.
+ *
+ * The SIZE distribution is the part that matters. M5 scores clubs against a framework
+ * published for their tier, so a dataset where every club is the same size would exercise
+ * none of the tier logic and none of the ranking. Roughly a third of these cross the T1/T2
+ * boundary at forty.
+ */
+const EXTRA_CLUBS: {
+  name: string;
+  cluster: string;
+  venue: string;
+  members: number;
+  ibc?: string;
+}[] = [
+  // Kampala Metro
+  { name: 'Bugolobi', cluster: 'Kampala Metro', venue: 'Village Mall, Bugolobi', members: 82 },
+  { name: 'Ntinda', cluster: 'Kampala Metro', venue: 'Ntinda Complex', members: 71 },
+  { name: 'Kansanga', cluster: 'Kampala Metro', venue: 'Kansanga Trading Centre', members: 58 },
+  { name: 'Kabalagala', cluster: 'Kampala Metro', venue: 'Kabalagala', members: 51 },
+  { name: 'Naguru', cluster: 'Kampala Metro', venue: 'Naguru Skyz Hotel', members: 97 },
+  { name: 'Bukoto', cluster: 'Kampala Metro', venue: 'Bukoto Street', members: 66 },
+  { name: 'Kibuli', cluster: 'Kampala Metro', venue: 'Kibuli Hill', members: 41 },
+  {
+    name: 'Nkumba University',
+    cluster: 'Kampala Metro',
+    venue: 'Nkumba Main Campus',
+    members: 115,
+    ibc: 'Nkumba University',
+  },
+  {
+    name: 'Uganda Christian University',
+    cluster: 'Kampala Metro',
+    venue: 'Mukono Campus',
+    members: 90,
+    ibc: 'Uganda Christian University',
+  },
+  {
+    name: 'Kampala International University',
+    cluster: 'Kampala Metro',
+    venue: 'Kansanga Campus',
+    members: 104,
+    ibc: 'Kampala International University',
+  },
+
+  // Greater Wakiso
+  { name: 'Kajjansi', cluster: 'Greater Wakiso', venue: 'Kajjansi Town', members: 49 },
+  { name: 'Nansana', cluster: 'Greater Wakiso', venue: 'Nansana Municipality', members: 62 },
+  { name: 'Kira', cluster: 'Greater Wakiso', venue: 'Kira Town Council', members: 77 },
+  { name: 'Kyengera', cluster: 'Greater Wakiso', venue: 'Kyengera', members: 36 },
+  { name: 'Gayaza', cluster: 'Greater Wakiso', venue: 'Gayaza Road', members: 45 },
+  { name: 'Namugongo', cluster: 'Greater Wakiso', venue: 'Namugongo Shrine Road', members: 54 },
+  { name: 'Buloba', cluster: 'Greater Wakiso', venue: 'Buloba Trading Centre', members: 69 },
+  {
+    name: 'Ndejje University',
+    cluster: 'Greater Wakiso',
+    venue: 'Ndejje Main Campus',
+    members: 81,
+    ibc: 'Ndejje University',
+  },
+
+  // Busoga
+  { name: 'Jinja City', cluster: 'Busoga', venue: 'Jinja Sailing Club', members: 86 },
+  { name: 'Njeru', cluster: 'Busoga', venue: 'Njeru Town Council', members: 39 },
+  { name: 'Bugembe', cluster: 'Busoga', venue: 'Bugembe Town', members: 52 },
+  { name: 'Kamuli', cluster: 'Busoga', venue: 'Kamuli District Headquarters', members: 32 },
+  { name: 'Bugiri', cluster: 'Busoga', venue: 'Bugiri Town', members: 28 },
+  { name: 'Mayuge', cluster: 'Busoga', venue: 'Mayuge Trading Centre', members: 24 },
+  {
+    name: 'Kampala University Jinja',
+    cluster: 'Busoga',
+    venue: 'Jinja Campus',
+    members: 73,
+    ibc: 'Kampala University, Jinja Campus',
+  },
+
+  // Bugisu and Teso
+  { name: 'Mbale City', cluster: 'Bugisu and Teso', venue: 'Mbale Resort Hotel', members: 79 },
+  { name: 'Sironko', cluster: 'Bugisu and Teso', venue: 'Sironko Town', members: 30 },
+  { name: 'Soroti City', cluster: 'Bugisu and Teso', venue: 'Soroti Hotel', members: 64 },
+  { name: 'Kumi', cluster: 'Bugisu and Teso', venue: 'Kumi Town', members: 26 },
+  { name: 'Tororo', cluster: 'Bugisu and Teso', venue: 'Tororo Town', members: 47 },
+  { name: 'Kapchorwa', cluster: 'Bugisu and Teso', venue: 'Kapchorwa Town', members: 22 },
+  {
+    name: 'Islamic University in Uganda',
+    cluster: 'Bugisu and Teso',
+    venue: 'Mbale Campus',
+    members: 88,
+    ibc: 'Islamic University in Uganda',
+  },
+
+  // Ankole and Kigezi
+  { name: 'Mbarara City', cluster: 'Ankole and Kigezi', venue: 'Lake View Resort', members: 92 },
+  { name: 'Bushenyi', cluster: 'Ankole and Kigezi', venue: 'Bushenyi Town', members: 43 },
+  { name: 'Ntungamo', cluster: 'Ankole and Kigezi', venue: 'Ntungamo Town', members: 34 },
+  { name: 'Kanungu', cluster: 'Ankole and Kigezi', venue: 'Kanungu Town', members: 56 },
+  { name: 'Rukungiri', cluster: 'Ankole and Kigezi', venue: 'Rukungiri Town', members: 37 },
+  { name: 'Kisoro', cluster: 'Ankole and Kigezi', venue: 'Kisoro Town', members: 21 },
+  { name: 'Ibanda', cluster: 'Ankole and Kigezi', venue: 'Ibanda Town', members: 30 },
+  {
+    name: 'Mbarara University of Science and Technology',
+    cluster: 'Ankole and Kigezi',
+    venue: 'MUST Main Campus',
+    members: 99,
+    ibc: 'Mbarara University of Science and Technology',
+  },
+
+  // Rwenzori and Bunyoro
+  {
+    name: 'Fort Portal City',
+    cluster: 'Rwenzori and Bunyoro',
+    venue: 'Mountains of the Moon Hotel',
+    members: 67,
+  },
+  { name: 'Kikuube', cluster: 'Rwenzori and Bunyoro', venue: 'Kikuube Town', members: 41 },
+  { name: 'Hoima City', cluster: 'Rwenzori and Bunyoro', venue: 'Hoima Resort Hotel', members: 75 },
+  { name: 'Masindi', cluster: 'Rwenzori and Bunyoro', venue: 'Masindi Hotel', members: 36 },
+  { name: 'Kagadi', cluster: 'Rwenzori and Bunyoro', venue: 'Kagadi Town', members: 24 },
+  { name: 'Bundibugyo', cluster: 'Rwenzori and Bunyoro', venue: 'Bundibugyo Town', members: 19 },
+  { name: 'Kyenjojo', cluster: 'Rwenzori and Bunyoro', venue: 'Kyenjojo Town', members: 28 },
+  {
+    name: 'Mountains of the Moon University',
+    cluster: 'Rwenzori and Bunyoro',
+    venue: 'Fort Portal Campus',
+    members: 60,
+    ibc: 'Mountains of the Moon University',
+  },
+];
+
+/** T1 under forty, T2 at forty or more, IBC by base type. The same rule the code applies. */
+function tierFor(baseType: ClubSeed['baseType'], members: number): ClubSeed['tier'] {
+  if (baseType === 'IBC') return 'IBC';
+  return members < 40 ? 'T1' : 'T2';
+}
+
+for (const [index, extra] of EXTRA_CLUBS.entries()) {
+  const baseType: ClubSeed['baseType'] = extra.ibc ? 'IBC' : 'CBC';
+  CLUBS.push({
+    name: `Rotaract Club of ${extra.name}`,
+    slug: `rc-${extra.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')}`,
+    // Contiguous with the hand-written twenty, so the whole block is obviously synthetic.
+    riClubId: BigInt(900021 + index),
+    baseType,
+    tier: tierFor(baseType, extra.members),
+    cluster: extra.cluster,
+    ...(extra.ibc ? { hostInstitution: extra.ibc } : {}),
+    // Spread across the week so the meeting-day filter has something to filter.
+    // 0 = Sunday: the column is CHECK (0..6), which the contract now agrees with.
+    meetingDay: index % 7,
+    meetingVenue: extra.venue,
+    memberCount: extra.members,
+  });
+}
+
+/** The real shape: 68 clubs, which is D9218's confirmed list. */
+export const TOTAL_CLUBS = CLUBS.length;
+
+/**
+ * Every member across every club.
+ *
+ * Asserted in `run.ts` rather than merely computed, so the seed's own arithmetic is checked
+ * — M5's scoring and the load test both need a dataset of a known size, and a seed that
+ * quietly produced 2,847 members would make every performance number a different question
+ * from the one being asked.
+ */
 export const TOTAL_MEMBERS = CLUBS.reduce((sum, club) => sum + club.memberCount, 0);
 
 export const DISTRICT = {

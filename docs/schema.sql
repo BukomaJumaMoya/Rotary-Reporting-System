@@ -192,6 +192,8 @@ CREATE TABLE clubs (
   chartered_member_count INT,
   sponsor_rotary_club   TEXT,
   host_institution      TEXT,                        -- IBCs
+  -- 0 = Sunday, matching Postgres EXTRACT(DOW). Stated here because it was not, and
+  -- the API contract had assumed ISO 1..7 until M2 s10 scaled the seed and found it.
   meeting_day           SMALLINT CHECK (meeting_day BETWEEN 0 AND 6),
   meeting_time          TIME,
   meeting_venue         TEXT,

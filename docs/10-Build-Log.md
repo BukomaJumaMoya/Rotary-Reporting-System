@@ -103,8 +103,8 @@ full history is in §4.
 | 6 — Membership events and roster | **done** | `29727b8` |
 | 7 — Membership UI | **done** | `1fd0bad` |
 | 8 — Activity types and media | **done** | `db0107a` |
-| 9 — Activities API and reporting UI | **done** | this commit |
-| 10 — M2 hardening | pending | |
+| 9 — Activities API and reporting UI | **done** | `23f6134` |
+| 10 — M2 hardening | **done** | this commit |
 
 CI runs typecheck → lint → format:check → test → build → `npm audit` against a
 `postgres:17` service container, and is green on `main`.
@@ -1084,6 +1084,55 @@ set it itself so it can add the multipart boundary, and a hand-written `multipar
 produces a request the server cannot parse.
 
 **Bundle: 96 KB gzipped**, against the 250 KB budget.
+
+#### Session 10 — hardening
+
+**The seed is at its real shape: 68 clubs, 3,000 members, 1,327 activities, 4,110 attendance
+records and a year of membership churn.** The counts are ASSERTED in `run.ts` rather than
+merely computed — M5's scoring and the load test both need a dataset of a known size, and a
+seed that quietly produced 2,847 members would make every performance number an answer to a
+different question. Roughly a third of the clubs cross the T1/T2 boundary at forty, so the
+tier logic and the ranking are exercised by the data rather than only by a unit test.
+
+**The churn matters as much as the scale.** 225 departures, 44 of them to Rotary, and 7
+retracted — so every club's retention is a different number, and the supersede path that
+schema v1.9 fixed is exercised by the DATASET. Without it M5 would be calibrated against a
+district where nobody ever leaves.
+
+**SCALING THE SEED FOUND A LIVE CONTRACT BUG.** `clubs.meeting_day` has been
+`CHECK (meeting_day BETWEEN 0 AND 6)` since M0 with the convention recorded NOWHERE, and the
+contract written in session 3 said `min(1).max(7)`. A club meeting on Sunday would have been
+accepted by the contract and refused by the database as an opaque 500. The contract now says
+0–6 and `schema.sql` states the convention: **0 = Sunday, matching Postgres `EXTRACT(DOW)`**,
+because a scoring resolver asking "did this club meet on its meeting day" compares against
+exactly that, and two conventions one join apart is a resolver that is wrong on Sundays. The
+two UI day arrays were off by one and are fixed with it.
+
+**EXPLAIN ANALYZE at that scale, and two indexes** (`20260816020000_m2_performance_indexes`).
+Everything else was already fast enough, and the sequential scans that remain are on tables
+of 68 and 3,239 rows where the planner is right to choose one:
+
+| Query | Before | After |
+|---|---|---|
+| Activity list, district-wide | 2.2 ms | 1.6 ms |
+| Activity list, one club | 0.09 ms | 0.08 ms |
+| Roster, one club | 0.17 ms | 0.16 ms |
+| As-at roster reconstruction | 8.0 ms | 6.4 ms |
+| Club summary counts | 0.23 ms | 0.06 ms |
+| **Person list through the roster** | **8.1 ms** | **0.20 ms** |
+
+`club_rosters` had indexes on `(person_id, club_id)` and `club_id` but nothing on
+`district_id` — and EVERY read of it filters by district, because that is what the scope
+layer injects. That one index is the 40× on the last row. The other is a PARTIAL index on
+`membership_events(supersedes_event_id)`: the supersede anti-join is the query whose plan
+matters in 2032 rather than today, since the log is the one table here that grows without
+bound. Both are invisible to Prisma's differ — one partial, one on a materialised view — so
+they live in raw SQL and `migrate diff` still reports empty.
+
+**The seed's assertions read the seed's own constants** rather than repeating literals, so
+scaling the dataset again changes one place. The ADRR scope test counts Kampala Metro's clubs
+from `CLUBS` for the same reason: it grew from five to fifteen, and a literal would have
+failed for the right reason with the wrong message.
 
 **The doc-check axiom-3 grep learned about `corroborated_at`.** It is the one column the
 immutability guard lets through, so a `updateMany` naming only that column is legitimate and

@@ -109,7 +109,7 @@ export function ClubsPage() {
       secondary: true,
       render: (club: Club) =>
         club.meetingDay
-          ? `${DAYS[club.meetingDay - 1] ?? ''}${club.meetingTime ? ` ${club.meetingTime}` : ''}`
+          ? `${DAYS[club.meetingDay] ?? ''}${club.meetingTime ? ` ${club.meetingTime}` : ''}`
           : '—',
     },
   ];
@@ -218,4 +218,5 @@ export function ClubsPage() {
   );
 }
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+// 0 = Sunday, matching the column and Postgres EXTRACT(DOW).
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

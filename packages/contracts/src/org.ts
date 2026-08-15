@@ -46,8 +46,19 @@ export const clubSchema = z.object({
   charteredMemberCount: z.number().int().nullable(),
   sponsorRotaryClub: z.string().nullable(),
   hostInstitution: z.string().nullable(),
-  /** ISO weekday, 1 = Monday. */
-  meetingDay: z.number().int().min(1).max(7).nullable(),
+  /**
+   * Day of the week, **0 = Sunday**, matching Postgres's own `EXTRACT(DOW)`.
+   *
+   * The column has been `CHECK (meeting_day BETWEEN 0 AND 6)` since M0 with no convention
+   * recorded anywhere, and this contract originally said 1–7 — so a club meeting on Sunday
+   * was accepted by the contract and refused by the database as a 500. Found by scaling the
+   * seed to 68 clubs in M2 session 10.
+   *
+   * 0 = Sunday rather than ISO's 1 = Monday because a scoring resolver asking "did this club
+   * meet on its meeting day" compares against `EXTRACT(DOW FROM starts_at)`, and two
+   * conventions one join apart is a resolver that is wrong on Sundays.
+   */
+  meetingDay: z.number().int().min(0).max(6).nullable(),
   /** `HH:MM`, in the district's timezone. */
   meetingTime: z.string().nullable(),
   meetingVenue: z.string().nullable(),
@@ -102,7 +113,7 @@ const clubProfileFields = {
   charteredMemberCount: z.number().int().min(0).max(10_000).nullable().optional(),
   sponsorRotaryClub: z.string().trim().max(160).nullable().optional(),
   hostInstitution: z.string().trim().max(160).nullable().optional(),
-  meetingDay: z.number().int().min(1).max(7).nullable().optional(),
+  meetingDay: z.number().int().min(0).max(6).nullable().optional(),
   meetingTime: z
     .string()
     .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, 'A meeting time looks like 18:30')

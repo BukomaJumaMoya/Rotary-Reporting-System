@@ -4,6 +4,7 @@ import { createApp } from '../src/app.js';
 import { meResponseSchema } from '@dis/contracts';
 import { unscopedPrisma } from '../src/platform/db.js';
 import { closeSessionPool } from '../src/platform/session.js';
+import { CLUBS, TOTAL_CLUBS, TOTAL_MEMBERS } from './seed/organisation.js';
 import { seedDatabase, type SeedSummary } from './seed/run.js';
 
 /**
@@ -59,12 +60,14 @@ describe('the seeded dataset', () => {
     ]);
 
     expect(district.riDistrictCode).toBe('9218');
-    expect(clubs).toBe(20);
+    // D9218's confirmed list. Read from the seed's own constant rather than repeated as a
+    // literal, so scaling the dataset again changes one place.
+    expect(clubs).toBe(TOTAL_CLUBS);
     expect(regions).toBe(3);
     expect(clusters).toBe(6);
     // Every club affiliated for the current year — the temporal relationship that makes
     // it part of D9218 at all (axiom 2).
-    expect(affiliations).toBe(20);
+    expect(affiliations).toBe(TOTAL_CLUBS);
   });
 
   it('has exactly one current Rotary Year', async () => {
@@ -77,7 +80,7 @@ describe('the seeded dataset', () => {
     expect(current[0]?.rotaryYear.label).toBe('2027-28');
   });
 
-  it('creates 300 members, all synthetic, all with contact fields closed', async () => {
+  it('creates every member synthetic, with contact fields closed', async () => {
     const [people, visibility, open] = await Promise.all([
       unscopedPrisma.person.count(),
       unscopedPrisma.personVisibility.count(),
@@ -86,17 +89,17 @@ describe('the seeded dataset', () => {
       }),
     ]);
 
-    expect(people).toBe(300);
+    expect(people).toBe(TOTAL_MEMBERS);
     // A visibility row per person, created by the persons_visibility_ins trigger rather
     // than by the seed — so "no row" cannot be mistaken for a permissive default.
-    expect(visibility).toBe(300);
+    expect(visibility).toBe(TOTAL_MEMBERS);
     expect(open).toBe(0);
 
     const domains = await unscopedPrisma.person.count({
       where: { email: { endsWith: '@example.org' } },
     });
     // RFC 2606 reserves example.org precisely so test data cannot reach a real inbox.
-    expect(domains).toBe(300);
+    expect(domains).toBe(TOTAL_MEMBERS);
   });
 
   it('derives the roster from membership events rather than writing one', async () => {
@@ -105,10 +108,19 @@ describe('the seeded dataset', () => {
       unscopedPrisma.clubRoster.count(),
     ]);
 
-    expect(events).toBe(300);
+    // One JOIN per member, plus a year of churn — departures, transfers, transitions and
+    // a handful of retractions. Without churn every club retains 100% of its members and
+    // M5 would be calibrated against a district where nobody ever leaves.
+    expect(events).toBeGreaterThan(TOTAL_MEMBERS);
+
     // The materialised view, refreshed by the seed. Without the refresh it is empty and
     // every membership read returns nothing, which reads as a bug in the reader.
-    expect(roster).toBe(300);
+    //
+    // FEWER than the member count, because the departures took people off it — which is
+    // the roster being DERIVED rather than written. A retracted departure puts its member
+    // back, so this is not simply members minus departures either.
+    expect(roster).toBeGreaterThan(TOTAL_MEMBERS * 0.9);
+    expect(roster).toBeLessThan(TOTAL_MEMBERS);
   });
 
   it('wires the authorisation matrix, not just the positions', async () => {
@@ -122,8 +134,9 @@ describe('the seeded dataset', () => {
     expect(permissions).toBeGreaterThanOrEqual(25);
     expect(positions).toBe(10);
     expect(wired).toBeGreaterThan(100);
-    // Three officers per club, plus six district officers and three ADRRs.
-    expect(appointments).toBe(20 * 3 + 6 + 3);
+    // Three officers per club, plus six district officers and three ADRRs. From the club
+    // count rather than a literal, so the number follows the dataset.
+    expect(appointments).toBe(TOTAL_CLUBS * 3 + 6 + 3);
   });
 
   it('populates the lookup tables that were empty and block every insert', async () => {
@@ -171,8 +184,9 @@ describe('the seeded dataset', () => {
     ]);
 
     // issueInvite() is the real onboarding path, not a second one invented for the seed.
-    expect(users).toBe(69);
-    expect(invites).toBe(69);
+    const officers = TOTAL_CLUBS * 3 + 6 + 3;
+    expect(users).toBe(officers);
+    expect(invites).toBe(officers);
   });
 
   it('leaves no audit rows behind', async () => {
@@ -212,8 +226,12 @@ describe('signing in as a seeded officer', () => {
     const { body } = await signInAs(accountFor('ADRR, Kampala Metro'));
 
     expect(body.context.scopes.clusterIds).toHaveLength(1);
-    // Kampala Metro holds five clubs in the seeded organisation.
-    expect(body.context.scopes.clubIds).toHaveLength(5);
+    // Kampala Metro's clubs, counted from the seed rather than written down: the list grew
+    // from five to fifteen when the dataset reached its real shape, and a literal here
+    // would have been a test that failed for the right reason with the wrong message.
+    expect(body.context.scopes.clubIds).toHaveLength(
+      CLUBS.filter((club) => club.cluster === 'Kampala Metro').length,
+    );
     expect(body.context.scopes.isDistrictWide).toBe(false);
   });
 
@@ -251,8 +269,8 @@ describe('rerunning', () => {
     // Rerunnable means resets and reseeds, not accumulates. Twice the clubs would be the
     // obvious failure; twice the district-year rows would trip a partial unique index and
     // be the confusing one.
-    expect(clubs).toBe(20);
-    expect(people).toBe(300);
-    expect(appointments).toBe(69);
+    expect(clubs).toBe(TOTAL_CLUBS);
+    expect(people).toBe(TOTAL_MEMBERS);
+    expect(appointments).toBe(TOTAL_CLUBS * 3 + 6 + 3);
   }, 120_000);
 });
