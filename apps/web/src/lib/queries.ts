@@ -14,10 +14,17 @@ export function useList<T>(
   key: readonly unknown[],
   path: string,
   query?: Record<string, string | number | boolean | undefined>,
+  /**
+   * `enabled: false` holds the request back. For a screen that mounts before it knows
+   * what to ask for — the club form in create mode has no id, and firing anyway would
+   * send a request that can only 404.
+   */
+  options: { enabled?: boolean } = {},
 ) {
   return useQuery({
     queryKey: [...key, query ?? {}],
     queryFn: () => api.get<T>(path, query),
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -53,6 +60,9 @@ export function useApiMutation<TVariables, TResult>(
 }
 
 export const queryKeys = {
+  clubs: ['clubs'] as const,
+  clusters: ['clusters'] as const,
+  regions: ['regions'] as const,
   positions: ['positions'] as const,
   permissions: ['permissions'] as const,
   appointments: ['appointments'] as const,

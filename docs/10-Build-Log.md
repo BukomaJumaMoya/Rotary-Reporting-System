@@ -97,8 +97,8 @@ full history is in §4.
 |---|---|---|
 | 1 — Background jobs (pg-boss) | **done** | `b11a348` |
 | 2 — Web deployment | **done** | `ff9d5a6` |
-| 3 — Clubs and affiliations | **done** | this commit |
-| 4 — Clubs UI | pending | |
+| 3 — Clubs and affiliations | **done** | `4013cc7` |
+| 4 — Clubs UI | **done** | this commit |
 | 5 — Persons and visibility | pending | |
 | 6 — Membership events and roster | pending | |
 | 7 — Membership UI | pending | |
@@ -242,6 +242,8 @@ apps/web/src/
   features/
     auth/        LoginPage (password → TOTP → recovery), PasswordPages
                  (forgot, reset, accept invite), useAuth/useScope
+    clubs/       ClubsPage (directory) · ClubProfilePage (tabs, one summary call)
+                 ClubFormPage (charter and edit) · ClustersPage · types.ts
     dashboard/   DashboardPage — what this account may actually do
     governance/  PositionsPage (catalogue + permission matrix)
                  AppointmentsPage · CommitteesPage · AdminPages
@@ -859,6 +861,25 @@ reaching into `club_rosters` and `activities` and being unpicked in sessions 6 a
 **Cluster membership is set WHOLE, never diffed** — the same reasoning as replacing a
 position's permission set. Two officers redrawing clusters from two browsers with
 client-computed diffs merge each other's work silently.
+
+#### Session 4 — the club screens
+
+**The five unbuilt tabs say which milestone fills them.** A club officer who cannot find a
+Members tab concludes the system does not do membership; a tab that says "arriving with the
+membership log" is the difference between an unfinished system and a broken one.
+
+**The edit form is a child component mounted with its values as INITIAL state, keyed on the
+club id.** Seeding form state from a fetched record in an effect is a cascading render — and
+worse, it discards whatever the member had typed the moment TanStack Query refetches in the
+background. `react-hooks/set-state-in-effect` caught it; the fix is structural rather than a
+suppression.
+
+**`useList` gained `enabled`.** The club form mounts before it knows whether it has an id, so
+in create mode the fetch would fire against `/clubs/` and could only 404. A hook cannot be
+called conditionally; the query can be held back.
+
+**Bundle: 85 KB gzipped initial JS**, against a 250 KB budget. Room, but the budget is for
+the whole of M2 — media and the reporting flow are still to come (session 10 re-measures).
 
 ---
 

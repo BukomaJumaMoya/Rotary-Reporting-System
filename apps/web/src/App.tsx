@@ -11,6 +11,10 @@ import {
   ForgotPasswordPage,
   ResetPasswordPage,
 } from './features/auth/PasswordPages';
+import { ClubFormPage } from './features/clubs/ClubFormPage';
+import { ClubProfilePage } from './features/clubs/ClubProfilePage';
+import { ClubsPage } from './features/clubs/ClubsPage';
+import { ClustersPage } from './features/clubs/ClustersPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { AuditPage, InvitationsPage, RolloverPage } from './features/governance/AdminPages';
 import { AppointmentsPage } from './features/governance/AppointmentsPage';
@@ -76,9 +80,55 @@ export function App() {
         />
 
         {/*
+          `/clubs/new` is declared BEFORE `/clubs/:id`. React Router 7 ranks static
+          segments above dynamic ones so the order does not actually decide it — but the
+          reader should not have to know that to be sure which one wins.
+        */}
+        <Route
+          path="/clubs"
+          element={
+            <RequireAuth>
+              <ClubsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/clubs/new"
+          element={
+            <RequireAuth>
+              <ClubFormPage mode="create" />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/clubs/:id"
+          element={
+            <RequireAuth>
+              <ClubProfilePage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/clubs/:id/edit"
+          element={
+            <RequireAuth>
+              <ClubFormPage mode="edit" />
+            </RequireAuth>
+          }
+        />
+
+        {/*
           Every admin screen gates on <Can> INSIDE itself as well as being routed here.
           The route is convenience; the server is the boundary, and it refuses regardless.
         */}
+        <Route
+          path="/admin/clusters"
+          element={
+            <RequireAuth>
+              <ClustersPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/admin/positions"
           element={

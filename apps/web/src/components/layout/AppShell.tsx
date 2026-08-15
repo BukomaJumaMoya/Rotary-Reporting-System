@@ -25,6 +25,15 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', glyph: '◎' },
+  // Held by every position on the slate, club officers included: the directory is the one
+  // screen everybody uses.
+  { to: '/clubs', label: 'Clubs', permission: 'club:read:district', glyph: '⌂' },
+  {
+    to: '/admin/clusters',
+    label: 'Clusters',
+    permission: 'cluster:manage:district',
+    glyph: '⬡',
+  },
   {
     to: '/admin/positions',
     label: 'Positions',
