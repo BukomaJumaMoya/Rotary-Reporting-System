@@ -130,6 +130,11 @@ total bytes for one report submission with a photo.
 
 Not a Claude Code session. Do it yourself, on real hardware.
 
+**The full checklist is `docs/17-Device-Pass.md`** — written out during session 2, including
+the setup that is easy to get wrong (a service worker needs a secure context, so a LAN
+address tests none of it) and a table for the measured numbers. The summary below is what it
+expands on.
+
 - A mid-range Android, not your best phone, on real mobile data
 - Install as a PWA from the browser
 - File a report in weak signal
@@ -144,13 +149,21 @@ Every friction point logged here becomes an M6 pilot fix.
 
 ## M3 exit checklist
 
-- [ ] Installable on Android and iOS
-- [ ] Three offline submissions → exactly three records
-- [ ] 409 replay never duplicates
-- [ ] Caches cleared on logout, verified by test
-- [ ] Under 250KB gzipped, enforced in CI
-- [ ] One report with photo under 500KB
-- [ ] Tested on real hardware over real mobile data
+Status as at session 2. **Ticked means proven, not written.**
+
+- [ ] Installable on Android and iOS — built (manifest, icons, prompt after the second
+      visit); unverified on hardware
+- [ ] Three offline submissions → exactly three records — proven in `outbox.test.ts`
+      against `fake-indexeddb`; **unverified on a real phone**, which is the point of
+      session 4
+- [x] 409 replay never duplicates — `outbox.test.ts`, and a second drain sends nothing
+- [ ] Caches cleared on logout, verified by test — `clearDeviceState()` runs on sign-out,
+      but there is **no test**; Cache Storage needs a browser environment, so this wants a
+      jsdom-plus-`Cache` harness or a Playwright case
+- [ ] Under 250KB gzipped, enforced in CI — currently **101.9 KB** gzipped, comfortably
+      inside; the CI gate itself is session 3
+- [ ] One report with photo under 500KB — client-side compression is session 3
+- [ ] Tested on real hardware over real mobile data — `docs/17-Device-Pass.md`, **not run**
 
 ---
 

@@ -22,7 +22,7 @@
     "build:contracts": "npm run build --workspace @dis/contracts",
     "typecheck": "npm run build:contracts && npm run typecheck --workspace @dis/api --workspace @dis/web",
     "test": "npm run build:contracts && npm run test --workspaces --if-present",
-    "test:report": "npm run build:contracts && npm run test --workspace @dis/api -- --reporter=json --outputFile=../../.tmp/vitest-report.json",
+    "test:report": "npm run build:contracts && npm run test --workspace @dis/api -- --reporter=json --outputFile=../../.tmp/vitest-report.json && npm run test --workspace @dis/web -- --reporter=json --outputFile=../../.tmp/vitest-report-web.json",
     "docs:check": "node scripts/doc-check.mjs",
     "db:generate": "npm run db:generate --workspace @dis/api",
     "db:migrate": "npm run db:migrate --workspace @dis/api",

@@ -13,5 +13,10 @@
     // worker registration imports. Without it that import is an unresolved module.
     "types": ["vite/client", "vite-plugin-pwa/client"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "vitest.config.ts"],
+
+  // The service worker is checked by `tsconfig.sw.json` instead. `lib.dom` and
+  // `lib.webworker` declare incompatible versions of the same globals — `self` above all —
+  // so a file that needs the worker types cannot share a program with the app.
+  "exclude": ["src/sw.ts"]
 }

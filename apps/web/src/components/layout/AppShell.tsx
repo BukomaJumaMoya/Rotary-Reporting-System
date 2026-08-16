@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAuth, useClearAuth } from '../../features/auth/useAuth';
 import { clearDeviceState } from '../../lib/offline/caches';
+import { startOutboxScheduler, useOutbox } from '../../lib/offline/submit';
 import { Button } from '../ui';
 import { cx } from '../../lib/cx';
 import { ConnectionBanner } from './ConnectionBanner';
@@ -23,6 +24,8 @@ interface NavItem {
   permission?: string;
   /** A short glyph for the bottom bar, where there is no room for words alone. */
   glyph: string;
+  /** A count shown beside the label. Rendered only when it is above zero. */
+  badge?: number;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -83,7 +86,16 @@ const NAV_ITEMS: NavItem[] = [
 
 function useVisibleNav(): NavItem[] {
   const { permissions } = useAuth();
-  return NAV_ITEMS.filter((item) => !item.permission || permissions.has(item.permission));
+  const { count } = useOutbox();
+
+  const visible = NAV_ITEMS.filter((item) => !item.permission || permissions.has(item.permission));
+
+  // Appears only when there is something waiting. A permanent "0 pending" entry would spend
+  // a slot in a bottom bar that has none to spare, and would train members to ignore it.
+  if (count > 0) {
+    visible.push({ to: '/pending', label: 'Pending', glyph: '↑', badge: count });
+  }
+  return visible;
 }
 
 /** The Rotaract wordmark. Never the Rotary wheel — Rotaract has its own mark. */
@@ -121,6 +133,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const items = useVisibleNav();
   const navigate = useNavigate();
   const clearAuth = useClearAuth();
+
+  // The drain loop lives as long as the signed-in shell does. It is what sends the queue on
+  // a device where the service worker never registered — an http:// LAN address, or iOS
+  // Safari, which has never shipped Background Sync.
+  useEffect(() => startOutboxScheduler(), []);
 
   const signOut = async () => {
     await api
@@ -160,6 +177,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                 >
                   <span aria-hidden="true">{item.glyph}</span>
                   {item.label}
+                  {item.badge ? (
+                    <span className="bg-cranberry-500 ml-auto rounded-full px-1.5 py-0.5 text-[11px] font-medium text-white">
+                      {item.badge}
+                    </span>
+                  ) : null}
                 </NavLink>
               </li>
             ))}
@@ -201,8 +223,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                     )
                   }
                 >
-                  <span aria-hidden="true" className="text-base">
+                  <span aria-hidden="true" className="relative text-base">
                     {item.glyph}
+                    {item.badge ? (
+                      <span className="bg-cranberry-500 absolute -top-1 -right-2 rounded-full px-1 text-[10px] leading-4 font-medium text-white">
+                        {item.badge}
+                      </span>
+                    ) : null}
                   </span>
                   {item.label}
                 </NavLink>

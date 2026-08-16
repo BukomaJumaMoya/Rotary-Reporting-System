@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // WebWorker, not DOM. The two libraries declare incompatible versions of `self` and of
+    // several event types, so the service worker gets a program of its own — which also
+    // means a `document` or `window` reference in `sw.ts` is a compile error rather than a
+    // runtime one on a member's phone.
+    "lib": ["ES2023", "WebWorker"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["src/sw.ts"]
+}

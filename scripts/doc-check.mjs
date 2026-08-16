@@ -21,7 +21,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -441,7 +441,13 @@ function checkCodeMap() {
 // ---------------------------------------------------------------------------
 
 function checkTestCount(state) {
-  const reportPath = join(ROOT, '.tmp/vitest-report.json');
+  // TWO suites since M3 session 2: the API's, and the web workspace's offline queue. The
+  // documented figure means "every test in the repository", so both reports are summed —
+  // counting only the API would let the web suite rot unnoticed, which is exactly the
+  // failure this check exists to catch.
+  const reportPaths = ['.tmp/vitest-report.json', '.tmp/vitest-report-web.json'].map((p) =>
+    join(ROOT, p),
+  );
   const claimed = Number(state.tests);
 
   const prose = [];
@@ -456,11 +462,12 @@ function checkTestCount(state) {
   if (prose.length) fail('test count (prose)', 'prose disagrees with dis:state', prose);
   else ok('test count (prose)', `${claimed}, consistent with dis:state`);
 
-  if (!existsSync(reportPath)) {
+  const missing = reportPaths.filter((p) => !existsSync(p));
+  if (missing.length) {
     skip(
       'test count (measured)',
-      'No .tmp/vitest-report.json. Run `npm run test:report` first — until then the ' +
-        `claim of ${claimed} tests is unverified, not verified.`,
+      `Missing ${missing.map((p) => relative(ROOT, p)).join(', ')}. Run \`npm run test:report\` ` +
+        `first — until then the claim of ${claimed} tests is unverified, not verified.`,
     );
     return;
   }
@@ -469,19 +476,22 @@ function checkTestCount(state) {
       .filter((f) => /\.(ts|tsx)$/.test(f))
       .map((f) => statSync(join(ROOT, f)).mtimeMs),
   );
-  if (statSync(reportPath).mtimeMs < newestSource) {
+  const oldestReport = Math.min(...reportPaths.map((p) => statSync(p).mtimeMs));
+  if (oldestReport < newestSource) {
     warn(
       'test count (measured)',
-      'vitest report is older than the newest source file — rerun `npm run test:report`.',
+      'a vitest report is older than the newest source file — rerun `npm run test:report`.',
     );
     return;
   }
-  let actual;
+  let actual = 0;
   try {
-    const report = JSON.parse(readFileSync(reportPath, 'utf8'));
-    actual = report.numTotalTests ?? report.numPassedTests;
+    for (const path of reportPaths) {
+      const report = JSON.parse(readFileSync(path, 'utf8'));
+      actual += report.numTotalTests ?? report.numPassedTests;
+    }
   } catch {
-    warn('test count (measured)', 'Could not parse .tmp/vitest-report.json.');
+    warn('test count (measured)', 'Could not parse a vitest report under .tmp/.');
     return;
   }
   if (actual !== claimed)

@@ -4,9 +4,10 @@
 describe what the system *should* be; this one records what has actually been built, what
 was decided along the way, and what is deliberately unfinished.
 
-Last updated: 15 August 2026, after M2 session 10. **M0, M1 and M2 are complete.**
+Last updated: 16 August 2026, after M3 session 2. **M0, M1 and M2 are complete; M3 is in
+progress.**
 
-<!-- dis:state milestone=M2 schema=v1.9 tests=414 -->
+<!-- dis:state milestone=M2 schema=v1.9 tests=426 -->
 
 ---
 
@@ -18,12 +19,17 @@ verifies most of what follows against the code, so if it is green the claims her
 merely assertions.
 
 **Where the build is.** M0 (foundations), M1 (governance core) and M2 (the reporting
-spine) are complete. **M3 — offline and mobile — is next**, and its session prompts are in
-`docs/14-ClaudeCode-M3-M4-Sessions.md`.
+spine) are complete. **M3 — offline and mobile — is in progress**: sessions 1 (the PWA
+shell) and 2 (the offline submission queue) are done, session 3 (the payload budget) is
+next, and session 4 is a manual device pass rather than a code session. Prompts are in
+`docs/14-ClaudeCode-M3-M4-Sessions.md`. **M3 is not closed** — do not run
+`/close-milestone` until session 3 has landed and session 4 has actually been performed on a
+real phone.
 
 A real club could use the system now: clubs, members, the membership event log and its
 derived roster, configurable activity types, activity reporting with photographs, and
-verification. What it cannot yet do is work without a signal, which is what M3 is for.
+verification. Since M3 session 2 it also works without a signal — a report saved with no
+connection is written to the device and sent on its own when one returns.
 
 **Read in this order.** `CLAUDE.md` for the axioms and the non-negotiable rules → this
 section → §0a for what the last milestone changed about how you must write code → the
@@ -128,7 +134,14 @@ full history is in §4.
 | 7 — Membership UI | **done** | `1fd0bad` |
 | 8 — Activity types and media | **done** | `db0107a` |
 | 9 — Activities API and reporting UI | **done** | `23f6134` |
-| 10 — M2 hardening | **done** | this commit |
+| 10 — M2 hardening | **done** | `358f893`, `611e913` |
+
+| M3 session | State | Commit |
+|---|---|---|
+| 1 — PWA shell and service worker | **done** | `1bcd510` |
+| 2 — Offline submission queue | **done** | this commit |
+| 3 — Payload budget | not started | |
+| 4 — Real device pass | **manual, not a code session** — checklist in `docs/17-Device-Pass.md`, **not yet run** | |
 
 CI runs typecheck → lint → format:check → test → build → `npm audit` against a
 `postgres:17` service container, and is green on `main`.
@@ -267,20 +280,29 @@ apps/api/prisma/
   tsconfig.json    so the seed is typechecked and linted like everything else
 
 apps/web/src/
+  sw.ts          THE SERVICE WORKER — hand-written, because it handles Background
+                 Sync. Own program: tsconfig.sw.json (WebWorker lib, not DOM).
   lib/           api.ts (fetch wrapper + ApiError) · queries.ts (TanStack keys,
-                 useList, useApiMutation) · cx.ts · toast.ts
+                 useList, useApiMutation) · cx.ts · toast.ts · uuid.ts
+  lib/offline/   outbox.ts   THE QUEUE — IndexedDB, backoff, 409-as-success
+                 transport.ts  send/sendFile, shared with sw.ts. No React.
+                 submit.ts   the one submission path + the drain scheduler
+                 caches.ts (cleared on sign-out) · connectivity.ts (heartbeat)
+                 pwa.ts (registration, update prompt, install prompt)
   components/    ui/index.tsx — the whole design system in one file
                  Can.tsx — permission-gated rendering, presentation only
-                 layout/AppShell.tsx — nav, year badge, district, sign-out
+                 layout/AppShell.tsx — nav, pending badge, year, district, sign-out
+                 layout/ConnectionBanner.tsx — offline, update, install; never modal
+  test/setup.ts  fake-indexeddb, for the web suite (vitest, node environment)
   features/
     auth/        LoginPage (password → TOTP → recovery), PasswordPages
                  (forgot, reset, accept invite), useAuth/useScope
-    lib/offline/ caches.ts (cleared on sign-out) · connectivity.ts (heartbeat)
-                 pwa.ts (registration, update prompt, install prompt)
-    components/layout/ConnectionBanner.tsx — offline, update and install, never modal
+    offline/     PendingPage — what is waiting to be sent, and why
     clubs/       ClubsPage (directory) · ClubProfilePage (tabs, one summary call)
                  ClubFormPage (charter and edit) · ClustersPage · types.ts
     activities/  ReportPage — THE screen: four steps, rendered from the type
+                 draft.ts — the draft's shape and storage; restoreReportDraft turns a
+                 refused submission back into a form the member can correct
                  ActivityPages — list, detail with verification, calendar
                  ActivityTypesPage — the field_config builder, with a live preview
     membership/  RecordEventPage — the screen a secretary uses most
@@ -293,11 +315,17 @@ apps/web/src/
 Dockerfile · fly.toml · .github/workflows/deploy-staging.yml · README.md
 ```
 
-**414 tests**, all integration-style against real PostgreSQL. The suites that are load
-bearing rather than incidental: `no-pii.test.ts` (walks every route unauthenticated),
-`invariants.test.ts` (37 ADR-012 guards), `scope*.test.ts` (the data access layer),
-`audit.test.ts`, `rollover.test.ts` (dry run and committed), and `prisma/seed.test.ts`,
-which runs the real seed and signs in as the seeded PIME Chair.
+**426 tests** — 414 in the API, integration-style against real PostgreSQL, and 12 in the web
+workspace against `fake-indexeddb`. The suites that are load bearing rather than incidental:
+`no-pii.test.ts` (walks every route unauthenticated), `invariants.test.ts` (37 ADR-012
+guards), `scope*.test.ts` (the data access layer), `audit.test.ts`, `rollover.test.ts` (dry
+run and committed), `prisma/seed.test.ts`, which runs the real seed and signs in as the
+seeded PIME Chair, and `lib/offline/outbox.test.ts`, where a bug means a club's report is
+lost or counted twice.
+
+**Run them one at a time.** Two concurrent vitest processes share the test database, and
+since the suite truncates every table between cases they will hang rather than fail —
+which looks exactly like a slow suite.
 
 ---
 
@@ -1173,6 +1201,120 @@ not know `pgboss` exists and leaves it behind. The next `migrate dev` then fails
 The migration now begins `DROP SCHEMA IF EXISTS pgboss CASCADE`, which is a no-op on any
 database where the migration has not already run.
 
+### M3 — offline and mobile
+
+#### Session 1 — the PWA shell
+
+**A service worker needs a SECURE CONTEXT, and `http://192.168.x.x` is not one.** Only
+`https:` and `localhost` qualify. That is exactly how this system gets tested from a phone on
+the same wifi, so on the machine where offline behaviour is most likely to be tried by hand,
+there is no service worker at all: no precache, no offline shell, no Background Sync.
+`pwa.ts` logs it through `onRegisterError` and carries on rather than failing, because the
+application is perfectly usable without one — but **anything that depends on the worker cannot
+be verified over a LAN address.** Use `localhost` with adb port forwarding, or a real
+deployment. This is why the outbox has an interval fallback and does not depend on the worker
+for correctness.
+
+**Registration is a page-level fact held in module scope**, not component state.
+`setState` inside an effect meant a cascading render, and under StrictMode it registered
+twice. Components subscribe through `useSyncExternalStore`.
+
+**No inline module-preload polyfill** (`build.modulePreload.polyfill = false`). Vite injects
+one as an INLINE script once a build has more than one chunk, and the CSP the API serves
+allows no inline script. Every browser this system targets supports modulepreload natively.
+
+#### Session 2 — the offline submission queue
+
+**The record is written to IndexedDB BEFORE any request is attempted — always, online or
+not.** The tempting alternative, "try the network and queue on failure", loses the submission
+in the one case that matters: the request left the device, the response never came back, and
+the tab was closed before anything was written down. Writing first costs a millisecond and
+makes that case survivable. `submit()` in `lib/offline/submit.ts` is the only path in.
+
+**`409` is SUCCESS.** It means the server already has this record, which is the outcome the
+queue wanted — a replay after an ambiguous failure. Treating it as an error leaves the item
+retrying something that has already worked. This API is inconsistent about which code it
+uses: activities and membership events answer `200` for a replay, clubs answer `409
+IDEMPOTENT_REPLAY`. The queue accepts both and does not care which.
+
+**Any other 4xx stops immediately.** It will be wrong the same way on the tenth attempt, and
+ten identical rejections on metered data help nobody. The item stays as `failed` with the
+server's message AND its `details`, so a validation failure still lands on the control that
+caused it rather than in a toast — `fieldErrorsFrom` handles both shapes (`details.fields`
+from Zod, `details.key` from a declared-field rule). Re-submitting the same form `put`s over
+the failed row, because the id is the same.
+
+**Nothing is ever discarded on the member's behalf.** Ten attempts and half an hour of
+backoff later, a failed item is still there, on the pending screen, with a reason and a
+Discard button that only the member presses.
+
+**`dependsOn` exists for exactly one case**: a secretary inducting somebody not yet in the
+system queues the PERSON and then the EVENT naming them. Both ids are client-generated, so
+the event is valid the moment the person exists — but not one attempt before, and sending it
+early would earn a `422` about ordering and mark it permanently failed. An item leaves the
+outbox the moment the server has it, so "the dependency is gone" is exactly "the parent
+exists".
+
+**`createdAt` is strictly increasing, not `Date.now()`.** Three saves inside one millisecond
+would otherwise leave the order of a member's evening to IndexedDB — and an item that
+`dependsOn` another must sort after it.
+
+**The service worker is hand-written (`injectManifest`), not generated.** A generated worker
+cannot handle a `sync` event, which is the whole point of this milestone: a secretary who
+files three reports in a village, locks the phone and gets on a bus should not have to
+remember to open the app. The queue logic is NOT duplicated into it — `sw.ts` imports
+`drainOutbox` and `lib/offline/transport.ts`, the same modules the page uses, so a background
+send posts exactly the body the member reviewed. `transport.ts` exists solely so both halves
+can share it without the worker pulling in React.
+
+**Not `workbox-background-sync`.** Its plugin queues raw `Request` objects in its own store,
+which cannot express either of the two things this queue needs: a `409` counted as success,
+and a photograph that must follow the record it belongs to.
+
+**The sync handler REJECTS while anything is still queued.** That is the contract — Chrome
+retries the event with its own backoff. A permanently failed item is excluded from that
+count, or the event would live forever waiting for something only a member can fix.
+
+**`lib.dom` and `lib.webworker` cannot share a program**, so `src/sw.ts` is excluded from
+`tsconfig.json` and checked by `tsconfig.sw.json` instead. A useful side effect: a `document`
+or `window` reference in the worker is now a compile error rather than a runtime one on
+somebody's phone.
+
+**The web workspace has a test suite now**, `apps/web/vitest.config.ts`, with
+`fake-indexeddb` in `src/test/setup.ts`. It runs in the **node** environment, not jsdom:
+booting jsdom cost 56 seconds against 0.8, and `fake-indexeddb` installs real IndexedDB
+globals either way. A test that genuinely needs a DOM asks for one with
+`// @vitest-environment jsdom` at the top of its own file.
+
+**Queued items are shown ABOVE the activities table, not mixed into it.** A queued report has
+no server id, so a row in the table navigates nowhere and throws off the count and the paging
+beneath it. Separating them also tells the truth: these are on this phone, and the district
+cannot see them yet.
+
+**`test:report` now writes TWO reports** and `doc-check` sums them. The documented test count
+means every test in the repository; counting only the API would let the web suite rot
+unnoticed, which is the failure that check exists to catch.
+
+**The outbox survives sign-out** while every cache is destroyed. Those pull in opposite
+directions and both are deliberate: cached responses are the DISTRICT's data on a shared
+handset, and queued submissions are the MEMBER's own unsent work. Discarding the queue on
+sign-out would silently lose the three reports somebody filed in a basement.
+
+**A refused report can be reopened in the form, photographs and all** — "Correct it" on the
+pending screen, `restoreReportDraft` in `features/activities/draft.ts`. Without it, "Try
+again" on an unchanged body is a loop whose only exit is discarding the work and retyping it.
+The id is carried across, so the correction REPLACES the failed outbox item rather than
+becoming a second one. The photographs are handed over in a module variable because Blobs
+cannot go in sessionStorage; that is sound only because it is a same-tab navigation to a
+screen that reads it on its next render. **The read does not consume it** — a `useState`
+initialiser runs twice under StrictMode and React discards the first result, so a consuming
+read would have handed the photographs to a render that was thrown away. Clearing is an
+effect, which runs after the render that survived.
+
+**If IndexedDB is unavailable, `submit()` sends directly.** A locked-down browser must not
+mean a member who cannot file a report AT ALL — but the message then says plainly that this
+device cannot save work offline, rather than claiming something was saved.
+
 ---
 
 ## 4a. Axiom conformance
@@ -1250,6 +1392,11 @@ re-checked whenever a new write path is added.
 | A dead-lettered job cannot be re-run from the UI | `JOB_FAILED` in `audit_log` carries the queue, the error and the payload, which is enough to re-run by hand | M7 |
 | No list endpoint accepts `?format=xlsx` yet | the export module queues a job and returns a signed URL; every list is written to take the parameter | M7 |
 | Media is never re-processed if the worker was down at upload | the row keeps its original key and reports `isProcessed: false`, so the state is visible rather than silent; a sweep would be a second scheduler for one case | M3, with the offline queue |
+| Only ACTIVITIES, PERSONS and MEMBERSHIP EVENTS go through the outbox | those are what a club officer creates in the field. Governance and administration screens are used at a desk, and queueing an appointment nobody can see the effect of until it syncs would be worse than refusing it offline | not planned |
+| A queued photograph that fails to upload is dropped silently | the activity is filed, which is what the club is assessed on, and the image can be added again from the detail screen; a per-file retry queue is a second queue with its own failure modes | revisit if it happens in practice |
+| Background Sync cannot be exercised over a LAN address | a service worker needs a secure context, so `http://192.168.x.x` gets no worker at all. Use `localhost` with adb port forwarding, or staging | not fixable |
+| Client-side image compression is not built | M3 session 3. Until then a queued photograph is the camera's full-size original, which is the wrong thing to hold on a phone and the wrong thing to send on metered data | **M3 session 3** |
+| "Caches cleared on logout" has no automated test | `clearDeviceState()` runs on sign-out and is straightforward, but Cache Storage needs a browser: the web suite runs in node, and asserting it properly wants a jsdom-plus-`Cache` harness or a Playwright case. It is on the M3 exit checklist and is currently proven by reading the code, which is not the same thing | **M3 session 3**, with the CI bundle gate |
 | A malformed or unauthorised `?year=` fails EVERY authenticated route, including `/auth/logout` | context resolution is global and eager; sending `?year=` to logout is a client bug | not planned |
 | A nested create of a parent alongside its child is not scope-checked | there is no parent id to check; the parent's own write is stamped, so the child lands under a stamped row | not planned |
 | Permission codes match exactly — no `club:read:*` wildcard | a matcher would turn a typo in a seeded row into a silent grant | not planned |
@@ -1266,6 +1413,13 @@ re-checked whenever a new write path is added.
 removes `@esbuild/*`, breaking `tsx` and therefore `npm run dev`. They are pinned in the
 root `optionalDependencies` and **must be version-bumped together with esbuild**. `sharp`
 will hit the same trap in M2.
+
+**A service worker needs a SECURE CONTEXT.** Only `https:` and `localhost` qualify, so
+opening the app from a phone at `http://192.168.x.x` — the obvious way to test it — gets no
+service worker at all: no precache, no offline shell, no Background Sync. The app itself
+works fine, and `pwa.ts` says so in the console rather than failing, but **nothing that
+depends on the worker can be verified that way.** The outbox deliberately does not depend on
+it: its interval scheduler is what actually drains the queue in that setup.
 
 **`resetDatabase()` preserves `notification_templates`** (and `_prisma_migrations`). Any
 future reference data inserted by a migration must be added to that list, or tests will

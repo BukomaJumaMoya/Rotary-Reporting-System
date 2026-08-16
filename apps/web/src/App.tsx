@@ -25,6 +25,7 @@ import { ClustersPage } from './features/clubs/ClustersPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { MembershipHistoryPage, TransitionsPage } from './features/membership/MembershipPages';
 import { RecordEventPage } from './features/membership/RecordEventPage';
+import { PendingPage } from './features/offline/PendingPage';
 import { AuditPage, InvitationsPage, RolloverPage } from './features/governance/AdminPages';
 import { AppointmentsPage } from './features/governance/AppointmentsPage';
 import { CommitteesPage } from './features/governance/CommitteesPage';
@@ -150,6 +151,18 @@ export function App() {
           element={
             <RequireAuth>
               <ReportPage />
+            </RequireAuth>
+          }
+        />
+        {/*
+          Reachable whether or not the badge is showing. A member who remembers filing
+          something and wants to check on it should be able to type the address.
+        */}
+        <Route
+          path="/pending"
+          element={
+            <RequireAuth>
+              <PendingPage />
             </RequireAuth>
           }
         />

@@ -15,14 +15,16 @@ export default defineConfig({
      * origin, `/api` is a same-origin path rather than a cross-origin fetch, and there is no
      * CORS anywhere in the sync path.
      *
-     * **The caching rules below are a data-protection requirement, not a performance one.**
-     * A response containing contact details must not outlive the session that fetched it —
-     * a shared phone is the normal case in a Rotaract club, and a cache that survives logout
-     * is the predecessor's failure in a new form. Every API cache is therefore either
-     * reference data with no personal content, or short-lived; and `clearAllCaches()` in
-     * `lib/offline/caches.ts` runs on sign-out.
+     * `injectManifest`, not `generateSW`: the worker is written by hand in `src/sw.ts`
+     * because it has to handle a **Background Sync** event, which a generated worker cannot
+     * express. The routing and caching rules live there too — see that file for why each
+     * cache is shaped the way it is, which is a data-protection argument rather than a
+     * performance one.
      */
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'prompt',
       includeAssets: ['favicon-32.png', 'apple-touch-icon.png', 'icon.svg'],
       manifest: {
@@ -56,78 +58,10 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        // The app shell and every hashed asset. Cache-first is safe precisely because the
+      injectManifest: {
+        // The app shell and every hashed asset. Precaching is safe precisely because the
         // filenames are hashed: a new build is a new name, never a stale hit.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-
-        // `/api` must never be served from the navigation fallback. Without this a request
-        // for an endpoint that 404s would be answered with index.html by the SERVICE WORKER
-        // — the same failure M2 session 2 designed the server-side catch-all to avoid, and
-        // harder to see because it only happens once the worker is installed.
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//],
-
-        runtimeCaching: [
-          {
-            /**
-             * Reference data: activity types, clubs, positions, clusters, regions.
-             *
-             * Stale-while-revalidate because it changes rarely and the reporting form is
-             * unusable without it — a secretary opening `/report` with no signal should get
-             * the type list they saw yesterday rather than an empty screen.
-             *
-             * NONE of these carry personal data. `/clubs` carries meeting venues, which are
-             * the district's own record and are already behind a session; that is the
-             * furthest this cache goes.
-             */
-            urlPattern: /^\/api\/v1\/(activity-types|clubs|positions|clusters|regions)(\?|$)/,
-            method: 'GET',
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'dis-reference',
-              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 7 },
-              cacheableResponse: { statuses: [200] },
-            },
-          },
-          {
-            /**
-             * Everything else the API serves, including responses that MAY carry contact
-             * details — persons, rosters, activities with attendees.
-             *
-             * Network-first with a short fallback: the cache exists so a page opened in a
-             * lift still renders, not so the device keeps a copy of the district's members.
-             * One hour, sixty entries, and cleared entirely on sign-out.
-             */
-            urlPattern: /^\/api\/v1\//,
-            method: 'GET',
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'dis-api',
-              networkTimeoutSeconds: 4,
-              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 },
-              cacheableResponse: { statuses: [200] },
-            },
-          },
-          {
-            /**
-             * Photographs, fetched from storage through short-lived signed URLs.
-             *
-             * Cache-first on the URL is safe: the key is immutable and the signature is part
-             * of the query, so a new signature is a new cache entry rather than a stale
-             * image. Capped hard — a district's photo library is not something a phone
-             * should end up holding.
-             */
-            urlPattern: /\/(activity-media|media)\//,
-            method: 'GET',
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'dis-media',
-              expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 },
-              cacheableResponse: { statuses: [200] },
-            },
-          },
-        ],
       },
       devOptions: {
         // Off in development: a service worker caching a dev server is how an afternoon

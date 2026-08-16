@@ -1,7 +1,7 @@
 # Rotaract District Information System (DIS)
 ### Technical documentation package — District 9218, RY 2027–2028
 
-**Status:** Design baseline v1.0 · schema at v1.6 · **in build, M0 sessions 1–3 complete**
+**Status:** Design baseline v1.0 · schema at v1.9 · **in build — M0, M1 and M2 complete; M3 in progress**
 **Prepared:** August 2026
 **Target launch:** 1 July 2027 (district charter date)
 **Ownership:** District property. Repository to be held under a district-controlled GitHub organisation from first commit.
@@ -25,11 +25,18 @@ A complete design baseline sufficient to begin implementation immediately, writt
 | 08 | `08-Incumbent-Assessment.md` | What the predecessor system does, and why several rules exist |
 | 09 | `09-ClaudeCode-M0-Sessions.md` | Session-by-session prompts for M0, with progress |
 | 10 | `10-Build-Log.md` | **What has actually been built** — state, decisions, traps, what is stubbed |
+| 11 | `11-Build-Conventions.md` | How to write code in this repository, as the platform now is |
+| 12 | `12-ClaudeCode-M1-Sessions.md` | Session prompts for M1 — governance core |
+| 13 | `13-ClaudeCode-M2-Sessions.md` | Session prompts for M2 — the reporting spine |
+| 14 | `14-ClaudeCode-M3-M4-Sessions.md` | Session prompts for M3 — offline and mobile — and M4 — finance |
+| 15 | `15-ClaudeCode-M5-Sessions.md` | Session prompts for M5 — the assessment engine |
+| 16 | `16-ClaudeCode-M6-M9-Sessions.md` | Session prompts for M6 to M9 |
+| 17 | `17-Device-Pass.md` | The manual checklist for M3 session 4 — the part no test can do |
 | — | `CLAUDE.md` | Project context file for Claude Code — drop at repository root |
 
 ## Reading order
 
-**If you are picking up the build:** `CLAUDE.md` → `10-Build-Log.md` → the session prompt in `09-ClaudeCode-M0-Sessions.md`. The design documents describe the intended system; `10-Build-Log.md` describes the one that exists.
+**If you are picking up the build:** `CLAUDE.md` → `10-Build-Log.md` §0 and §0a → the session prompt for the milestone you are implementing. The design documents describe the intended system; `10-Build-Log.md` describes the one that exists.
 
 **If you are starting from scratch:** `CLAUDE.md` → `02-Architecture.md` → `schema.sql` → `07-Roadmap.md`.
 

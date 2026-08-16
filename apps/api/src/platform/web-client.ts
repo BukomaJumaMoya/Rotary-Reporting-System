@@ -71,14 +71,17 @@ export function serveWebClient(app: Express): void {
         // `sw.js` is a deploy the device does not notice until the entry expires — and the
         // service worker is the thing that decides how everything else is cached, so a
         // stale one is a stale application with no way to correct it from the server.
-        const isWorker = /[/\\](sw\.js|workbox-[^/\\]+\.js|manifest\.webmanifest)$/.test(filePath);
+        //
+        // Checked AFTER `hashed`, so the hashed workbox-window chunk under /assets keeps its
+        // year rather than being re-fetched on every visit for the sake of a name match.
+        const isWorker = /[/\\](sw\.js|manifest\.webmanifest)$/.test(filePath);
 
         res.setHeader(
           'Cache-Control',
-          isWorker
-            ? 'no-cache'
-            : hashed
-              ? 'public, max-age=31536000, immutable'
+          hashed
+            ? 'public, max-age=31536000, immutable'
+            : isWorker
+              ? 'no-cache'
               : 'public, max-age=3600',
         );
       },

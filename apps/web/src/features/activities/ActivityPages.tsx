@@ -17,6 +17,7 @@ import {
 } from '../../components/ui';
 import { api } from '../../lib/api';
 import { cx } from '../../lib/cx';
+import { useOutbox } from '../../lib/offline/submit';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
 import { useAuth, useScope } from '../auth/useAuth';
 
@@ -55,6 +56,41 @@ const VERIFICATION_TONES: Record<string, 'success' | 'warning' | 'danger' | 'neu
   QUERIED: 'warning',
   REJECTED: 'danger',
 };
+
+/**
+ * Reports this device has saved but not yet sent.
+ *
+ * ABOVE the table, not mixed into it. A queued report has no server id, so a row in the
+ * table would be a row that navigates nowhere, and it would throw off the count and the
+ * paging beneath it. Separating them also tells the truth: these are on this phone, and the
+ * district cannot see them yet.
+ */
+function QueuedActivities() {
+  const { items } = useOutbox();
+  const queued = items.filter((item) => item.endpoint === '/activities');
+  if (queued.length === 0) return null;
+
+  return (
+    <Card className="bg-warning-100 mb-4">
+      <p className="text-warning-700 mb-2 text-sm font-medium">
+        {queued.length} report{queued.length === 1 ? '' : 's'} saved on this device, not yet sent
+      </p>
+      <ul className="flex flex-col gap-1">
+        {queued.map((item) => (
+          <li key={item.id} className="text-ink-700 flex items-center gap-2 text-sm">
+            <Badge tone={item.status === 'failed' ? 'danger' : 'warning'}>
+              {item.status === 'failed' ? 'Needs attention' : 'Waiting'}
+            </Badge>
+            <span className="truncate">{item.label}</span>
+          </li>
+        ))}
+      </ul>
+      <Link to="/pending" className="text-cranberry-600 mt-2 inline-block text-sm font-medium">
+        See what is waiting
+      </Link>
+    </Card>
+  );
+}
 
 export function ActivitiesPage() {
   const navigate = useNavigate();
@@ -173,6 +209,8 @@ export function ActivitiesPage() {
           />
         </div>
       </Card>
+
+      <QueuedActivities />
 
       <Card>
         {activities.isPending ? (

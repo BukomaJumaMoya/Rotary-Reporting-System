@@ -141,13 +141,15 @@ A checklist. All of it is already true of the M0 modules; copy their shape.
 
 ## 4. Background jobs
 
-**There is no worker process yet.** `fly.toml` has the process group commented out and
-pg-boss is not built. Notifications deliver inline; the `notifications` row is already the
-queue.
+**BUILT in M2 session 1.** pg-boss (pinned to the v10 line — v11+ requires Node 22 and this
+project's baseline is 20), its own `pgboss` schema, a typed job registry, dead lettering into
+`audit_log`, and a second process group in `fly.toml` running the same image. Media
+processing, erasure and notification delivery all run on it. The scoring job (M5), goal
+snapshots (M7) and export generation inherit it.
 
-**pg-boss lands in M2**, immediately before media processing, which is the first real need.
-Everything after inherits it: the scoring job (M5), goal snapshots (M7), the notification
-drain, export generation.
+Every job payload carries `districtId` and `rotaryYearId` and is validated **on receipt**;
+`runJob` hands the handler a `systemContext`, never the ids. See Build-Log §4 "M2 session 1"
+for why a bad payload dead-letters immediately rather than retrying.
 
 **Jobs have no request, so they need a system context. BUILT** in M1 session 6, with
 rollover — the first thing that iterates every club without a session.

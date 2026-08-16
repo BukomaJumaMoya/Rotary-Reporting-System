@@ -87,6 +87,8 @@ apps/api/src/
 apps/web/src/
   features/<name>/         mirrors API modules
   components/ lib/
+  lib/offline/             the outbox, the drain scheduler, connectivity, the PWA
+  sw.ts                    the service worker — its own tsconfig (WebWorker, not DOM)
 packages/contracts/        Zod schemas shared by both
 ```
 
@@ -125,10 +127,12 @@ Priority order:
 1. **Assessment resolvers** — 80%+ coverage, unit tested with fixture data. A scoring bug is an award scandal.
 2. **Permission resolution** — every position × every endpoint class.
 3. **Year rollover** — integration tested, both dry-run and committed paths. Built in M1; `modules/org/rollover.test.ts`.
-4. **Offline sync idempotency** — same UUID posted twice yields one row.
+4. **Offline sync idempotency** — same UUID posted twice yields one row. Built in M3 s2; `apps/web/src/lib/offline/outbox.test.ts` (vitest + `fake-indexeddb`, node environment).
 5. **No-PII-unauthenticated** — an automated test that walks every route and asserts unauthenticated requests never return contact fields. This one is mandatory; it guards the failure this project exists to correct.
 
 CRUD does not need exhaustive coverage. Do not chase a coverage number.
+
+**Run the suites one at a time.** Two concurrent vitest processes share the test database, and since the suite truncates every table between cases they hang rather than fail — which is indistinguishable from a slow run.
 
 ---
 
@@ -206,7 +210,8 @@ permission, an error code or a table.
 ## Current phase
 
 **M0 — Foundations, M1 — Governance core and M2 — the reporting spine are all complete**
-(August 2026). `docs/schema.sql` is at v1.9; 414 tests.
+(August 2026). **M3 — offline and mobile — is in progress**: sessions 1 and 2 are done,
+session 3 (the payload budget) is next. `docs/schema.sql` is at v1.9; 426 tests.
 
 M0: monorepo and CI, schema translated and migrated, session authentication with lockout,
 mail delivery, TOTP with encrypted secrets and recovery codes, the request context and
@@ -237,10 +242,17 @@ fellowship report with a photograph, on an Android phone, unassisted, in under t
 straight into. Every part of that path is built and tested. Whether it takes three minutes
 for somebody who has never seen it is not a question the suite can answer.
 
-**Next: M3 — offline and mobile.** The first milestone where a write can arrive from a
-device that has been out of signal for a day. Client-generated ids and idempotent creates are
-already in place across clubs, membership events and activities for exactly this reason —
-`docs/14-ClaudeCode-M3-M4-Sessions.md`.
+**M3 sessions 1 and 2 are built.** The app is an installable PWA, and everything a club
+officer creates — activities, persons, membership events — goes through **the outbox** in
+`apps/web/src/lib/offline/`. The record is written to IndexedDB **before** any request is
+attempted, always, online or not; a `409` from the server counts as SUCCESS, because that is
+what a client-generated id is for. Do not add a second submission path: `submit()` is the
+only way a club officer's write reaches the API.
+
+**Next: M3 session 3 — the payload budget.** Client-side image compression, route-level code
+splitting, and a CI gate at 250 KB gzipped. Then session 4, which is not a coding session at
+all: the manual device pass in `docs/17-Device-Pass.md`, which has **not been run**, and
+without which M3 cannot be called done.
 
 See `docs/09-ClaudeCode-M0-Sessions.md`, `docs/12-ClaudeCode-M1-Sessions.md` and
 `docs/13-ClaudeCode-M2-Sessions.md` for the session prompts already used,

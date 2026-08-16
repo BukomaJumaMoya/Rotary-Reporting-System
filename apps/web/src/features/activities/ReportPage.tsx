@@ -1,13 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import type { ActivityField, ActivityType } from '@dis/contracts';
-import { ApiError, api, apiRequest } from '../../lib/api';
 import { Button, Card, Input, PageHeader, Select, SkeletonList } from '../../components/ui';
 import { cx } from '../../lib/cx';
-import { queryKeys, useApiMutation, useList } from '../../lib/queries';
-import { uuid } from '../../lib/uuid';
+import { submit as queueSubmission } from '../../lib/offline/submit';
+import { queryKeys, useList } from '../../lib/queries';
+import { useToast } from '../../lib/toast';
 import { useAuth } from '../auth/useAuth';
 import type { ClubListResponse } from '../clubs/types';
+import {
+  clearDraft,
+  clearHandoffFiles,
+  emptyDraft,
+  loadDraft,
+  peekHandoffFiles,
+  saveDraft,
+  type Draft,
+} from './draft';
 
 /**
  * THE screen. A club secretary, on an Android phone, at eleven at night, on metered data.
@@ -18,67 +28,9 @@ import type { ClubListResponse } from '../clubs/types';
  * is no per-type branch anywhere in this file, which is what makes adding an activity type a
  * row rather than a release.
  *
- * Progress survives navigating away and back — sessionStorage, not a server draft. A
- * secretary who taps a notification mid-report and comes back should not start again, and a
- * draft on the server is a row somebody has to clean up.
- *
- * The activity id is generated HERE, so submitting twice on a bad connection produces one
- * activity (ADR-006) — through `uuid()`, never `crypto.randomUUID()`, which is
- * secure-context only and therefore undefined on any http:// origin that is not localhost.
+ * Progress survives navigating away and back, and a REFUSED report can be reopened here from
+ * the pending screen with everything still in it — see `draft.ts`, which owns both.
  */
-
-const DRAFT_KEY = 'dis:report-draft';
-
-interface Draft {
-  step: number;
-  activityId: string;
-  activityTypeId: string;
-  clubId: string;
-  title: string;
-  description: string;
-  startsAt: string;
-  venue: string;
-  narrativeReport: string;
-  attendanceMembers: string;
-  attendanceGuests: string;
-  beneficiariesCount: string;
-  extra: Record<string, string>;
-  areaOfFocusCodes: string[];
-}
-
-function emptyDraft(): Draft {
-  return {
-    step: 1,
-    activityId: uuid(),
-    activityTypeId: '',
-    clubId: '',
-    title: '',
-    description: '',
-    // Most reports are filed about something that has just happened, so "now" is right far
-    // more often than an empty field.
-    startsAt: new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
-      .toISOString()
-      .slice(0, 16),
-    venue: '',
-    narrativeReport: '',
-    attendanceMembers: '',
-    attendanceGuests: '',
-    beneficiariesCount: '',
-    extra: {},
-    areaOfFocusCodes: [],
-  };
-}
-
-function loadDraft(): Draft {
-  try {
-    const stored = sessionStorage.getItem(DRAFT_KEY);
-    if (!stored) return emptyDraft();
-    return { ...emptyDraft(), ...(JSON.parse(stored) as Partial<Draft>) };
-  } catch {
-    // A corrupt draft is not worth an error screen; it is worth a fresh form.
-    return emptyDraft();
-  }
-}
 
 const AREAS = [
   { code: 'PEACE', label: 'Peacebuilding' },
@@ -96,16 +48,28 @@ interface GroupedTypes {
 
 export function ReportPage() {
   const navigate = useNavigate();
+  const toast = useToast();
+  const queryClient = useQueryClient();
   const { permissions } = useAuth();
   const [draft, setDraft] = useState<Draft>(loadDraft);
-  const [files, setFiles] = useState<File[]>([]);
+  // `Blob[]`, not `File[]`: a photograph coming back from the outbox is a Blob, and the
+  // filename a File would carry is thrown away by the server anyway — uploads are typed by
+  // magic bytes and stored under a generated key.
+  //
+  // Peeked here and cleared in the effect below: a `useState` initialiser runs twice under
+  // StrictMode and React discards the first result, so consuming it here would hand the
+  // photographs to a render that is thrown away and leave the surviving one empty.
+  const [files, setFiles] = useState<Blob[]>(peekHandoffFiles);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => clearHandoffFiles(), []);
 
   // Persisted on every change rather than on a timer: the tab that gets killed is the one
   // that was backgrounded, and a timer that has not fired yet has saved nothing.
   useEffect(() => {
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    saveDraft(draft);
   }, [draft]);
 
   const types = useList<GroupedTypes>(queryKeys.activityTypes, '/activity-types', {
@@ -118,12 +82,6 @@ export function ReportPage() {
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
   };
-
-  const submit = useApiMutation(
-    async (body: Record<string, unknown>) =>
-      api.post<{ data: { id: string } }>('/activities', body),
-    { invalidate: [queryKeys.activities, queryKeys.clubs] },
-  );
 
   if (!permissions.has('activity:create:club')) {
     return (
@@ -158,30 +116,50 @@ export function ReportPage() {
       areaOfFocusCodes: draft.areaOfFocusCodes,
     };
 
-    const created = await submit.mutateAsync(payload).catch((error: unknown) => {
-      if (error instanceof ApiError) {
-        // The server names the field it is missing in `details.key`, so the message lands
-        // on the control rather than in a toast the member has to translate.
-        const key = typeof error.details?.['key'] === 'string' ? error.details['key'] : null;
-        setFieldErrors(key ? { [key]: error.message } : error.fieldErrors);
-      }
-      return null;
+    // Through the OUTBOX, not straight to the API.
+    //
+    // The report is written to this device before any request is attempted, so a secretary
+    // who taps Submit in a basement, on a bus, or on a connection that dies mid-request has
+    // filed it either way. Photographs travel with it and go up after the activity exists.
+    setIsSubmitting(true);
+    const result = await queueSubmission({
+      id: draft.activityId,
+      kind: 'Activity',
+      label: draft.title.trim() || type.name,
+      endpoint: '/activities',
+      body: payload,
+      files,
     });
-    if (!created) return;
+    setIsSubmitting(false);
 
-    // Photographs after the activity exists — they need its id. Sequentially, because a
-    // phone on 3G uploading four images at once finishes none of them first.
-    for (const file of files) {
-      const form = new FormData();
-      form.append('file', file);
-      await apiRequest(`/activities/${created.data.id}/media`, {
-        method: 'POST',
-        formData: form,
-      }).catch(() => undefined);
+    // A 4xx that is genuinely about this report — a missing narrative, an absent area of
+    // focus. The item is on the pending screen, but the fix belongs here, on the field, so
+    // the member stays on the form with the message beside the control that caused it.
+    if (!result.delivered && result.error) {
+      setFieldErrors(result.fieldErrors);
+      toast.error(result.error);
+      setDraft((current) => ({ ...current, step: 2 }));
+      return;
     }
 
-    sessionStorage.removeItem(DRAFT_KEY);
-    navigate(`/activities/${created.data.id}`);
+    // The draft is cleared either way: the outbox owns the data now. Leaving it behind would
+    // let the member edit a report that is already queued and produce two — and if they do
+    // want to change it, "Correct it" on the pending screen is the way, because that path
+    // keeps the id.
+    clearDraft();
+    setDraft(emptyDraft());
+    setFiles([]);
+
+    if (result.delivered) {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.activities });
+      navigate(`/activities/${draft.activityId}`);
+      return;
+    }
+
+    // Queued. Not an error, and never presented as one — the work is safe and will go on
+    // its own. The activity detail page would 404, so the pending screen is where to land.
+    toast.success('Saved on this phone. It will be sent when there is a connection.');
+    navigate('/pending');
   };
 
   if (types.isPending) return <SkeletonList rows={4} />;
@@ -435,7 +413,7 @@ export function ReportPage() {
           </dl>
 
           <div className="mt-4 flex flex-wrap gap-3">
-            <Button isLoading={submit.isPending} onClick={() => void finish()}>
+            <Button isLoading={isSubmitting} onClick={() => void finish()}>
               Submit
             </Button>
             <Button variant="secondary" onClick={() => set('step', 3)}>

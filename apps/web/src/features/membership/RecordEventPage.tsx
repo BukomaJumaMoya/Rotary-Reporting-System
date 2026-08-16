@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ApiError, api } from '../../lib/api';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Input, PageHeader, Select, SkeletonList } from '../../components/ui';
 import { cx } from '../../lib/cx';
-import { queryKeys, useApiMutation, useList } from '../../lib/queries';
+import { submit as queueSubmission } from '../../lib/offline/submit';
+import { queryKeys, useList } from '../../lib/queries';
+import { useToast } from '../../lib/toast';
 import { uuid } from '../../lib/uuid';
 import { useAuth } from '../auth/useAuth';
 import type { ClubListResponse } from '../clubs/types';
-import type { MembershipEventResponse, PersonListResponse } from './types';
+import type { PersonListResponse } from './types';
 
 /**
  * Recording a membership event — the most-used screen a club secretary has.
@@ -19,6 +21,11 @@ import type { MembershipEventResponse, PersonListResponse } from './types';
  *
  * The client generates the event id, so tapping Save twice on a bad connection produces one
  * row (ADR-006). The server answers 200 rather than 409 for the replay.
+ *
+ * Both writes go through the OUTBOX, and the event DEPENDS on the person. A secretary
+ * inducting somebody new offline queues two records: the person, then the event that names
+ * them. Sending the event first would earn a `422` for a person who simply has not arrived
+ * yet, so the queue holds it until its prerequisite is gone.
  */
 
 /** Most common first. This order is the whole screen. */
@@ -57,6 +64,8 @@ const NEEDS_ROTARY_CLUB = new Set<EventType>(['TRANSITION_TO_ROTARY']);
 
 export function RecordEventPage() {
   const navigate = useNavigate();
+  const toast = useToast();
+  const queryClient = useQueryClient();
   const [params] = useSearchParams();
   const { permissions } = useAuth();
 
@@ -72,6 +81,7 @@ export function RecordEventPage() {
   const [counterpartyClubId, setCounterpartyClubId] = useState('');
   const [rotaryClubName, setRotaryClubName] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = useState(false);
 
   const clubs = useList<ClubListResponse>([...queryKeys.clubs, 'picker'], '/clubs', {
     pageSize: 100,
@@ -81,21 +91,6 @@ export function RecordEventPage() {
     '/persons',
     { pageSize: 20, ...(personSearch.length >= 2 ? { q: personSearch } : {}) },
     { enabled: personSearch.length >= 2 },
-  );
-
-  const record = useApiMutation(
-    async (body: Record<string, unknown>) =>
-      api.post<MembershipEventResponse>('/membership/events', body),
-    {
-      invalidate: [queryKeys.membership, queryKeys.clubs],
-      successMessage: 'Recorded',
-    },
-  );
-
-  const createPerson = useApiMutation(
-    async (body: { firstName: string; lastName: string }) =>
-      api.post<{ data: { id: string } }>('/persons', body),
-    { invalidate: [queryKeys.persons] },
   );
 
   if (!permissions.has('membership:write:club')) {
@@ -111,24 +106,62 @@ export function RecordEventPage() {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setFieldErrors({});
+    if (!clubId || !eventType) return;
 
-    // Create the person first if the secretary typed a new name rather than picking one.
-    // Inline, because forcing a separate "add member" journey turns a two-tap job into a
-    // two-screen one and is where a secretary gives up.
+    setIsSaving(true);
+
+    // The person first, if the secretary typed a name rather than picking one. Inline,
+    // because forcing a separate "add member" journey turns a two-tap job into a two-screen
+    // one and is where a secretary gives up.
+    //
+    // The id is generated HERE, before anything is sent, which is what lets the event that
+    // references this person be queued in the same breath while offline.
     let subjectId = personId;
-    if (!subjectId && newPerson) {
-      const created = await createPerson.mutateAsync(newPerson).catch(() => null);
-      if (!created) return;
-      subjectId = created.data.id;
-      setPersonId(subjectId);
-    }
-    if (!subjectId || !clubId || !eventType) return;
+    let personQueueId: string | null = null;
 
-    record.mutate(
-      {
-        // The CLIENT generates the id, so tapping Save twice on a bad connection produces
-        // one row rather than two members.
-        id: uuid(),
+    if (!subjectId && newPerson) {
+      subjectId = uuid();
+      personQueueId = subjectId;
+      setPersonId(subjectId);
+
+      const person = await queueSubmission({
+        id: subjectId,
+        kind: 'Member',
+        label: `${newPerson.firstName} ${newPerson.lastName}`,
+        endpoint: '/persons',
+        body: { id: subjectId, ...newPerson },
+      });
+
+      // Refused — most plausibly this account may record events but may not register a new
+      // member. Stop here and say so: queueing the event behind a person who will never
+      // exist would report the failure as "something it depends on could not be saved",
+      // which tells the secretary nothing they can act on.
+      if (!person.delivered && person.error) {
+        setFieldErrors(person.fieldErrors);
+        toast.error(person.error);
+        setIsSaving(false);
+        return;
+      }
+    }
+    if (!subjectId) {
+      setIsSaving(false);
+      return;
+    }
+
+    // The CLIENT generates the id, so tapping Save twice on a bad connection produces one
+    // row rather than two members.
+    const eventId = uuid();
+
+    const result = await queueSubmission({
+      id: eventId,
+      kind: 'Membership event',
+      label: `${eventType.replace(/_/g, ' ').toLowerCase()} — ${
+        newPerson ? `${newPerson.firstName} ${newPerson.lastName}` : 'member'
+      }`,
+      endpoint: '/membership/events',
+      dependsOn: personQueueId,
+      body: {
+        id: eventId,
         personId: subjectId,
         clubId,
         eventType,
@@ -139,15 +172,28 @@ export function RecordEventPage() {
         counterpartyClubId: NEEDS_COUNTERPARTY.has(eventType) ? counterpartyClubId || null : null,
         rotaryClubName: NEEDS_ROTARY_CLUB.has(eventType) ? rotaryClubName.trim() || null : null,
       },
-      {
-        onSuccess: () => {
-          navigate(`/clubs/${clubId}/membership`);
-        },
-        onError: (error: unknown) => {
-          if (error instanceof ApiError) setFieldErrors(error.fieldErrors);
-        },
-      },
-    );
+    });
+
+    setIsSaving(false);
+
+    if (!result.delivered && result.error) {
+      setFieldErrors(result.fieldErrors);
+      toast.error(result.error);
+      return;
+    }
+
+    if (result.delivered) {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.membership });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.persons });
+      toast.success('Recorded');
+      navigate(`/clubs/${clubId}/membership`);
+      return;
+    }
+
+    // Queued. The roster will not show this member yet, so sending the secretary to the
+    // membership screen would show them a list that appears not to have taken their work.
+    toast.success('Saved on this phone. It will be sent when there is a connection.');
+    navigate('/pending');
   };
 
   return (
@@ -286,7 +332,7 @@ export function RecordEventPage() {
             <div className="flex flex-wrap gap-3">
               <Button
                 type="submit"
-                isLoading={record.isPending || createPerson.isPending}
+                isLoading={isSaving}
                 disabled={!clubId || (!personId && !newPerson)}
               >
                 Record
