@@ -65,6 +65,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      # NFR-1.2: 250 KB gzipped of initial JavaScript. A FAILURE, not a warning — members
+      # pay per megabyte, and a warning is a number that drifts upwards for two years while
+      # everybody agrees something should be done about it.
+      - name: Payload budget
+        run: npm run bundle:check
+
       # Fails on high and critical advisories only. Moderate findings in build-time
       # tooling are not worth a red pipeline on a Tuesday; raise this before launch.
       - name: Audit

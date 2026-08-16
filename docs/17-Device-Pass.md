@@ -90,18 +90,33 @@ there.
 - [ ] **Queued submissions survive sign-out.** They are the member's own unsent work, and
       losing them would be worse than the cache surviving. Verify both halves.
 
+### Compression
+
+- [ ] Every API response over 1 KB carries `Content-Encoding: gzip`. Check one in the Network
+      tab. This was missing entirely until M3 session 3 and cost seven times the traffic on
+      the busiest screen; if a proxy or a platform setting strips it in production, that is
+      worth knowing before members are paying for it.
+
 ### Numbers to measure
 
 Record actual figures, not impressions. DevTools over USB, Network tab, disable cache.
 
-| Measurement | Budget | Actual |
-|---|---|---|
-| Initial JS, gzipped | 250 KB | |
-| Full first load (JS + CSS + fonts + icons) | — | |
-| Repeat visit, service worker warm | near zero | |
-| An activity list response | — | |
-| One report submission with one photograph | 500 KB | |
-| A whole session: sign in, three reports with photos | — | |
+| Measurement | Budget | Built (measured locally) | Actual on device |
+|---|---|---|---|
+| Initial JS, gzipped | 250 KB | **90.6 KB** (`npm run bundle:check`) | |
+| CSS, gzipped | — | 5.1 KB | |
+| Full first load (JS + CSS + html) | — | **96.2 KB** | |
+| Repeat visit, service worker warm | near zero | | |
+| `GET /activities`, 25 rows, gzipped | — | **3.1 KB** (22.8 KB uncompressed) | |
+| `GET /clubs?pageSize=100`, gzipped | — | **4.2 KB** (43.2 KB uncompressed) | |
+| Opening `/report` cold (types + clubs) | — | **~5.5 KB** | |
+| One photograph, camera → after compression | 400 KB | | |
+| One report submission with one photograph | 500 KB | | |
+| A whole session: sign in, three reports with photos | — | | |
+
+The "built" column is what the build produces; the one that matters is the last. A phone's
+camera, a real 3G handshake and a real TLS negotiation are not things a laptop can tell you
+about.
 
 ---
 

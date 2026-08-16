@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, EmptyState, PageHeader } from '../../components/ui';
 import { cx } from '../../lib/cx';
+import { formatBytes } from '../../lib/images';
 import { useConnectivity } from '../../lib/offline/connectivity';
 import { discard, requeue, type OutboxItem } from '../../lib/offline/outbox';
 import { drain, useOutbox } from '../../lib/offline/submit';
@@ -23,6 +24,7 @@ export function PendingPage() {
 
   const queued = items.filter((item) => item.status !== 'failed');
   const failed = items.filter((item) => item.status === 'failed');
+  const waitingBytes = items.reduce((total, item) => total + itemBytes(item), 0);
 
   const sendNow = async () => {
     setIsSending(true);
@@ -85,8 +87,49 @@ export function PendingPage() {
           </ul>
         </Card>
       )}
+
+      <DataUsage waitingBytes={waitingBytes} />
     </>
   );
+}
+
+/**
+ * What this is costing.
+ *
+ * Members pay per megabyte, and an app that never says what it spends is an app people
+ * assume is spending recklessly — which is a reason not to use it. The figures here are
+ * MEASURED from the queue rather than estimated, because a number somebody can check against
+ * their own bundle is the only kind worth printing.
+ */
+function DataUsage({ waitingBytes }: { waitingBytes: number }) {
+  return (
+    <Card title="What this costs you" className="mt-4">
+      <dl className="grid gap-2 text-sm">
+        <div className="flex justify-between gap-4">
+          <dt className="text-ink-500">Waiting to send, from this device</dt>
+          <dd className="text-ink-900">{formatBytes(waitingBytes)}</dd>
+        </div>
+        <div className="flex justify-between gap-4">
+          <dt className="text-ink-500">A report with one photograph</dt>
+          <dd className="text-ink-900">about 150–400 KB</dd>
+        </div>
+        <div className="flex justify-between gap-4">
+          <dt className="text-ink-500">Opening the app again</dt>
+          <dd className="text-ink-900">almost nothing, once installed</dd>
+        </div>
+      </dl>
+      <p className="text-ink-500 mt-3 text-xs">
+        Photographs are made smaller on this phone before they are sent — usually a tenth of what
+        the camera produced. Nothing is uploaded until you tap Submit.
+      </p>
+    </Card>
+  );
+}
+
+/** Roughly what this item will put on the wire: the JSON body plus every photograph. */
+function itemBytes(item: OutboxItem): number {
+  const body = new Blob([JSON.stringify(item.body)]).size;
+  return item.files.reduce((total, file) => total + file.size, body);
 }
 
 function Row({ item }: { item: OutboxItem }) {

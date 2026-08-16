@@ -362,6 +362,44 @@ describe('reporting an activity', () => {
     // A list must not 404 because one row in it is out of scope; the rows are filtered.
     expect(body.data.map((activity) => activity.title)).toEqual(['Mine']);
   });
+
+  it('gives a list row a media COUNT and no image at all (NFR-1.3)', async () => {
+    // A page of 25 activities each carrying a signed URL is 25 images a phone will fetch,
+    // at full size, on metered data — for a screen that shows none of them. The count is
+    // what the list needs; the images belong to the detail screen, which serves thumbs.
+    const club = await createClubIn(org);
+    const type = await activityType(org);
+    const { agent } = await signInAs(app, org);
+
+    const created = await agent.post('/api/v1/activities').send({
+      activityTypeId: type.id,
+      hostScopeType: 'CLUB',
+      hostScopeId: club.id,
+      title: 'Blood drive',
+      startsAt: '2027-09-14T08:00:00.000Z',
+    });
+    const id = activityResponseSchema.parse(created.body).data.id;
+
+    const jpeg = await sharp({
+      create: { width: 40, height: 30, channels: 3, background: '#c8102e' },
+    })
+      .jpeg()
+      .toBuffer();
+    await agent
+      .post(`/api/v1/activities/${id}/media`)
+      .attach('file', jpeg, { filename: 'drive.jpg', contentType: 'image/jpeg' });
+
+    const listed = (await agent.get('/api/v1/activities')).body as { data: unknown[] };
+    const row = listed.data.find((activity) => (activity as { id: string }).id === id) as Record<
+      string,
+      unknown
+    >;
+
+    expect(row['mediaCount']).toBe(1);
+    for (const field of ['url', 'thumbUrl', 'storageKey', 'thumbKey', 'media']) {
+      expect(row).not.toHaveProperty(field);
+    }
+  });
 });
 
 describe('verification', () => {

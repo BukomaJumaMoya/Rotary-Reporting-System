@@ -1,3 +1,4 @@
+import compression from 'compression';
 import express, { type Express, type Router } from 'express';
 import { activityRouter } from './modules/activity/routes.js';
 import { adminRouter } from './modules/admin/routes.js';
@@ -59,6 +60,25 @@ export function createApp(mountExtra?: (mount: MountFn) => void): Express {
   // Before anything that can produce a response, so a 404 and an error page carry the
   // policy as surely as the application does.
   app.use(securityHeaders);
+
+  /**
+   * GZIP (NFR-1.1, NFR-1.4). Members pay per megabyte.
+   *
+   * This was missing until M3 session 3, and it was the single largest payload cost in the
+   * system: a page of 25 activities is 22.8 KB of JSON uncompressed and 3.2 KB gzipped —
+   * SEVEN TIMES the traffic, on the screen a club officer opens most, for every request. No
+   * amount of care on the client makes that back.
+   *
+   * `threshold` is the point below which compressing costs more than it saves: a 200-byte
+   * body gains nothing and pays for a Content-Encoding negotiation.
+   *
+   * Note what this does NOT need to worry about. BREACH-style attacks need a secret in a
+   * compressed response together with attacker-controlled reflected input; this API reflects
+   * no request data into a response body, and the session lives in an HttpOnly cookie rather
+   * than in one. Images and other already-compressed payloads are skipped by `compression`'s
+   * own content-type filter.
+   */
+  app.use(compression({ threshold: 1024 }));
 
   // 100kb: every request body in this API is a form. A larger limit only widens what an
   // unauthenticated caller can make the process parse.

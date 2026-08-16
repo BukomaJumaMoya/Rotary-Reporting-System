@@ -82,6 +82,12 @@ export default defineConfig({
     },
   },
   build: {
+    // Written so `scripts/bundle-budget.mjs` can tell the INITIAL bundle from the lazy
+    // chunks. Guessing from filenames would count an admin screen against a club officer's
+    // first load, or miss a static import that genuinely is in it — the manifest states
+    // which chunk is the entry and exactly what it pulls in eagerly.
+    manifest: true,
+
     // No inline module-preload polyfill. Vite injects one as an INLINE script once a build
     // has more than one chunk, and the Content-Security-Policy the API serves
     // (platform/security-headers.ts) allows no inline script at all. Every browser this

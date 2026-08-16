@@ -4,10 +4,10 @@
 describe what the system *should* be; this one records what has actually been built, what
 was decided along the way, and what is deliberately unfinished.
 
-Last updated: 16 August 2026, after M3 session 2. **M0, M1 and M2 are complete; M3 is in
-progress.**
+Last updated: 16 August 2026, after M3 session 3. **M0, M1 and M2 are complete; M3 is
+code-complete but NOT closed — its device pass has not been run.**
 
-<!-- dis:state milestone=M2 schema=v1.9 tests=426 -->
+<!-- dis:state milestone=M2 schema=v1.9 tests=433 -->
 
 ---
 
@@ -19,17 +19,17 @@ verifies most of what follows against the code, so if it is green the claims her
 merely assertions.
 
 **Where the build is.** M0 (foundations), M1 (governance core) and M2 (the reporting
-spine) are complete. **M3 — offline and mobile — is in progress**: sessions 1 (the PWA
-shell) and 2 (the offline submission queue) are done, session 3 (the payload budget) is
-next, and session 4 is a manual device pass rather than a code session. Prompts are in
-`docs/14-ClaudeCode-M3-M4-Sessions.md`. **M3 is not closed** — do not run
-`/close-milestone` until session 3 has landed and session 4 has actually been performed on a
-real phone.
+spine) are complete. **M3 — offline and mobile — is CODE-COMPLETE but not closed.** Sessions
+1 (the PWA shell), 2 (the offline submission queue) and 3 (the payload budget) are done.
+Session 4 is a manual device pass, it has **not been run**, and two of the seven M3 exit
+criteria cannot be closed without it. Do not run `/close-milestone` for M3 until somebody has
+worked through `docs/17-Device-Pass.md` on a real phone. Prompts are in
+`docs/14-ClaudeCode-M3-M4-Sessions.md`.
 
 A real club could use the system now: clubs, members, the membership event log and its
 derived roster, configurable activity types, activity reporting with photographs, and
-verification. Since M3 session 2 it also works without a signal — a report saved with no
-connection is written to the device and sent on its own when one returns.
+verification. Since M3 it also works without a signal — a report saved with no connection is
+written to the device and sent on its own when one returns — and it costs 90 KB to open.
 
 **Read in this order.** `CLAUDE.md` for the axioms and the non-negotiable rules → this
 section → §0a for what the last milestone changed about how you must write code → the
@@ -140,7 +140,7 @@ full history is in §4.
 |---|---|---|
 | 1 — PWA shell and service worker | **done** | `1bcd510` |
 | 2 — Offline submission queue | **done** | this commit |
-| 3 — Payload budget | not started | |
+| 3 — Payload budget | **done** | this commit |
 | 4 — Real device pass | **manual, not a code session** — checklist in `docs/17-Device-Pass.md`, **not yet run** | |
 
 CI runs typecheck → lint → format:check → test → build → `npm audit` against a
@@ -284,6 +284,7 @@ apps/web/src/
                  Sync. Own program: tsconfig.sw.json (WebWorker lib, not DOM).
   lib/           api.ts (fetch wrapper + ApiError) · queries.ts (TanStack keys,
                  useList, useApiMutation) · cx.ts · toast.ts · uuid.ts
+                 images.ts — shrinks a photograph BEFORE it leaves the phone
   lib/offline/   outbox.ts   THE QUEUE — IndexedDB, backoff, 409-as-success
                  transport.ts  send/sendFile, shared with sw.ts. No React.
                  submit.ts   the one submission path + the drain scheduler
@@ -315,7 +316,7 @@ apps/web/src/
 Dockerfile · fly.toml · .github/workflows/deploy-staging.yml · README.md
 ```
 
-**426 tests** — 414 in the API, integration-style against real PostgreSQL, and 12 in the web
+**433 tests** — 417 in the API, integration-style against real PostgreSQL, and 16 in the web
 workspace against `fake-indexeddb`. The suites that are load bearing rather than incidental:
 `no-pii.test.ts` (walks every route unauthenticated), `invariants.test.ts` (37 ADR-012
 guards), `scope*.test.ts` (the data access layer), `audit.test.ts`, `rollover.test.ts` (dry
@@ -1051,7 +1052,8 @@ turns on eighteen months later.
 **Superseded events stay visible, dimmed, linked to what corrected them.** A history that
 hid them would be a history that had been edited, which is the thing the log exists not to be.
 
-**Bundle: 90 KB gzipped.**
+**Bundle: 90 KB gzipped** — as at M2 close, before the PWA runtime took it to 101.9 KB and
+M3 session 3's code splitting brought it back to 90.6 KB.
 
 #### Session 8 — activity types and the media pipeline
 
@@ -1315,6 +1317,83 @@ effect, which runs after the render that survived.
 mean a member who cannot file a report AT ALL — but the message then says plainly that this
 device cannot save work offline, rather than claiming something was saved.
 
+#### Session 3 — the payload budget
+
+**Photographs are shrunk on the phone, at the moment they are chosen** (`lib/images.ts`).
+A modern Android camera produces 4–8 MB per shot; the server already resizes and strips
+metadata, but that happens AFTER the upload, so without this a secretary filing one report
+with four photographs pays for 25 MB to send images the district immediately discards.
+NFR-1.4 budgets the whole submission at 500 KB.
+
+At SELECTION, not at submission: that is where the member is already waiting for the camera
+to hand the file over, and it means the outbox holds compressed blobs rather than full-size
+originals while it waits for signal. Serial, never parallel — four 8-megapixel decodes at
+once is how a mid-range Android runs out of memory and the browser kills the tab, with the
+report in it.
+
+**WebP support is MEASURED, not assumed.** `canvas.toBlob` silently falls back to PNG for a
+type it does not know, and a PNG of a photograph is larger than the JPEG that went in — the
+exact opposite of the point. A one-pixel encode at startup answers it properly.
+
+**Compression never fails a report.** An unreadable file comes back untouched; the server
+accepts it anyway, since it sniffs magic bytes and caps the size while reading. A report lost
+because a thumbnail could not be produced would be a far worse outcome than one that costs
+more data than it should. GIF and SVG are skipped outright — a canvas re-encode of an
+animated GIF keeps one frame.
+
+**The saving is shown to the member.** "1.4 MB → 180 KB, saving 1.2 MB of your data", on the
+photo step, and `/pending` carries a data-usage panel with figures MEASURED from the queue
+rather than estimated. Members have every reason to assume an app is spending their data
+carelessly; the correction costs one line and is the sort of thing that decides whether a
+club secretary keeps using it.
+
+**Blob URLs are created once and revoked.** `URL.createObjectURL` in a render body leaks one
+per render — invisible on a laptop, fatal on a phone holding four images.
+
+**Code splitting is by AUDIENCE, not by size.** The club-officer path — dashboard, clubs,
+activities, report, membership, pending — is eager, because those screens are the reason the
+system exists and are opened on metered data. Everything the district administration uses is
+lazy. The rule for anything added later: **if a club secretary uses it on a phone it is
+eager, otherwise lazy.** The two membership screens stayed together because they share a
+module, so splitting one would have added a request and saved nothing.
+
+The Suspense boundary sits INSIDE `AppShell`, so a lazy screen loading leaves the navigation
+and the connection banner on screen rather than blanking the application.
+
+**`scripts/bundle-budget.mjs` fails the build over 250 KB gzipped**, and reads Vite's
+manifest rather than guessing from filenames — `isEntry` plus the transitive `imports` graph
+is exactly "what the browser needs before the first screen", and `dynamicImports` is
+deliberately not followed. Measured at **90.6 KB, 36% of budget**, down from 101.9 KB before
+the split.
+
+**A list row carries a media COUNT and no image** — asserted now, not merely true. A page of
+25 activities each with a signed URL is 25 images a phone fetches for a screen that shows
+none of them.
+
+**THE API WAS NOT GZIPPING ANYTHING.** Found by measuring rather than by reading: a request
+with `Accept-Encoding: gzip` came back with no `Content-Encoding` at all. There had never
+been a compression middleware. This was the largest single payload cost in the system and it
+dwarfs everything else in this session:
+
+| Response | Was | Now | |
+|---|---|---|---|
+| `GET /activities` (25 rows) | 22.8 KB | **3.1 KB** | 7.4× |
+| `GET /clubs?pageSize=100` | 43.2 KB | **4.2 KB** | 10.2× |
+| `GET /activity-types` | 7.2 KB | **1.3 KB** | 5.5× |
+
+The last two are what the reporting form fetches when it opens, so a cold `/report` went
+from about 50 KB of JSON to about 5.5 KB. `app.test.ts` asserts the header now, because
+removing the middleware again would be completely silent.
+
+Threshold 1 KB — below that, compressing costs more than it saves. BREACH is not a concern
+here: it needs a secret in a compressed response alongside attacker-controlled reflected
+input, and this API reflects no request data into a response body while the session lives in
+an HttpOnly cookie rather than in one.
+
+**The trap that hid it, and nearly hid the fix.** Port 4000 was still being served by a
+`dist/server.js` built hours earlier, so the first measurement after adding the middleware
+looked identical. Rebuild before measuring, or measure `npm run dev`.
+
 ---
 
 ## 4a. Axiom conformance
@@ -1395,8 +1474,9 @@ re-checked whenever a new write path is added.
 | Only ACTIVITIES, PERSONS and MEMBERSHIP EVENTS go through the outbox | those are what a club officer creates in the field. Governance and administration screens are used at a desk, and queueing an appointment nobody can see the effect of until it syncs would be worse than refusing it offline | not planned |
 | A queued photograph that fails to upload is dropped silently | the activity is filed, which is what the club is assessed on, and the image can be added again from the detail screen; a per-file retry queue is a second queue with its own failure modes | revisit if it happens in practice |
 | Background Sync cannot be exercised over a LAN address | a service worker needs a secure context, so `http://192.168.x.x` gets no worker at all. Use `localhost` with adb port forwarding, or staging | not fixable |
-| Client-side image compression is not built | M3 session 3. Until then a queued photograph is the camera's full-size original, which is the wrong thing to hold on a phone and the wrong thing to send on metered data | **M3 session 3** |
-| "Caches cleared on logout" has no automated test | `clearDeviceState()` runs on sign-out and is straightforward, but Cache Storage needs a browser: the web suite runs in node, and asserting it properly wants a jsdom-plus-`Cache` harness or a Playwright case. It is on the M3 exit checklist and is currently proven by reading the code, which is not the same thing | **M3 session 3**, with the CI bundle gate |
+| The compression itself is only proven by the FALLBACK path | `compressImage` needs a real canvas and a real image decoder, so the node suite can only assert that a browser which cannot do the work gets its file back untouched. Whether a 6 MB photograph actually comes out under 400 KB is measured in `docs/17-Device-Pass.md` | **M3 session 4**, on hardware |
+| "Caches cleared on logout" has no automated test | `clearDeviceState()` runs on sign-out and is straightforward, but Cache Storage needs a browser: the web suite runs in node, and asserting it properly wants a jsdom-plus-`Cache` harness or a Playwright case. It is on the M3 exit checklist and is currently proven by reading the code, which is not the same thing | M6, with the pilot — or sooner if a browser-mode runner is added for another reason |
+| Person photographs have no upload path at all | `persons.photo_url` is a column nothing writes. When one is built it must go through the same compression and the same thumb/full split as activity media, or a directory page becomes the heaviest screen in the system | M6 |
 | A malformed or unauthorised `?year=` fails EVERY authenticated route, including `/auth/logout` | context resolution is global and eager; sending `?year=` to logout is a client bug | not planned |
 | A nested create of a parent alongside its child is not scope-checked | there is no parent id to check; the parent's own write is stamped, so the child lands under a stamped row | not planned |
 | Permission codes match exactly — no `club:read:*` wildcard | a matcher would turn a typo in a seeded row into a silent grant | not planned |
@@ -1481,6 +1561,10 @@ an explicit driver adapter.
 
 ```bash
 npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build
+
+# The payload budget (NFR-1.2). Fails over 250 KB gzipped of initial JS; runs in CI.
+# Needs a build first — it measures the real output, not an estimate.
+npm run bundle:check
 
 # Does the documentation still describe the system? --strict makes a warning or an
 # unproven check a failure, and --with-db rebuilds docs/schema.sql and diffs the catalog.

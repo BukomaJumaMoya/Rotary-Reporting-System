@@ -16,7 +16,7 @@ Full design documentation is in `docs/`. Read `docs/00-README.md` first. When a 
 
 ## Stack
 
-PostgreSQL 16 · Node 20 · Express 5 · React 18 + Vite · TypeScript strict · Prisma (CRUD + migrations) · raw SQL via `$queryRaw` (analytics only) · Zod (shared contracts) · pg-boss (jobs) · S3-compatible storage + `sharp` · session cookies in Postgres · Argon2id · TanStack Query · Tailwind.
+PostgreSQL 16 · Node 20 · Express 5 (+ `compression`) · React 18 + Vite (+ `vite-plugin-pwa`, a hand-written service worker) · TypeScript strict · Prisma (CRUD + migrations) · raw SQL via `$queryRaw` (analytics only) · Zod (shared contracts) · pg-boss (jobs) · S3-compatible storage + `sharp` · `idb` for the offline outbox · session cookies in Postgres · Argon2id · TanStack Query · Tailwind.
 
 Monorepo: `apps/api`, `apps/web`, `packages/contracts`.
 
@@ -167,9 +167,10 @@ npm run db:seed          # reset to realistic fixtures
 npm run test             # vitest — needs PostgreSQL and TEST_DATABASE_URL
 npm run typecheck
 npm run lint
-npm run test:report      # same suite, writes .tmp/vitest-report.json for docs:check
+npm run test:report      # same suites, writes .tmp/vitest-report*.json for docs:check
 npm run docs:check       # does the documentation still describe the system?
-npm run worker           # pg-boss worker process             (not built yet)
+npm run bundle:check     # the payload budget — fails over 250 KB gzipped. Build first.
+npm run worker           # pg-boss worker process
 ```
 
 **PostgreSQL runs locally as the `dis-postgres` service on port 5433** (data directory
@@ -210,8 +211,9 @@ permission, an error code or a table.
 ## Current phase
 
 **M0 — Foundations, M1 — Governance core and M2 — the reporting spine are all complete**
-(August 2026). **M3 — offline and mobile — is in progress**: sessions 1 and 2 are done,
-session 3 (the payload budget) is next. `docs/schema.sql` is at v1.9; 426 tests.
+(August 2026). **M3 — offline and mobile — is code-complete**: sessions 1, 2 and 3 are done.
+Session 4 is the manual device pass and has NOT been run, so M3 is not closed.
+`docs/schema.sql` is at v1.9; 433 tests.
 
 M0: monorepo and CI, schema translated and migrated, session authentication with lockout,
 mail delivery, TOTP with encrypted secrets and recovery codes, the request context and
@@ -249,10 +251,17 @@ attempted, always, online or not; a `409` from the server counts as SUCCESS, bec
 what a client-generated id is for. Do not add a second submission path: `submit()` is the
 only way a club officer's write reaches the API.
 
-**Next: M3 session 3 — the payload budget.** Client-side image compression, route-level code
-splitting, and a CI gate at 250 KB gzipped. Then session 4, which is not a coding session at
-all: the manual device pass in `docs/17-Device-Pass.md`, which has **not been run**, and
-without which M3 cannot be called done.
+**The payload budget is enforced, not aspirational.** `npm run bundle:check` fails the build
+over 250 KB gzipped of initial JS (currently 90.6 KB) and runs in CI. Routes are split by
+AUDIENCE: **a screen a club secretary uses on a phone is eager, everything else is lazy.**
+Photographs are compressed on the device before they are queued — `lib/images.ts`.
+
+**Next: M3 session 4 — the device pass.** Not a coding session: `docs/17-Device-Pass.md`,
+on a mid-range Android over real mobile data. It has **not been run**, and two of the seven
+M3 exit criteria cannot be closed without it. Do not run `/close-milestone` for M3 until it
+has. After that, M4 — finance — in `docs/14-ClaudeCode-M3-M4-Sessions.md`. Read its preamble
+first: ADR-012 made `dues_invoices.status` and `member_dues.amount_paid` into VIEWS, and the
+earlier M4 document tells you to maintain them as columns.
 
 See `docs/09-ClaudeCode-M0-Sessions.md`, `docs/12-ClaudeCode-M1-Sessions.md` and
 `docs/13-ClaudeCode-M2-Sessions.md` for the session prompts already used,

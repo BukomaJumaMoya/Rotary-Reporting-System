@@ -149,7 +149,7 @@ Every friction point logged here becomes an M6 pilot fix.
 
 ## M3 exit checklist
 
-Status as at session 2. **Ticked means proven, not written.**
+Status as at session 3. **Ticked means proven, not written.**
 
 - [ ] Installable on Android and iOS — built (manifest, icons, prompt after the second
       visit); unverified on hardware
@@ -160,10 +160,15 @@ Status as at session 2. **Ticked means proven, not written.**
 - [ ] Caches cleared on logout, verified by test — `clearDeviceState()` runs on sign-out,
       but there is **no test**; Cache Storage needs a browser environment, so this wants a
       jsdom-plus-`Cache` harness or a Playwright case
-- [ ] Under 250KB gzipped, enforced in CI — currently **101.9 KB** gzipped, comfortably
-      inside; the CI gate itself is session 3
-- [ ] One report with photo under 500KB — client-side compression is session 3
+- [x] Under 250KB gzipped, enforced in CI — **90.6 KB**, 36% of budget, failed by
+      `scripts/bundle-budget.mjs` in the CI pipeline
+- [ ] One report with photo under 500KB — compression is built and the arithmetic says yes
+      (a body is a few KB, a photograph targets 400 KB), but the only honest measurement is
+      on a phone with a real camera
 - [ ] Tested on real hardware over real mobile data — `docs/17-Device-Pass.md`, **not run**
+
+**Two of the seven can only be closed by session 4**, which is the point: everything the
+suite can prove is proven, and what is left needs a phone.
 
 ---
 

@@ -24,6 +24,7 @@
     "test": "npm run build:contracts && npm run test --workspaces --if-present",
     "test:report": "npm run build:contracts && npm run test --workspace @dis/api -- --reporter=json --outputFile=../../.tmp/vitest-report.json && npm run test --workspace @dis/web -- --reporter=json --outputFile=../../.tmp/vitest-report-web.json",
     "docs:check": "node scripts/doc-check.mjs",
+    "bundle:check": "node scripts/bundle-budget.mjs",
     "db:generate": "npm run db:generate --workspace @dis/api",
     "db:migrate": "npm run db:migrate --workspace @dis/api",
     "db:seed": "npm run build:contracts && npm run db:seed --workspace @dis/api",

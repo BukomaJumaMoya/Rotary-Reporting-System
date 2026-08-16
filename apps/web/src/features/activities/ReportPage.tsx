@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { ActivityField, ActivityType } from '@dis/contracts';
 import { Button, Card, Input, PageHeader, Select, SkeletonList } from '../../components/ui';
 import { cx } from '../../lib/cx';
+import { compressImage, formatBytes } from '../../lib/images';
 import { submit as queueSubmission } from '../../lib/offline/submit';
 import { queryKeys, useList } from '../../lib/queries';
 import { useToast } from '../../lib/toast';
@@ -46,25 +47,82 @@ interface GroupedTypes {
   data: { category: string; types: ActivityType[] }[];
 }
 
+/**
+ * A photograph waiting to go, already shrunk.
+ *
+ * `url` is created ONCE, when the photograph is added, and revoked when it is removed.
+ * `URL.createObjectURL` in the render body would leak one blob URL per render — invisible on
+ * a laptop, fatal on a phone holding four images.
+ */
+interface Photo {
+  blob: Blob;
+  /** What the camera produced. Equal to `blob.size` for one restored from the outbox. */
+  originalBytes: number;
+  url: string;
+}
+
+/** A photograph coming back from a refused submission: already compressed, nothing to save. */
+function restoredPhoto(blob: Blob): Photo {
+  return { blob, originalBytes: blob.size, url: URL.createObjectURL(blob) };
+}
+
 export function ReportPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
   const { permissions } = useAuth();
   const [draft, setDraft] = useState<Draft>(loadDraft);
-  // `Blob[]`, not `File[]`: a photograph coming back from the outbox is a Blob, and the
-  // filename a File would carry is thrown away by the server anyway — uploads are typed by
-  // magic bytes and stored under a generated key.
-  //
   // Peeked here and cleared in the effect below: a `useState` initialiser runs twice under
   // StrictMode and React discards the first result, so consuming it here would hand the
   // photographs to a render that is thrown away and leave the surviving one empty.
-  const [files, setFiles] = useState<Blob[]>(peekHandoffFiles);
+  const [photos, setPhotos] = useState<Photo[]>(() => peekHandoffFiles().map(restoredPhoto));
+  const [isCompressing, setIsCompressing] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => clearHandoffFiles(), []);
+
+  const originalBytes = photos.reduce((total, photo) => total + photo.originalBytes, 0);
+  const sendBytes = photos.reduce((total, photo) => total + photo.blob.size, 0);
+  const savedBytes = originalBytes - sendBytes;
+
+  /**
+   * Shrinks each photograph as it is chosen, not at submission time.
+   *
+   * Here, because this is where the member is already waiting for the camera to hand the
+   * file over. Doing it at Submit would put a multi-second pause on the one tap that must
+   * feel instant — and would mean the outbox held full-size originals, which is the wrong
+   * thing for a phone to store while it waits for signal.
+   */
+  const addPhotos = async (chosen: File[]) => {
+    if (chosen.length === 0) return;
+    setIsCompressing(true);
+
+    // Serial. Four 8-megapixel decodes at once is how a mid-range Android runs out of memory
+    // and the browser kills the tab — with the report in it.
+    for (const file of chosen) {
+      const result = await compressImage(file);
+      setPhotos((current) => [
+        ...current,
+        {
+          blob: result.blob,
+          originalBytes: result.originalBytes,
+          url: URL.createObjectURL(result.blob),
+        },
+      ]);
+    }
+
+    setIsCompressing(false);
+  };
+
+  const removePhoto = (index: number) => {
+    setPhotos((current) => {
+      const photo = current[index];
+      if (photo) URL.revokeObjectURL(photo.url);
+      return current.filter((_, position) => position !== index);
+    });
+  };
 
   // Persisted on every change rather than on a timer: the tab that gets killed is the one
   // that was backgrounded, and a timer that has not fired yet has saved nothing.
@@ -128,7 +186,7 @@ export function ReportPage() {
       label: draft.title.trim() || type.name,
       endpoint: '/activities',
       body: payload,
-      files,
+      files: photos.map((photo) => photo.blob),
     });
     setIsSubmitting(false);
 
@@ -148,7 +206,9 @@ export function ReportPage() {
     // keeps the id.
     clearDraft();
     setDraft(emptyDraft());
-    setFiles([]);
+    // The outbox holds the blobs now, so these previews are the last reference to release.
+    for (const photo of photos) URL.revokeObjectURL(photo.url);
+    setPhotos([]);
 
     if (result.delivered) {
       await queryClient.invalidateQueries({ queryKey: queryKeys.activities });
@@ -358,22 +418,25 @@ export function ReportPage() {
             multiple
             className="hidden"
             onChange={(event) => {
-              setFiles([...files, ...Array.from(event.target.files ?? [])]);
+              void addPhotos(Array.from(event.target.files ?? []));
               event.target.value = '';
             }}
           />
 
           <div className="flex flex-wrap gap-3">
-            {files.map((file, index) => (
-              <div key={index} className="relative">
+            {photos.map((photo, index) => (
+              <div key={photo.url} className="relative">
                 <img
-                  src={URL.createObjectURL(file)}
+                  // Created once when the photograph is added and revoked when it goes.
+                  // Calling createObjectURL in the render body leaks one blob URL per render,
+                  // which on a phone holding four images is a tab the system eventually kills.
+                  src={photo.url}
                   alt=""
                   className="border-ink-200 h-24 w-24 rounded-lg border object-cover"
                 />
                 <button
                   type="button"
-                  onClick={() => setFiles(files.filter((_, position) => position !== index))}
+                  onClick={() => removePhoto(index)}
                   className="bg-danger-600 absolute -top-2 -right-2 h-6 w-6 rounded-full text-white"
                   aria-label="Remove"
                 >
@@ -381,10 +444,26 @@ export function ReportPage() {
                 </button>
               </div>
             ))}
-            <Button variant="secondary" onClick={() => fileInput.current?.click()}>
+            <Button
+              variant="secondary"
+              onClick={() => fileInput.current?.click()}
+              isLoading={isCompressing}
+            >
               Add a photo
             </Button>
           </div>
+
+          {/*
+            The saving, stated. Members pay per megabyte and have every reason to assume an
+            app is spending their data carelessly — showing the number is how that assumption
+            gets corrected, and it costs one line.
+          */}
+          {savedBytes > 0 && (
+            <p className="text-success-700 mt-3 text-xs">
+              Photographs made smaller before sending: {formatBytes(originalBytes)} →{' '}
+              {formatBytes(sendBytes)}, saving {formatBytes(savedBytes)} of your data.
+            </p>
+          )}
 
           <p className="text-ink-500 mt-3 text-xs">
             Location data is removed from every photograph before it is stored.
@@ -393,7 +472,7 @@ export function ReportPage() {
           <StepButtons
             onBack={() => set('step', 2)}
             onNext={() => set('step', 4)}
-            nextDisabled={type.requiresPhoto && files.length === 0}
+            nextDisabled={type.requiresPhoto && photos.length === 0}
           />
         </Card>
       )}
@@ -409,7 +488,14 @@ export function ReportPage() {
             <Row label="Title" value={draft.title} />
             <Row label="When" value={draft.startsAt.replace('T', ' ')} />
             <Row label="Where" value={draft.venue || '—'} />
-            <Row label="Photographs" value={String(files.length)} />
+            <Row
+              label="Photographs"
+              value={
+                photos.length === 0
+                  ? 'None'
+                  : `${photos.length} · ${formatBytes(sendBytes)} to send`
+              }
+            />
           </dl>
 
           <div className="mt-4 flex flex-wrap gap-3">

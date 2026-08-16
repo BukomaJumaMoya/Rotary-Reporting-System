@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { AppShell } from './components/layout/AppShell';
@@ -11,25 +11,65 @@ import {
   ForgotPasswordPage,
   ResetPasswordPage,
 } from './features/auth/PasswordPages';
+
+/**
+ * WHAT IS IN THE FIRST BUNDLE, AND WHY (NFR-1.2, 250 KB gzipped).
+ *
+ * The eager imports below are the club-officer path — sign in, the dashboard, clubs,
+ * activities, reporting, membership, and the pending queue. Those screens are the reason the
+ * system exists, they are opened on metered data from a phone, and a member should never
+ * wait on a second request to reach the one they came for.
+ *
+ * Everything the DISTRICT ADMINISTRATION uses is lazy. Positions, appointments, committees,
+ * invitations, the audit log, rollover, activity types, clusters — a club secretary loads
+ * none of them, ever, and the officers who do are usually at a desk. Splitting them out is
+ * the cheapest 40% this bundle will ever give up.
+ *
+ * The rule for anything added later: **if a club secretary uses it on a phone, it is eager;
+ * otherwise it is lazy.**
+ */
 import {
   ActivitiesPage,
   ActivityCalendarPage,
   ActivityDetailPage,
 } from './features/activities/ActivityPages';
-import { ActivityTypesPage } from './features/activities/ActivityTypesPage';
 import { ReportPage } from './features/activities/ReportPage';
-import { ClubFormPage } from './features/clubs/ClubFormPage';
 import { ClubProfilePage } from './features/clubs/ClubProfilePage';
 import { ClubsPage } from './features/clubs/ClubsPage';
-import { ClustersPage } from './features/clubs/ClustersPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
+// Both membership screens together: they share a module, so making one lazy would split
+// nothing and only add a request. Transitions is on a club officer's own navigation anyway.
 import { MembershipHistoryPage, TransitionsPage } from './features/membership/MembershipPages';
 import { RecordEventPage } from './features/membership/RecordEventPage';
 import { PendingPage } from './features/offline/PendingPage';
-import { AuditPage, InvitationsPage, RolloverPage } from './features/governance/AdminPages';
-import { AppointmentsPage } from './features/governance/AppointmentsPage';
-import { CommitteesPage } from './features/governance/CommitteesPage';
-import { PositionsPage } from './features/governance/PositionsPage';
+
+const ActivityTypesPage = lazy(() =>
+  import('./features/activities/ActivityTypesPage').then((m) => ({ default: m.ActivityTypesPage })),
+);
+const ClubFormPage = lazy(() =>
+  import('./features/clubs/ClubFormPage').then((m) => ({ default: m.ClubFormPage })),
+);
+const ClustersPage = lazy(() =>
+  import('./features/clubs/ClustersPage').then((m) => ({ default: m.ClustersPage })),
+);
+const AuditPage = lazy(() =>
+  import('./features/governance/AdminPages').then((m) => ({ default: m.AuditPage })),
+);
+const InvitationsPage = lazy(() =>
+  import('./features/governance/AdminPages').then((m) => ({ default: m.InvitationsPage })),
+);
+const RolloverPage = lazy(() =>
+  import('./features/governance/AdminPages').then((m) => ({ default: m.RolloverPage })),
+);
+const AppointmentsPage = lazy(() =>
+  import('./features/governance/AppointmentsPage').then((m) => ({ default: m.AppointmentsPage })),
+);
+const CommitteesPage = lazy(() =>
+  import('./features/governance/CommitteesPage').then((m) => ({ default: m.CommitteesPage })),
+);
+const PositionsPage = lazy(() =>
+  import('./features/governance/PositionsPage').then((m) => ({ default: m.PositionsPage })),
+);
 
 /**
  * Everything behind `RequireAuth` needs a session. The guard redirects rather than
@@ -48,7 +88,14 @@ function RequireAuth({ children }: { children: ReactNode }) {
   }
   if (!isSignedIn) return <Navigate to="/login" replace />;
 
-  return <AppShell>{children}</AppShell>;
+  // The Suspense boundary sits INSIDE the shell, so a lazy admin screen loading leaves the
+  // navigation and the connection banner on screen. A boundary around the whole shell would
+  // blank the application for the length of a request on a slow connection.
+  return (
+    <AppShell>
+      <Suspense fallback={<SkeletonList rows={4} />}>{children}</Suspense>
+    </AppShell>
+  );
 }
 
 /**
