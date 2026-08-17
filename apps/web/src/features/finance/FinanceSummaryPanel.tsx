@@ -86,17 +86,20 @@ export function FinanceSummaryPanel({
               {
                 key: 'planned',
                 header: 'Planned',
+                numeric: true,
                 secondary: true,
                 render: (row: CategoryVariance) => formatAmount(row.planned),
               },
               {
                 key: 'actual',
                 header: 'Actual',
+                numeric: true,
                 render: (row: CategoryVariance) => formatAmount(row.actual),
               },
               {
                 key: 'variance',
                 header: 'Variance',
+                numeric: true,
                 render: (row: CategoryVariance) => (
                   // The API orients this so POSITIVE IS GOOD in both directions, which is
                   // why one colour rule covers income and expenditure alike.

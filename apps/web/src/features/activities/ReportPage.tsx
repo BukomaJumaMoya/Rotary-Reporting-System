@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { PageLayout } from '../../components/ui/page';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ActivityField, ActivityType } from '@dis/contracts';
@@ -248,7 +249,7 @@ export function ReportPage() {
   if (types.isPending) return <SkeletonList rows={4} />;
 
   return (
-    <>
+    <PageLayout width="form">
       <PageHeader
         title="Report an activity"
         description="Four steps. Your progress is kept if you leave this page."
@@ -549,7 +550,7 @@ export function ReportPage() {
           </div>
         </Card>
       )}
-    </>
+    </PageLayout>
   );
 }
 

@@ -221,6 +221,7 @@ function BudgetDetail({ budgetId, canWrite }: { budgetId: string; canWrite: bool
             {
               key: 'amount',
               header: 'Planned',
+              numeric: true,
               render: (line: BudgetLine) => (
                 <span className="tabular-nums">{formatAmount(line.amountPlanned)}</span>
               ),

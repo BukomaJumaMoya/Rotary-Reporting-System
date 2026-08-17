@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PageLayout } from '../../components/ui/page';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import {
@@ -229,7 +230,7 @@ function ClubForm({
   };
 
   return (
-    <>
+    <PageLayout width="form">
       <PageHeader
         title={mode === 'create' ? 'Charter a club' : `Edit ${clubName ?? 'club'}`}
         description={
@@ -361,6 +362,6 @@ function ClubForm({
           </Button>
         </div>
       </form>
-    </>
+    </PageLayout>
   );
 }

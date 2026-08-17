@@ -110,18 +110,21 @@ function DistrictGrid() {
             {
               key: 'due',
               header: 'Invoiced',
+              numeric: true,
               secondary: true,
               render: (row: DuesStatusRow) => formatAmount(row.amountDue),
             },
             {
               key: 'paid',
               header: 'Paid',
+              numeric: true,
               secondary: true,
               render: (row: DuesStatusRow) => formatAmount(row.amountPaid),
             },
             {
               key: 'outstanding',
               header: 'Outstanding',
+              numeric: true,
               render: (row: DuesStatusRow) => (
                 <span className={row.isOverdue ? 'text-danger-text font-medium' : ''}>
                   {formatAmount(row.amountOutstanding)}
@@ -413,7 +416,12 @@ function InvoiceCard({ invoice }: { invoice: DuesInvoice }) {
         <Table
           columns={[
             { key: 'paidOn', header: 'Paid on', render: (row) => row.paidOn },
-            { key: 'amount', header: 'Amount', render: (row) => formatAmount(row.amount) },
+            {
+              key: 'amount',
+              header: 'Amount',
+              numeric: true,
+              render: (row) => formatAmount(row.amount),
+            },
             {
               key: 'receipt',
               header: 'Receipt',

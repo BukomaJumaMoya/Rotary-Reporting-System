@@ -131,6 +131,7 @@ export function TransactionsPage() {
                 {
                   key: 'amount',
                   header: 'Amount',
+                  numeric: true,
                   render: (row: Transaction) => (
                     <span className="tabular-nums">
                       {formatMoney(row.amount, row.currencyCode)}

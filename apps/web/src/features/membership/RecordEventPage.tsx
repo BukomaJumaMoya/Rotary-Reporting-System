@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PageLayout } from '../../components/ui/page';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Input, PageHeader, Select, SkeletonList } from '../../components/ui';
@@ -209,7 +210,7 @@ export function RecordEventPage() {
   };
 
   return (
-    <>
+    <PageLayout width="form">
       <PageHeader
         title="Record a membership event"
         description="The log is append-only. A mistake is corrected by recording another event, never by editing this one."
@@ -364,7 +365,7 @@ export function RecordEventPage() {
           </>
         )}
       </form>
-    </>
+    </PageLayout>
   );
 }
 

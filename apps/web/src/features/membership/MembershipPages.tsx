@@ -12,8 +12,16 @@ import {
   Pagination,
   Select,
   SkeletonList,
-  Table,
 } from '../../components/ui';
+import {
+  FilterBar,
+  FilterTabs,
+  ListGroup,
+  ListRow,
+  PageLayout,
+  SearchField,
+  SectionHeading,
+} from '../../components/ui/page';
 import { api } from '../../lib/api';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
 import { useAuth } from '../auth/useAuth';
@@ -21,9 +29,7 @@ import type {
   MembershipEvent,
   MembershipEventListResponse,
   MembershipStatsResponse,
-  RosterEntry,
   RosterListResponse,
-  Transition,
   TransitionListResponse,
 } from './types';
 
@@ -49,86 +55,94 @@ export function ClubRosterPanel({ clubId }: { clubId: string }) {
     { clubId, page, q: q || undefined, asOf: asOf || undefined },
   );
 
-  const columns = [
-    {
-      key: 'name',
-      header: 'Member',
-      render: (entry: RosterEntry) => (
-        <div className="min-w-0">
-          <p className="text-text-primary font-medium">
-            {entry.person.firstName} {entry.person.lastName}
-          </p>
-          {/* Absent, not empty — the serialiser leaves out what the caller may not see. */}
-          {entry.person.email && <p className="text-text-muted text-meta">{entry.person.email}</p>}
-          {entry.person.phone && <p className="text-text-muted text-meta">{entry.person.phone}</p>}
-          {entry.person.isRedacted && !entry.person.email && !entry.person.phone && (
-            <p className="text-text-muted text-meta">Contact details are private</p>
-          )}
-        </div>
-      ),
-    },
-    {
-      key: 'category',
-      header: 'Category',
-      render: (entry: RosterEntry) => (
-        <Badge tone={entry.memberCategory === 'ACTIVE' ? 'success' : 'neutral'}>
-          {entry.memberCategory}
-        </Badge>
-      ),
-    },
-    { key: 'since', header: 'Member since', render: (entry: RosterEntry) => entry.since },
-  ];
-
   return (
-    <Card
-      title="Members"
-      actions={
-        permissions.has('membership:write:club') ? (
-          <Link to={`/membership/record?clubId=${clubId}`}>
-            <Button>Record an event</Button>
-          </Link>
-        ) : null
-      }
-    >
-      <div className="mb-3 grid gap-3 sm:grid-cols-2">
-        <Input
-          label="Search"
-          placeholder="Name"
+    <section>
+      <SectionHeading
+        title="Members"
+        count={roster.data?.meta.total}
+        action={
+          permissions.has('membership:write:club') ? (
+            <Link to={`/membership/record?clubId=${clubId}`}>
+              <Button>Record an event</Button>
+            </Link>
+          ) : null
+        }
+      />
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <SearchField
           value={q}
-          onChange={(event) => {
-            setQ(event.target.value);
+          onChange={(next) => {
+            setQ(next);
             setPage(1);
           }}
+          placeholder="Search members…"
         />
-        <Input
-          label="As at"
-          type="date"
-          hint="Reconstructed from the event log — who the club was on that date."
-          value={asOf}
-          onChange={(event) => {
-            setAsOf(event.target.value);
-            setPage(1);
-          }}
-        />
+        {/*
+          The as-at date stays a labelled control rather than joining the bar. It is not a
+          filter over the current roster — it RECONSTRUCTS the roster from the event log at a
+          past date, which is a different and much stranger thing to do, and it needs its
+          label and its explanation to say so.
+        */}
+        <label className="text-text-muted text-label flex items-center gap-2">
+          <span className="shrink-0">As at</span>
+          <input
+            type="date"
+            value={asOf}
+            onChange={(event) => {
+              setAsOf(event.target.value);
+              setPage(1);
+            }}
+            className="border-border bg-surface text-text-primary min-h-10 rounded-md border px-3"
+          />
+        </label>
+        {asOf && (
+          <p className="text-text-muted text-meta basis-full">
+            Showing who the club was on {asOf}, reconstructed from the event log.
+          </p>
+        )}
       </div>
 
       {roster.isPending ? (
         <SkeletonList rows={5} />
       ) : roster.isError ? (
         <ErrorState error={roster.error} onRetry={() => void roster.refetch()} />
+      ) : roster.data.data.length === 0 ? (
+        <EmptyState
+          filtered={Boolean(q)}
+          onClearFilters={() => {
+            setQ('');
+            setPage(1);
+          }}
+          title="No members yet"
+          description="The roster is derived from the membership event log. Record an induction to start it."
+        />
       ) : (
         <>
-          <Table
-            columns={columns}
-            rows={roster.data.data}
-            rowKey={(entry) => `${entry.personId}:${entry.clubId}`}
-            emptyState={
-              <EmptyState
-                title="No members yet"
-                description="The roster is derived from the membership event log. Record an induction to start it."
+          <ListGroup>
+            {roster.data.data.map((entry) => (
+              <ListRow
+                key={`${entry.personId}:${entry.clubId}`}
+                title={`${entry.person.firstName} ${entry.person.lastName}`}
+                meta={[
+                  // Absent, not empty — the serialiser leaves out what the caller may not
+                  // see, so a missing email here means "not yours to read", not "not given".
+                  entry.person.email,
+                  entry.person.phone,
+                  entry.person.isRedacted &&
+                    !entry.person.email &&
+                    !entry.person.phone &&
+                    'Contact details are private',
+                  `Member since ${entry.since}`,
+                ]}
+                badges={
+                  entry.memberCategory !== 'ACTIVE' ? (
+                    <Badge tone="neutral">{entry.memberCategory.toLowerCase()}</Badge>
+                  ) : null
+                }
               />
-            }
-          />
+            ))}
+          </ListGroup>
           <Pagination
             page={roster.data.meta.page}
             pageSize={roster.data.meta.pageSize}
@@ -137,7 +151,7 @@ export function ClubRosterPanel({ clubId }: { clubId: string }) {
           />
         </>
       )}
-    </Card>
+    </section>
   );
 }
 
@@ -476,84 +490,86 @@ export function TransitionsPage() {
     { invalidate: [queryKeys.membership], successMessage: 'Corroborated' },
   );
 
-  const columns = [
-    {
-      key: 'person',
-      header: 'Member',
-      render: (row: Transition) => (
-        <div>
-          <p className="text-text-primary font-medium">{row.personName}</p>
-          <p className="text-text-muted text-meta">{row.clubName}</p>
-        </div>
-      ),
-    },
-    {
-      key: 'rotary',
-      header: 'Rotary club',
-      render: (row: Transition) => row.rotaryClubName ?? '—',
-    },
-    { key: 'date', header: 'Effective', render: (row: Transition) => row.effectiveOn },
-    {
-      key: 'state',
-      header: 'Corroborated',
-      render: (row: Transition) =>
-        row.corroboratedAt ? (
-          <Badge tone="success">Yes</Badge>
-        ) : permissions.has('membership:write:club') ? (
-          <Button variant="ghost" onClick={() => corroborate.mutate(row.id)}>
-            Corroborate
-          </Button>
-        ) : (
-          <Badge tone="warning">Awaiting</Badge>
-        ),
-    },
-  ];
+  const rows = transitions.data?.data ?? [];
 
   return (
-    <>
+    <PageLayout>
       <PageHeader
         title="Transitions to Rotary"
         description="The district's most contested figure. A transition nobody corroborated is one the district has only the club's word for."
       />
 
-      <Card>
-        <div className="mb-3 max-w-xs">
-          <Select
-            label="State"
-            value={corroborated}
-            placeholder="All"
-            options={[
-              { value: 'false', label: 'Awaiting corroboration' },
-              { value: 'true', label: 'Corroborated' },
-            ]}
-            onChange={(event) => {
-              setCorroborated(event.target.value);
-              setPage(1);
-            }}
-          />
-        </div>
+      <FilterBar>
+        <FilterTabs
+          value={corroborated}
+          onChange={(next) => {
+            setCorroborated(next);
+            setPage(1);
+          }}
+          options={[
+            { value: '', label: 'All' },
+            { value: 'false', label: 'Awaiting' },
+            { value: 'true', label: 'Corroborated' },
+          ]}
+        />
+      </FilterBar>
 
-        {transitions.isPending ? (
-          <SkeletonList rows={4} />
-        ) : transitions.isError ? (
-          <ErrorState error={transitions.error} onRetry={() => void transitions.refetch()} />
-        ) : (
-          <>
-            <Table
-              columns={columns}
-              rows={transitions.data.data}
-              rowKey={(row) => row.id}
-              emptyState={<EmptyState title="No transitions recorded" />}
-            />
-            <Pagination
-              page={transitions.data.meta.page}
-              pageSize={transitions.data.meta.pageSize}
-              total={transitions.data.meta.total}
-              onPageChange={setPage}
-            />
-          </>
-        )}
-      </Card>
-    </>
+      {transitions.isPending ? (
+        <SkeletonList rows={4} />
+      ) : transitions.isError ? (
+        <ErrorState error={transitions.error} onRetry={() => void transitions.refetch()} />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          filtered={Boolean(corroborated)}
+          onClearFilters={() => {
+            setCorroborated('');
+            setPage(1);
+          }}
+          title="No transitions recorded"
+          description="A transition is recorded when a member leaves to join a Rotary club. It is the figure the district is judged on, so it is worth recording promptly."
+        />
+      ) : (
+        <>
+          <ListGroup>
+            {rows.map((row) => (
+              <ListRow
+                key={row.id}
+                title={row.personName}
+                meta={[row.clubName, row.rotaryClubName, `Effective ${row.effectiveOn}`]}
+                badges={
+                  row.corroboratedAt ? (
+                    <Badge tone="success">corroborated</Badge>
+                  ) : (
+                    <Badge tone="warning">awaiting</Badge>
+                  )
+                }
+                trailing={
+                  // The action sits where the trailing figure would be. It is the one thing
+                  // a district officer opens this screen to do, and burying it behind the row
+                  // would make corroborating 40 transitions 80 taps.
+                  !row.corroboratedAt && permissions.has('membership:write:club') ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      isLoading={corroborate.isPending && corroborate.variables === row.id}
+                      onClick={() => corroborate.mutate(row.id)}
+                    >
+                      Corroborate
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ))}
+          </ListGroup>
+
+          <Pagination
+            page={transitions.data.meta.page}
+            pageSize={transitions.data.meta.pageSize}
+            total={transitions.data.meta.total}
+            onPageChange={setPage}
+          />
+        </>
+      )}
+    </PageLayout>
   );
 }

@@ -192,6 +192,7 @@ export function TrfPage() {
               {
                 key: 'amount',
                 header: 'USD',
+                numeric: true,
                 render: (row: TrfContribution) => (
                   <span className="tabular-nums">{formatAmount(row.amountUsd)}</span>
                 ),
