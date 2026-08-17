@@ -9,7 +9,6 @@ import { Can } from '../../components/Can';
 import {
   Badge,
   Button,
-  Card,
   Dialog,
   EmptyState,
   ErrorState,
@@ -18,8 +17,8 @@ import {
   Pagination,
   Select,
   SkeletonList,
-  Table,
 } from '../../components/ui';
+import { FilterBar, ListGroup, ListRow, PageLayout } from '../../components/ui/page';
 import { api } from '../../lib/api';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
 
@@ -56,7 +55,7 @@ export function AppointmentsPage() {
   }
 
   return (
-    <>
+    <PageLayout>
       <PageHeader
         title="Appointments"
         description="Nobody has a role. People hold appointments, and access resolves through them every request."
@@ -67,67 +66,60 @@ export function AppointmentsPage() {
         }
       />
 
-      <Card>
-        <div className="mb-3 max-w-sm">
-          <Select
-            label="Position"
-            value={positionId}
-            placeholder="Every position"
-            options={(positions.data?.data ?? []).map((position) => ({
-              value: position.id,
-              label: position.name,
-            }))}
-            onChange={(event) => {
-              setPositionId(event.target.value);
-              setPage(1);
-            }}
-          />
-        </div>
+      <FilterBar>
+        <Select
+          label=""
+          aria-label="Filter by position"
+          value={positionId}
+          placeholder="Every position"
+          className="min-h-10"
+          options={(positions.data?.data ?? []).map((position) => ({
+            value: position.id,
+            label: position.name,
+          }))}
+          onChange={(event) => {
+            setPositionId(event.target.value);
+            setPage(1);
+          }}
+        />
+      </FilterBar>
 
-        <Table
-          columns={[
-            { key: 'person', header: 'Person', render: (row) => row.personName },
-            {
-              key: 'position',
-              header: 'Position',
-              render: (row) => (
-                <div>
-                  <p>{row.positionName}</p>
-                  <p className="text-text-muted text-meta">{row.scopeName ?? row.scopeType}</p>
-                </div>
-              ),
-            },
-            {
-              key: 'term',
-              header: 'Term',
-              render: (row) => (
-                <span className="text-meta">
-                  {row.startsOn} → {row.endsOn ?? 'open'}
-                </span>
-              ),
-            },
-            {
-              key: 'status',
-              header: 'Status',
-              render: (row) =>
+      {appointments.data.data.length === 0 ? (
+        <EmptyState
+          filtered={Boolean(positionId)}
+          onClearFilters={() => {
+            setPositionId('');
+            setPage(1);
+          }}
+          title="No appointments"
+          description="Nobody holds office yet. Appointments are what grant access, so this being empty means nobody can do anything."
+        />
+      ) : (
+        <ListGroup>
+          {appointments.data.data.map((row) => (
+            <ListRow
+              key={row.id}
+              title={row.personName}
+              meta={[
+                row.positionName,
+                row.scopeName ?? row.scopeType,
+                `${row.startsOn} → ${row.endsOn ?? 'open'}`,
+              ]}
+              badges={
                 !row.isActive ? (
-                  <Badge>Revoked</Badge>
-                ) : row.isCurrent ? (
-                  <Badge tone="success">In force</Badge>
-                ) : (
-                  // Active but not yet in force. Showing one number for both would be a
-                  // lie for as long as the gap lasts.
-                  <Badge tone="warning">Not yet started</Badge>
-                ),
-            },
-            {
-              key: 'actions',
-              header: '',
-              render: (row) =>
+                  <Badge>revoked</Badge>
+                ) : row.isCurrent ? null : (
+                  // Active but not yet in force. Showing one state for both would be a lie
+                  // for as long as the gap lasts — and the gap is the whole point of a term.
+                  <Badge tone="warning">not yet started</Badge>
+                )
+              }
+              trailing={
                 row.isActive ? (
                   <Can permission="appointment:manage:district">
                     <Button
                       variant="ghost"
+                      size="sm"
                       onClick={() => {
                         if (window.confirm(`Revoke ${row.personName} as ${row.positionName}?`)) {
                           revoke.mutate(row.id);
@@ -137,24 +129,22 @@ export function AppointmentsPage() {
                       Revoke
                     </Button>
                   </Can>
-                ) : null,
-            },
-          ]}
-          rows={appointments.data.data}
-          rowKey={(row) => row.id}
-          emptyState={<EmptyState title="No appointments" description="Nobody holds office yet." />}
-        />
+                ) : undefined
+              }
+            />
+          ))}
+        </ListGroup>
+      )}
 
-        <Pagination
-          page={appointments.data.meta.page}
-          pageSize={appointments.data.meta.pageSize}
-          total={appointments.data.meta.total}
-          onPageChange={setPage}
-        />
-      </Card>
+      <Pagination
+        page={appointments.data.meta.page}
+        pageSize={appointments.data.meta.pageSize}
+        total={appointments.data.meta.total}
+        onPageChange={setPage}
+      />
 
       {isCreating && <CreateAppointmentDialog onClose={() => setIsCreating(false)} />}
-    </>
+    </PageLayout>
   );
 }
 

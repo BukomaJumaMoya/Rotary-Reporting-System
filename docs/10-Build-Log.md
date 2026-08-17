@@ -1855,10 +1855,61 @@ backgrounds are stripped. **Check it by printing in greyscale, not by imagining 
 officer deciding whether the system is usable cannot sign in to read it. It names its known
 limitations honestly, including that no screen-reader user has yet tested it.
 
+#### Round three — the correction, and the actual diagnosis
+
+The district developer's verdict on rounds one and two was that the pages looked bad. They
+were right, and the cause was not the palette.
+
+**Both previous rounds rebuilt the SHELL and the CONTROLS and never touched the page bodies.**
+The measurement: 156 raw Tailwind sizes (`text-sm`, `text-xs`) against 12 uses of the type
+scale, and every page layout a bespoke stack of `flex flex-col gap-4`. A design system that
+does not reach the page body has not been applied — and the page body is most of the screen.
+
+**The austerity was actively harmful in an interface.** Round two had set `--shadow-sm` to
+`none` and made `surface`, `surface-raised` and `surface-overlay` the same value. On a
+published page that is discipline; on a screen it produced cards exactly the same colour as
+the page behind them, with no elevation and a hairline border, which reads as unstyled rather
+than as restrained.
+
+The settled rule is a REGISTER SPLIT, now the governing sentence of
+`docs/18-Design-System.md`: **report surfaces are austere; working surfaces are warm.** The
+document apparatus, muted data palette and near-zero motion serve exports, scorecards and
+print. Lists, forms and dashboards get elevation, surface separation, status colour, and the
+brand colour marking what is actionable and what is current.
+
+What changed in code:
+
+* **Tokens warmed** — layered tinted shadows restored, surfaces separated, status colours
+  given enough chroma to be seen, cranberry allowed to mark the active navigation state again.
+* **`components/ui/page.tsx`**, the missing layer: `PageLayout`, `StatGrid`, `ListGroup` /
+  `ListRow`, `FilterBar`, `FilterTabs`, `SearchField`, `SectionHeading`.
+* **156 raw sizes migrated onto the scale**, which lifted every screen at once.
+* **Screens rebuilt as LISTS** where the reader identifies a record rather than compares one:
+  Activities, Clubs, Members, Transitions, Clusters, Positions, Appointments. Finance kept its
+  tables — a treasurer genuinely is comparing rows — and gained numeric alignment on ten money
+  and count columns instead.
+* **Filter bars replaced filter forms.** A card of labelled `Select`s at the top of a list
+  reads as something you must complete before the list is valid.
+* **Forms narrowed to 720px**: Report, Record event, Charter a club.
+* **Settings**, with the theme moved off the header into a real three-way preference. A theme
+  switch beside the Rotary Year badge gave a personal display preference the same weight as
+  the dimension every figure on screen is scoped by.
+* **Emoji removed** from the activity-type builder. They render differently on every Android
+  skin and carry no colour control.
+
+**A trap worth recording.** Several source files are CRLF in the working tree via git's
+autocrlf. A Node transform anchored on `'
+    <>
+'` silently matches nothing against them
+and reports success; Python's universal-newline read handles it. Two migration scripts
+reported "0 replacements" for this reason before it was spotted. A heredoc will also collapse
+`\b` to `` — a backspace character, not a word boundary — so transform scripts belong in
+files, not in shell heredocs.
+
 #### Cost
 
-Initial JS went 93 KB → **102.3 KB of the 250 KB budget**, and none of the increase is a
-dependency. Fonts are 108 KB total, 94 KB of it on the critical path.
+Initial JS went 93 KB → **103.8 KB of the 250 KB budget** across all three rounds, and none
+of the increase is a dependency. Fonts are 108 KB total, 94 KB of it on the critical path.
 
 #### What is deliberately not built
 

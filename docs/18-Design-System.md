@@ -1,37 +1,53 @@
 # 18 — Design System
 
-**The operative specification.** Written from two design briefs: the first established the
-token foundation, the second raised the register to institutional grade and superseded parts
-of the first. This document is the merge, so that there is one place to look rather than two
-that disagree. Where it says *superseded*, it means the first brief said otherwise and the
-second overruled it.
+**The operative specification.** Written from three rounds of design direction: a token
+foundation, an institutional-grade pass that superseded parts of it, and a correction that
+walked back the austerity when it turned out to be solving the wrong problem. This document
+is the merge, so there is one place to look rather than three that disagree.
 
-Implemented in the M4 design pass. See `10-Build-Log.md` §4 for the build narrative and for
-what was deliberately deferred.
+Where it says *superseded*, an earlier round said otherwise and was overruled. Those notes
+are kept deliberately — the reasoning is worth more than the conclusion, and a rule whose
+history is invisible gets re-litigated every six months.
+
+Implemented across the M4 design passes. See `10-Build-Log.md` §4 for the build narrative and
+the deferred list.
 
 ---
 
-## 0. The thesis
+## 0. The thesis, and the correction
 
-The audience for what this system produces is people who have read a thousand reports:
+The audience for what this system PRODUCES is people who have read a thousand reports:
 country directors, agency staff, task team leaders, permanent secretaries, and the district's
 own officers. They are not impressed by software that looks impressive. They are impressed by
-software that looks **correct**.
+software that looks **correct**. Reports, exports and printed output are built for them, and
+the document apparatus in §3 exists entirely to serve that.
 
-**The move is subtractive.** Everything that reads as institutional authority is achieved by
-removing — animation, colour, decoration, marketing voice. What is added is not ornament but
-**rigour**: provenance on every figure, units on every column, methodology within reach of
-every derived number.
+**But the audience for the INTERFACE is a club secretary on a phone at eleven at night**, and
+those are not the same problem.
 
-The reference points are the OECD Factbook, Eurostat, IMF Article IV staff reports and the
-ONS. Not consumer software.
+The institutional round applied the report register to the whole application: shadows removed
+entirely, every surface set to the same value, brand colour cut to three appearances, motion
+subtracted to near-nothing. On a published page that is discipline. In an interface it
+produced screens where a card was exactly the same colour as the page behind it, with no
+elevation and a hairline border — which does not read as restrained, it reads as **unstyled**.
 
-**The sentence to design against:** a Director-General should be able to screenshot any
-screen, paste it into a board paper, and have it look like it belongs there.
+So the operative rule is a split, and it is the most important sentence in this document:
+
+> **Report surfaces are austere. Working surfaces are warm.**
+> A scorecard, an export and a printed page use the document apparatus, the muted data
+> palette and near-zero motion. A list, a form and a dashboard get elevation, surface
+> separation, status colour and the brand colour marking what is actionable and what is
+> current.
 
 **The constraint that shapes everything:** 250 KB of initial JavaScript, over metered Android
-data, in Kampala and upcountry. This is not in tension with the above. Quiet is cheaper than
-loud.
+data, in Kampala and upcountry. Quiet is cheaper than loud, and neither register threatens it —
+the build sits at 103.8 KB.
+
+**A diagnosis worth remembering.** Two full design passes rebuilt the shell and the controls
+and left the application looking unfinished, because the page bodies were never touched: 156
+raw Tailwind sizes against 12 uses of the type scale, and every layout a bespoke stack. A
+design system that does not reach the page body has not been applied. The fix was §8, not a
+third palette.
 
 ---
 
@@ -100,16 +116,24 @@ adjectives. Dates in full — **14 November 2027**, never US ordering. Times wit
 Six hues generated in OKLCH, twelve steps each, chroma peaking mid-ramp. Ramps carried over
 from the first brief unchanged; their **application** did not.
 
-### The retreat of brand colour
+### How much brand colour
 
-*Superseded: cranberry was the primary action AND the active navigation state.*
+This was argued twice and settled by the register split.
 
-Cranberry now appears in **three places only**: the brand mark and sign-in, the single primary
-action on a page, and one chart series. Everything else is ink on paper — including the active
-navigation state, which is a 2px ink rule and a weight change.
+**On report surfaces — scorecards, exports, print — cranberry appears three times at most**:
+the mark, the single primary action, and one chart series. Everything else is ink on paper.
+A report that is mostly brand colour reads as promotional, and promotional is the one thing a
+figure in a board paper must not read as.
 
-The focus ring stays cranberry. A focus ring must be unmistakable, and that is the one job
-colour does best.
+**On working surfaces, cranberry marks what is ACTIONABLE and what is CURRENT.** The primary
+action, the active navigation item, the selected filter, the focused control.
+*Superseded: the institutional round put the active navigation state in ink.* That rule is
+right for a printed page and wrong for a tool somebody opens weekly, where the brand colour is
+most of how a screen becomes recognisable at a glance. It is still not decoration — it never
+marks something that is merely present.
+
+The focus ring is cranberry in both registers. A focus ring must be unmistakable, and that is
+the one job colour does best.
 
 ### Paper and ink
 
@@ -161,9 +185,19 @@ and mono-set identifiers.
 
 ---
 
-## 4. Tables
+## 4. Tables, and when NOT to use one
 
-The primary artefact. This audience reads tables fluently and judges the product on them.
+A table is for **comparison**: the reader is scanning a column, matching magnitudes, checking
+one row against its neighbour. Finance is exactly that, and finance keeps its tables.
+
+A **list** is for **identification**: the reader is looking for one record by name and then
+opening it. Clubs, activities, members, appointments and positions are all that, and all of
+them became lists (`ListGroup` / `ListRow` in §8). The tell that a table was the wrong
+container is a column whose cell content is a joined string of unrelated facts — the old
+Activities table had an "Evidence" column that was `2 photos · 14 attendees · 1 partner`,
+which is a list item's subtitle wearing a column header.
+
+When it IS a table, this audience reads them fluently and judges the product on them:
 
 - **Horizontal rules only.** No vertical rules, no cell borders, no zebra striping. A strong
   rule under the header, hairlines between rows, a strong rule above a total.
@@ -197,8 +231,13 @@ optimistic pulse, and anything scroll-driven.
 The press scale (`scale(0.98)`) survives. It is feedback rather than spectacle, and it is most
 of what makes a control feel like a control on a touchscreen.
 
-**The principle:** motion draws the eye, and in an analytical interface the eye should be
-drawn by the data, not the chrome.
+**The principle:** motion draws the eye, and the eye should be drawn by the data, not the
+chrome.
+
+The removals stand — no count-ups, no arc draw-ins, no stagger, no springs, no haptics, and
+nothing scroll-driven, on any surface. What survived is feedback rather than performance: the
+`scale(0.98)` press, a colour transition on hover, and an overlay that fades. That is most of
+what makes a control feel like a control on a touchscreen, and none of it is spectacle.
 
 ---
 
@@ -227,7 +266,36 @@ is usable cannot sign in.
 
 ---
 
-## 8. Carried over unchanged from the first brief
+## 8. Page-level blocks
+
+`components/ui/page.tsx`. The layer that was missing, and whose absence made two rounds of
+token work invisible.
+
+`ui/index.tsx` holds CONTROLS — a button, an input, a table. These are what a SCREEN is made
+of, and until this existed every page hand-rolled its own layout.
+
+| Block | Job |
+|---|---|
+| `PageLayout` | Content width by page type. `form` is 720px — a form at 1280px is a hostile form, because the eye travels the full width between a label and its control. List screens inherit the shell's 1280px and need no wrapper. |
+| `StatGrid` | The band of figures at the top of a list screen. Answers "what am I looking at, in numbers" before the reader parses a row. Two across on a phone, always. |
+| `ListGroup` / `ListRow` | Title, middle-dot separated facts, badges, optional trailing figure or action. Roughly half of every screen in the system is a list of something, so this is the component that most determines how the application reads. |
+| `FilterBar` | Sticky under the header. On a phone, a filter you must scroll up to change is a filter nobody changes twice. |
+| `FilterTabs` | A segmented control for the two or three filters people reach for constantly. On a list screen the available filters are part of the information; hiding them in a dropdown makes people forget the list is filtered at all. |
+| `SearchField` | Unlabelled and growing — belongs to the bar, not to a form. |
+| `SectionHeading` | A heading inside a page, with an optional count and action. |
+
+**A filter bar is not a form.** Several screens opened with a card of labelled `Select`s in a
+grid, which reads as something you must fill in before the list below is valid. Search and the
+one or two live facets go on the bar; the rest goes behind a "More filters" disclosure that
+shows a dot when any of them is set.
+
+**Actions belong on the row** when they are the reason the screen exists. Corroborating a
+transition is a district officer's whole task on that page; behind a tap it would make forty
+transitions eighty taps.
+
+---
+
+## 9. Carried over unchanged from the first brief
 
 Spacing scale (4px base, fixed steps), radii and the nested-radius rule, breakpoints, the six
 interaction states on every interactive element, forms (labels above inputs always; single
@@ -236,7 +304,7 @@ token** — no literal hex in any component, ever.
 
 ---
 
-## 9. Deferred, and why
+## 10. Deferred, and why
 
 Not built, because the screens they belong to do not exist yet. Recorded here so the intent
 survives to the milestone that owns them.

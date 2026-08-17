@@ -4,7 +4,6 @@ import { Can } from '../../components/Can';
 import {
   Badge,
   Button,
-  Card,
   Checkbox,
   Dialog,
   EmptyState,
@@ -14,8 +13,9 @@ import {
   Pagination,
   Select,
   SkeletonList,
-  Table,
 } from '../../components/ui';
+import { FilterBar, FilterTabs, ListGroup, ListRow, PageLayout } from '../../components/ui/page';
+import { Identifier } from '../../components/ui/document';
 import { api } from '../../lib/api';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
 
@@ -51,7 +51,7 @@ export function PositionsPage() {
     return <ErrorState error={positions.error} onRetry={() => void positions.refetch()} />;
 
   return (
-    <>
+    <PageLayout>
       <PageHeader
         title="Positions"
         description="The roles this district can appoint people to. Adding one is a form, not a release."
@@ -62,77 +62,69 @@ export function PositionsPage() {
         }
       />
 
-      <Card>
-        <div className="mb-3 max-w-xs">
-          <Select
-            label="Scope"
-            value={scope}
-            placeholder="Every scope"
-            options={SCOPES.map((value) => ({ value, label: value }))}
-            onChange={(event) => {
-              setScope(event.target.value);
-              setPage(1);
-            }}
-          />
-        </div>
+      <FilterBar>
+        <FilterTabs
+          value={scope}
+          onChange={(next) => {
+            setScope(next);
+            setPage(1);
+          }}
+          options={[
+            { value: '', label: 'All scopes' },
+            ...SCOPES.map((value) => ({ value, label: value.toLowerCase() })),
+          ]}
+        />
+      </FilterBar>
 
-        <Table
-          columns={[
-            {
-              key: 'name',
-              header: 'Position',
-              render: (row) => (
-                <div>
-                  <p className="font-medium">{row.name}</p>
-                  <p className="text-text-muted font-mono text-meta">{row.code}</p>
-                </div>
-              ),
-            },
-            {
-              key: 'scope',
-              header: 'Scope',
-              render: (row) => <Badge tone="info">{row.scope}</Badge>,
-            },
-            {
-              key: 'permissions',
-              header: 'Permissions',
-              render: (row) => <span>{row.permissions.length}</span>,
-            },
-            {
-              key: 'held',
-              header: 'Held by',
-              render: (row) => <span>{row.activeAppointments}</span>,
-            },
-            {
-              key: 'status',
-              header: 'Status',
-              render: (row) => (
-                <div className="flex flex-wrap gap-1">
-                  {row.isTemplate && <Badge>Template</Badge>}
-                  {row.isActive ? <Badge tone="success">Active</Badge> : <Badge>Inactive</Badge>}
-                </div>
-              ),
-            },
-            {
-              key: 'actions',
-              header: '',
-              render: (row) => (
+      {positions.data.data.length === 0 ? (
+        <EmptyState
+          filtered={Boolean(scope)}
+          onClearFilters={() => {
+            setScope('');
+            setPage(1);
+          }}
+          title="No positions yet"
+          description="A position is the role an appointment attaches to. The seeded slate covers the standard district offices."
+        />
+      ) : (
+        <ListGroup>
+          {positions.data.data.map((row) => (
+            <ListRow
+              key={row.id}
+              title={row.name}
+              meta={[
+                // The code is an identifier: mono, so 0 and O are distinguishable when it is
+                // read down a phone or transcribed into a spreadsheet.
+                <Identifier key="code">{row.code}</Identifier>,
+                `${row.permissions.length} permission${row.permissions.length === 1 ? '' : 's'}`,
+                row.activeAppointments > 0 ? `held by ${row.activeAppointments}` : 'held by nobody',
+              ]}
+              badges={
+                <>
+                  <Badge tone="info">{row.scope.toLowerCase()}</Badge>
+                  {row.isTemplate && <Badge>template</Badge>}
+                  {/* Active is the norm; inactive is the news. */}
+                  {!row.isActive && <Badge tone="warning">inactive</Badge>}
+                </>
+              }
+              trailing={
                 <Can permission="position:manage:district">
                   {row.isTemplate ? (
                     // Readable by every district, editable by none — saying so beats a
                     // button that always fails.
                     <span className="text-text-muted text-meta">Shared</span>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="ghost" onClick={() => setEditing(row)}>
+                    <span className="flex flex-wrap justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(row)}>
                         Edit
                       </Button>
-                      <Button variant="ghost" onClick={() => setPermissionsFor(row)}>
+                      <Button variant="ghost" size="sm" onClick={() => setPermissionsFor(row)}>
                         Permissions
                       </Button>
                       {row.isActive && (
                         <Button
                           variant="ghost"
+                          size="sm"
                           onClick={() => {
                             // The count is on the row already, so the warning is honest
                             // rather than a guess the server will correct.
@@ -147,29 +139,21 @@ export function PositionsPage() {
                           Deactivate
                         </Button>
                       )}
-                    </div>
+                    </span>
                   )}
                 </Can>
-              ),
-            },
-          ]}
-          rows={positions.data.data}
-          rowKey={(row) => row.id}
-          emptyState={
-            <EmptyState
-              title="No positions yet"
-              description="The seeded D9218 slate should appear here. If it does not, run npm run db:seed."
+              }
             />
-          }
-        />
+          ))}
+        </ListGroup>
+      )}
 
-        <Pagination
-          page={positions.data.meta.page}
-          pageSize={positions.data.meta.pageSize}
-          total={positions.data.meta.total}
-          onPageChange={setPage}
-        />
-      </Card>
+      <Pagination
+        page={positions.data.meta.page}
+        pageSize={positions.data.meta.pageSize}
+        total={positions.data.meta.total}
+        onPageChange={setPage}
+      />
 
       <PositionDialog
         position={editing}
@@ -181,7 +165,7 @@ export function PositionsPage() {
       />
 
       <PermissionMatrixDialog position={permissionsFor} onClose={() => setPermissionsFor(null)} />
-    </>
+    </PageLayout>
   );
 }
 

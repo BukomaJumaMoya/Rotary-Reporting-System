@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   Badge,
   Button,
-  Card,
   Checkbox,
   Dialog,
   EmptyState,
@@ -12,6 +11,7 @@ import {
   Select,
   SkeletonList,
 } from '../../components/ui';
+import { ListGroup, ListRow, PageLayout } from '../../components/ui/page';
 import { api } from '../../lib/api';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
 import { useAuth } from '../auth/useAuth';
@@ -43,50 +43,52 @@ export function ClustersPage() {
   }
 
   return (
-    <>
+    <PageLayout>
       <PageHeader
         title="Clusters"
         description="Redrawn each Rotary Year. A club sits in at most one cluster."
         action={mayManage ? <Button onClick={() => setCreating(true)}>New cluster</Button> : null}
       />
 
-      <Card>
-        {clusters.data.data.length === 0 ? (
-          <EmptyState
-            title="No clusters yet"
-            description="Clusters group clubs under an ADRR. They are drawn fresh each year."
-          />
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {clusters.data.data.map((cluster) => (
-              <li
-                key={cluster.id}
-                className="border-border-subtle flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
-              >
-                <div className="min-w-0">
-                  <p className="text-text-primary font-medium">{cluster.name}</p>
-                  <p className="text-text-muted text-meta">{cluster.regionName ?? 'No region'}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={cluster.clubCount === 0 ? 'warning' : 'neutral'}>
-                    {cluster.clubCount} clubs
-                  </Badge>
-                  {mayManage && (
-                    <>
-                      <Button variant="ghost" onClick={() => setAssigning(cluster)}>
-                        Clubs
-                      </Button>
-                      <Button variant="ghost" onClick={() => setEditing(cluster)}>
-                        Edit
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      {clusters.data.data.length === 0 ? (
+        <EmptyState
+          title="No clusters yet"
+          description="Clusters group clubs under an ADRR. They are drawn fresh each year."
+          action={
+            mayManage ? <Button onClick={() => setCreating(true)}>New cluster</Button> : undefined
+          }
+        />
+      ) : (
+        <ListGroup>
+          {clusters.data.data.map((cluster) => (
+            <ListRow
+              key={cluster.id}
+              title={cluster.name}
+              meta={[cluster.regionName ?? 'No region']}
+              badges={
+                // An empty cluster is the news on this screen: it means clubs were never
+                // assigned after the year was redrawn, which is a job somebody has not done.
+                cluster.clubCount === 0 ? <Badge tone="warning">no clubs</Badge> : null
+              }
+              trailing={
+                mayManage ? (
+                  <span className="flex gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => setAssigning(cluster)}>
+                      Clubs
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setEditing(cluster)}>
+                      Edit
+                    </Button>
+                  </span>
+                ) : (
+                  cluster.clubCount
+                )
+              }
+              trailingLabel={mayManage ? undefined : 'clubs'}
+            />
+          ))}
+        </ListGroup>
+      )}
 
       {(creating || editing) && (
         <ClusterDialog
@@ -103,7 +105,7 @@ export function ClustersPage() {
       )}
 
       {assigning && <AssignDialog cluster={assigning} onClose={() => setAssigning(null)} />}
-    </>
+    </PageLayout>
   );
 }
 

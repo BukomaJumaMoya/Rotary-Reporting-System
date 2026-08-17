@@ -13,6 +13,7 @@ import {
   Select,
   SkeletonList,
 } from '../../components/ui';
+import { Icon } from '../../components/ui/icons';
 import { api } from '../../lib/api';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
 import { useAuth } from '../auth/useAuth';
@@ -429,16 +430,27 @@ function FormPreview({ form }: { form: FormState }) {
         <Input label="Narrative report" value="" readOnly onChange={() => undefined} />
       )}
       {form.requiresPhoto && (
-        <p className="text-text-secondary text-table">📷 At least one photograph is required</p>
+        <p className="text-text-secondary text-table flex items-center gap-2">
+          <Icon name="camera" className="size-4 shrink-0" />
+          At least one photograph is required
+        </p>
       )}
       {form.requiresAttendance && (
-        <p className="text-text-secondary text-table">👥 An attendance list is required</p>
+        <p className="text-text-secondary text-table flex items-center gap-2">
+          <Icon name="members" className="size-4 shrink-0" />
+          An attendance list is required
+        </p>
       )}
       {form.requiresPartner && (
-        <p className="text-text-secondary text-table">🤝 A partner organisation is required</p>
+        <p className="text-text-secondary text-table flex items-center gap-2">
+          <Icon name="committees" className="size-4 shrink-0" />A partner organisation is required
+        </p>
       )}
       {form.requiresAreaOfFocus && (
-        <p className="text-text-secondary text-table">🎯 An area of focus is required</p>
+        <p className="text-text-secondary text-table flex items-center gap-2">
+          <Icon name="activities" className="size-4 shrink-0" />
+          An area of focus is required
+        </p>
       )}
 
       {form.fields.map((field, index) => (

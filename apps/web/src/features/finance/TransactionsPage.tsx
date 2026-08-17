@@ -13,6 +13,7 @@ import {
   SkeletonList,
   Table,
 } from '../../components/ui';
+import { FilterBar, FilterTabs } from '../../components/ui/page';
 import { api } from '../../lib/api';
 import { formatAmount, formatMoney } from '../../lib/money';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
@@ -60,36 +61,39 @@ export function TransactionsPage() {
         action={canWrite ? <Button onClick={() => setIsRecording(true)}>Record</Button> : undefined}
       />
 
-      <Card className="mb-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Select
-            label="Direction"
-            value={direction}
-            placeholder="Income and expenditure"
-            options={[
-              { value: 'INCOME', label: 'Income only' },
-              { value: 'EXPENDITURE', label: 'Expenditure only' },
-            ]}
-            onChange={(event) => {
-              setDirection(event.target.value);
-              setPage(1);
-            }}
-          />
-          <Select
-            label="Category"
-            value={categoryId}
-            placeholder="Every category"
-            options={(categories.data?.data ?? []).map((category) => ({
-              value: category.id,
-              label: category.name,
-            }))}
-            onChange={(event) => {
-              setCategoryId(event.target.value);
-              setPage(1);
-            }}
-          />
-        </div>
-      </Card>
+      {/*
+        Direction is the filter a treasurer reaches for constantly — "show me what we spent"
+        — so it is a visible segmented control rather than a dropdown. Category is a long
+        list and stays a select.
+      */}
+      <FilterBar>
+        <FilterTabs
+          value={direction}
+          onChange={(next) => {
+            setDirection(next);
+            setPage(1);
+          }}
+          options={[
+            { value: '', label: 'All' },
+            { value: 'INCOME', label: 'Income' },
+            { value: 'EXPENDITURE', label: 'Expenditure' },
+          ]}
+        />
+        <Select
+          label=""
+          aria-label="Filter by category"
+          value={categoryId}
+          placeholder="Every category"
+          options={(categories.data?.data ?? []).map((category) => ({
+            value: category.id,
+            label: category.name,
+          }))}
+          onChange={(event) => {
+            setCategoryId(event.target.value);
+            setPage(1);
+          }}
+        />
+      </FilterBar>
 
       <Card>
         {transactions.isPending ? (
