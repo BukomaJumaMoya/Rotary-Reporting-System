@@ -37,7 +37,7 @@ M2 is the real milestone. If December arrives and a club cannot submit a fellows
 ### M0 — Foundations (Aug 2026) — **complete**
 
 > **Status, 15 August 2026 — done.** Monorepo and CI green. Schema translated, migrated and
-> verified; `schema.sql` amended to v1.9 after the translation surfaced real defects,
+> verified; the schema was amended to v1.9 after the translation surfaced real defects,
 > including an inverted predicate in `club_rosters` that discarded every membership
 > correction. Authentication with mail delivery, TOTP, encrypted secrets and recovery codes.
 > Request context and the scoped data access layer — the part this milestone exists for.

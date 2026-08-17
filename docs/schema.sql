@@ -1,6 +1,14 @@
 -- =====================================================================
 -- Rotaract District Information System (DIS)
--- Authoritative PostgreSQL 16 schema — design baseline v1.9
+-- Authoritative PostgreSQL 16 schema — design baseline v2.0
+--
+-- v2.0 (finance, M4 s1): approval freezes a budget's lines — DIS03, the third
+-- ADR-012 guard. A budget line changed after approval alters what the district
+-- agreed to without leaving a trace, and a check in the service would hold for
+-- the service and for nothing else. Two triggers, because an UPDATE moving a line
+-- between budgets must be refused if EITHER side is approved and one pass sees
+-- only one of them. Plus two partial indexes the finance summary needs.
+-- Migration 20260816030000_budget_approval_guard.
 --
 -- v1.9 (membership, M2 s6): club_rosters again. A CORRECTION is a RETRACTION, not a
 -- state, and ranking it as one meant that retracting a wrongly-recorded TERMINATE left
@@ -736,6 +744,72 @@ CREATE TABLE financial_transactions (
   deleted_at       TIMESTAMPTZ
 );
 CREATE INDEX ft_owner_year ON financial_transactions (owner_scope_type, owner_scope_id, rotary_year_id);
+
+-- v2.0: the summary aggregates by owner and by category for ONE district-year.
+-- Without these it is a sequential scan of every transaction the district has
+-- ever recorded — fine at 200 rows, not fine in year three. Partial on the soft
+-- delete because every read filters it.
+CREATE INDEX financial_transactions_owner_period
+  ON financial_transactions (district_id, rotary_year_id, owner_scope_type, owner_scope_id)
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX financial_transactions_category
+  ON financial_transactions (category_id)
+  WHERE deleted_at IS NULL;
+
+-- v2.0: approval freezes a budget's lines (ADR-012, DIS03 -> BUDGET_APPROVED).
+--
+-- A guard rather than a handler check, for the same reason membership_events and
+-- audit_log have one: approval is the moment a budget stops being a working
+-- document and becomes what the district agreed to, so a line changed afterwards
+-- alters the agreement without leaving a trace. A check in the service would hold
+-- for the service and for nothing else — not the seed, not a job, not a psql
+-- session during an incident, which is when somebody is most likely to try it.
+--
+-- Un-approving is deliberately permitted and thaws the lines again: a treasurer
+-- who approved the wrong budget needs a way back that leaves an audit row rather
+-- than one that needs a database password.
+CREATE FUNCTION budget_lines_frozen_when_approved() RETURNS TRIGGER AS $$
+DECLARE
+  target_budget uuid;
+  approved timestamptz;
+BEGIN
+  target_budget := COALESCE(NEW.budget_id, OLD.budget_id);
+  SELECT b.approved_at INTO approved FROM budgets b WHERE b.id = target_budget;
+
+  IF approved IS NOT NULL THEN
+    RAISE EXCEPTION 'budget % was approved at %: its lines are frozen', target_budget, approved
+      USING ERRCODE = 'DIS03';
+  END IF;
+
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER budget_lines_frozen
+  BEFORE INSERT OR UPDATE OR DELETE ON budget_lines
+  FOR EACH ROW EXECUTE FUNCTION budget_lines_frozen_when_approved();
+
+-- An UPDATE moving a line to a DIFFERENT budget must be refused if EITHER side is
+-- approved; the trigger above sees only one of them per pass.
+CREATE FUNCTION budget_lines_frozen_source() RETURNS TRIGGER AS $$
+DECLARE
+  approved timestamptz;
+BEGIN
+  IF NEW.budget_id IS DISTINCT FROM OLD.budget_id THEN
+    SELECT b.approved_at INTO approved FROM budgets b WHERE b.id = OLD.budget_id;
+    IF approved IS NOT NULL THEN
+      RAISE EXCEPTION 'budget % was approved at %: its lines are frozen', OLD.budget_id, approved
+        USING ERRCODE = 'DIS03';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER budget_lines_frozen_move
+  BEFORE UPDATE ON budget_lines
+  FOR EACH ROW EXECUTE FUNCTION budget_lines_frozen_source();
 
 CREATE TABLE dues_invoices (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),

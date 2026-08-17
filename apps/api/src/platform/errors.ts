@@ -85,6 +85,24 @@ export const ErrorCode = {
   // Database guards (ADR-012). Mapped from SQLSTATE below.
   MEMBERSHIP_IMMUTABLE: 'MEMBERSHIP_IMMUTABLE',
   AUDIT_IMMUTABLE: 'AUDIT_IMMUTABLE',
+
+  /**
+   * A budget already exists for this owner and year.
+   *
+   * `budgets` is unique on `(owner_scope_type, owner_scope_id, rotary_year_id)` — one
+   * budget per owner per year is the whole point, since two would mean two answers to
+   * "what did this club plan to spend".
+   */
+  BUDGET_EXISTS: 'BUDGET_EXISTS',
+
+  /**
+   * The budget has been approved, and approval is what makes it a record rather than a
+   * draft. Raised by a database guard (ADR-012), so it holds against any writer.
+   */
+  BUDGET_APPROVED: 'BUDGET_APPROVED',
+
+  /** The category's own direction disagrees with what the line or transaction is doing. */
+  CATEGORY_DIRECTION_MISMATCH: 'CATEGORY_DIRECTION_MISMATCH',
 } as const;
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -157,6 +175,16 @@ const SQLSTATE_TO_ERROR: Record<string, { status: number; code: ErrorCodeValue; 
       status: 409,
       code: ErrorCode.AUDIT_IMMUTABLE,
       message: 'The audit log is append-only.',
+    },
+    DIS03: {
+      status: 409,
+      code: ErrorCode.BUDGET_APPROVED,
+      // The guard, not the handler, is what makes this true: approval is the moment a
+      // budget stops being a working document, and a line removed afterwards would change
+      // what the district agreed to without leaving a trace.
+      message:
+        'This budget has been approved and its lines can no longer be changed. ' +
+        'Record the difference as a transaction instead.',
     },
   };
 

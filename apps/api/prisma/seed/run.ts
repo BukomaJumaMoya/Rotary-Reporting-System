@@ -435,6 +435,145 @@ async function seedActivities(org: OrgIds, members: SeededMember[]): Promise<num
   return activityRows.length;
 }
 
+/**
+ * Budgets and a year of transactions, for the clubs that would plausibly have them.
+ *
+ * Not every club: about two thirds, because a dataset in which every club has a tidy budget
+ * is a dataset that hides the screen the District Treasurer actually needs — the one showing
+ * who has not filed one. The same reasoning as the activity seed, where some clubs report
+ * nothing.
+ *
+ * Amounts are strings turned into `Decimal` by Prisma, never JavaScript numbers. A seed that
+ * used floats would produce figures the summary could not reproduce, and the first person to
+ * notice would reasonably assume the summary was wrong.
+ */
+async function seedFinance(org: OrgIds): Promise<number> {
+  const rng = random(4218);
+
+  const categories = await unscopedPrisma.financeCategory.findMany({
+    where: { districtId: org.districtId, isActive: true },
+    select: { id: true, direction: true },
+  });
+  const income = categories.filter((row) => row.direction === 'INCOME');
+  const expenditure = categories.filter((row) => row.direction === 'EXPENDITURE');
+  if (income.length === 0 || expenditure.length === 0) return 0;
+
+  const clubIds = [...org.clubIdsBySlug.values()];
+  const budgetRows: {
+    id: string;
+    districtId: string;
+    rotaryYearId: string;
+    ownerScopeType: 'CLUB';
+    ownerScopeId: string;
+    approvedAt: Date | null;
+  }[] = [];
+  const lineRows: {
+    budgetId: string;
+    categoryId: string;
+    description: string;
+    amountPlanned: string;
+  }[] = [];
+  const txnRows: {
+    districtId: string;
+    rotaryYearId: string;
+    ownerScopeType: 'CLUB';
+    ownerScopeId: string;
+    categoryId: string;
+    direction: 'INCOME' | 'EXPENDITURE';
+    amount: string;
+    occurredOn: Date;
+    description: string;
+  }[] = [];
+
+  /** A round-ish UGX figure, as a STRING. Clubs budget in hundreds of thousands. */
+  const ugx = (low: number, high: number): string => String(rng.int(low, high) * 1000);
+
+  for (const clubId of clubIds) {
+    // A third of clubs have filed nothing. That is the realistic shape, and it is what
+    // makes the treasurer's chase-list screen worth building.
+    if (rng.chance(0.33)) continue;
+
+    const budgetId = randomUUID();
+    // Roughly half of the filed budgets have been approved. The rest are the queue.
+    const isApproved = rng.chance(0.5);
+
+    budgetRows.push({
+      id: budgetId,
+      districtId: org.districtId,
+      rotaryYearId: org.currentYearId,
+      ownerScopeType: 'CLUB',
+      ownerScopeId: clubId,
+      // Set AFTER the lines are inserted — the DIS03 guard freezes an approved budget's
+      // lines, so seeding them in the other order would be refused by the database.
+      approvedAt: null,
+    });
+
+    for (const category of income.slice(0, rng.int(2, 3))) {
+      lineRows.push({
+        budgetId,
+        categoryId: category.id,
+        description: 'Planned income',
+        amountPlanned: ugx(800, 4000),
+      });
+    }
+    for (const category of expenditure.slice(0, rng.int(2, 4))) {
+      lineRows.push({
+        budgetId,
+        categoryId: category.id,
+        description: 'Planned expenditure',
+        amountPlanned: ugx(400, 2500),
+      });
+    }
+
+    // A year of movement, so the variance table has something to disagree about.
+    const months = rng.int(4, 11);
+    for (let index = 0; index < months; index += 1) {
+      const isIncome = rng.chance(0.45);
+      const pool = isIncome ? income : expenditure;
+      const category = rng.pick(pool);
+
+      txnRows.push({
+        districtId: org.districtId,
+        rotaryYearId: org.currentYearId,
+        ownerScopeType: 'CLUB',
+        ownerScopeId: clubId,
+        categoryId: category.id,
+        direction: isIncome ? 'INCOME' : 'EXPENDITURE',
+        amount: ugx(50, 1200),
+        occurredOn: new Date(Date.UTC(2027, 6 + (index % 12), rng.int(1, 27))),
+        description: isIncome ? 'Collection' : 'Payment',
+      });
+    }
+
+    if (isApproved) {
+      budgetRows[budgetRows.length - 1]!.approvedAt = new Date(Date.UTC(2027, 7, 15));
+    }
+  }
+
+  await unscopedPrisma.budget.createMany({
+    data: budgetRows.map((row) => ({ ...row, approvedAt: null })),
+  });
+  await unscopedPrisma.budgetLine.createMany({ data: lineRows });
+
+  // Approval LAST, once every line is in place. The guard is the reason, and the seed
+  // running afoul of it would be the guard doing its job.
+  const approved = budgetRows.filter((row) => row.approvedAt !== null);
+  for (const row of approved) {
+    await unscopedPrisma.budget.update({
+      where: { id: row.id },
+      data: { approvedAt: row.approvedAt },
+    });
+  }
+
+  await unscopedPrisma.financialTransaction.createMany({ data: txnRows });
+
+  log(
+    `  finance: ${budgetRows.length} club budgets (${approved.length} approved), ` +
+      `${lineRows.length} lines, ${txnRows.length} transactions`,
+  );
+  return budgetRows.length;
+}
+
 async function seedMembers(org: OrgIds): Promise<SeededMember[]> {
   const rng = random(9218);
   const members: SeededMember[] = [];
@@ -748,6 +887,7 @@ export async function seedDatabase(): Promise<SeedSummary> {
 
   const members = await seedMembers(org);
   await seedActivities(org, members);
+  await seedFinance(org);
   const signIns = await seedOfficers(members, positionIds, org);
 
   return {

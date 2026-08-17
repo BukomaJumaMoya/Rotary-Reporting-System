@@ -4,10 +4,10 @@
 describe what the system *should* be; this one records what has actually been built, what
 was decided along the way, and what is deliberately unfinished.
 
-Last updated: 16 August 2026, after M3 session 3. **M0, M1 and M2 are complete; M3 is
-code-complete but NOT closed — its device pass has not been run.**
+Last updated: 17 August 2026, after M4 session 1. **M0, M1 and M2 are complete; M3 is
+code-complete but NOT closed — its device pass has not been run; M4 is under way.**
 
-<!-- dis:state milestone=M2 schema=v1.9 tests=433 -->
+<!-- dis:state milestone=M2 schema=v2.0 tests=460 -->
 
 ---
 
@@ -140,8 +140,16 @@ full history is in §4.
 |---|---|---|
 | 1 — PWA shell and service worker | **done** | `1bcd510` |
 | 2 — Offline submission queue | **done** | this commit |
-| 3 — Payload budget | **done** | this commit |
+| 3 — Payload budget | **done** | `bf36e63` |
 | 4 — Real device pass | **manual, not a code session** — checklist in `docs/17-Device-Pass.md`, **not yet run** | |
+
+| M4 session | State | Commit |
+|---|---|---|
+| 1 — Budgets and transactions | **done** | this commit |
+| 2 — Dues invoicing and reconciliation | not started | |
+| 3 — TRF contributions | not started | |
+| 4 — Finance UI | not started | |
+| 5 — Finance hardening | not started | |
 
 CI runs typecheck → lint → format:check → test → build → `npm audit` against a
 `postgres:17` service container, and is green on `main`.
@@ -209,6 +217,7 @@ packages/contracts/src/
   auth.ts        login, password reset, invite, MFA, /auth/me, error envelope
   context.ts     RequestContext, RequestScopes, the ?year= param, org scopes
   common.ts      pagination, the list envelope, shared primitives
+  finance.ts     budgets, lines, transactions, variance — money as a STRING
   governance.ts  positions, permissions, appointments, committees, persons
   administration.ts  invitations, MFA reset, audit read, rollover
   health.ts      the one unauthenticated response shape
@@ -244,6 +253,8 @@ apps/api/src/
     activity/    routes · service · types.service · media.service
                  one model, configurable types, and the photographs on them
     assessment/  service — markStale(), a deliberate no-op until M5
+    finance/     routes · service — budgets, lines, transactions, the summary
+                 money.ts  Decimal in, decimal STRING out. Never a JS number.
     membership/  routes · service — the event log, the roster, the statistics
                  analytics.ts  THE one raw-SQL file outside the assessment resolvers
     notifications/ service · templates — queue row, delivery, and the due-row read
@@ -316,9 +327,9 @@ apps/web/src/
 Dockerfile · fly.toml · .github/workflows/deploy-staging.yml · README.md
 ```
 
-**433 tests** — 417 in the API, integration-style against real PostgreSQL, and 16 in the web
+**460 tests** — 444 in the API, integration-style against real PostgreSQL, and 16 in the web
 workspace against `fake-indexeddb`. The suites that are load bearing rather than incidental:
-`no-pii.test.ts` (walks every route unauthenticated), `invariants.test.ts` (37 ADR-012
+`no-pii.test.ts` (walks every route unauthenticated), `invariants.test.ts` (44 ADR-012
 guards), `scope*.test.ts` (the data access layer), `audit.test.ts`, `rollover.test.ts` (dry
 run and committed), `prisma/seed.test.ts`, which runs the real seed and signs in as the
 seeded PIME Chair, and `lib/offline/outbox.test.ts`, where a bug means a club's report is
@@ -342,7 +353,7 @@ only as guards, each with a stable SQLSTATE and a conformance test. This removed
 
 **ADR-013 — secret encryption and key management** (`02-Architecture.md`).
 
-**`docs/schema.sql` is now v1.9** — v1.7 through M1, then M2 sessions 5 and 6. The translation surfaced real defects in the v1.0
+**`docs/schema.sql` is now v2.0** — v1.7 through M1, M2 sessions 5 and 6, then M4 session 1. The translation surfaced real defects in the v1.0
 baseline; every amendment is logged in the file's own header. The substantive one:
 `club_rosters` filtered on `supersedes_event_id IS NULL`, which discarded every correction
 while continuing to count the row it corrected.
@@ -1005,7 +1016,7 @@ club would correct the mistake and the member would stay deleted.
 A CORRECTION is a RETRACTION, not a state. It still excludes its target through the `live`
 predicate and is then itself excluded from the ranking, so state falls back to the previous
 live event. Retract a JOIN and no joining event is left; retract a TERMINATE and the JOIN
-underneath is the latest live event again. schema.sql v1.9, migration
+underneath is the latest live event again. Schema v1.9, migration
 `20260816010000_club_rosters_corrections`, and `analytics.ts` carries the same predicate
 because two definitions of "who is a member" is one definition that will disagree with the
 roster.
@@ -1394,6 +1405,74 @@ an HttpOnly cookie rather than in one.
 `dist/server.js` built hours earlier, so the first measurement after adding the middleware
 looked identical. Rebuild before measuring, or measure `npm run dev`.
 
+### M4 — finance
+
+#### Session 1 — budgets and transactions
+
+**Money is a decimal STRING on the wire, in both directions, and a `Decimal` everywhere
+else.** `modules/finance/money.ts` is the only place the conversion happens. UGX figures run
+to nine digits and `0.1 + 0.2` is `0.30000000000000004`; a float that reaches an award tally
+or a receipt is a figure the district cannot defend when a club disputes it. `fromMoney`
+fixes two decimal places rather than calling `toString()`, so a column of figures lines up
+instead of alternating between `1500000` and `1500000.50`.
+
+**A transaction's direction comes from its CATEGORY, never from the request.** The field is
+absent from the create contract. A caller who could send `INCOME` against an expenditure
+category would produce books that do not add up, and the error would surface months later as
+a variance nobody can explain.
+
+**Variance is oriented so POSITIVE IS GOOD in both directions** — `actual − planned` for
+income, `planned − actual` for expenditure. One subtraction for both would make half of a
+variance table mean the opposite of the other half, and a treasurer reading down the column
+would have to remember which rows to invert.
+
+**There is no `budget:approve` permission, deliberately.** Approval requires
+`finance:write:club` AND a district-wide appointment, which is the governance rule expressed
+in the permissions that already exist: a club treasurer holds `finance:write:club` scoped to
+their own club and therefore cannot approve their own budget. Inventing a permission would
+have been the easier move and would have left the actual rule unstated.
+
+**Approval freezes the lines through a DATABASE GUARD (DIS03), not a handler check.** Same
+reasoning as the membership and audit guards: a check in the service holds for the service
+and for nothing else — not the seed, not a job, not a psql session during an incident, which
+is exactly when somebody is most likely to try. Two triggers, because an UPDATE moving a line
+between budgets must be refused if EITHER side is approved and one pass sees only one of
+them. Un-approval is available and leaves an audit row.
+
+**A scoped `create` returns SCALARS and takes no `select`.** The layer stamps district and
+year, and a caller-supplied select could omit them — so relations come from a read, or are
+constructed from what the caller already has. Worth knowing before writing the next module:
+the first attempt here used `select` on four creates and none of them compiled.
+
+**Prisma's `Exact<>` rejects the readonly array `as const` produces on a NESTED select**, so
+`BUDGET_SELECT` carries no `orderBy` on its lines and they are sorted in the serialiser. A
+budget has tens of lines, not thousands.
+
+**`governance.scopeNames()` is now the one way to turn a polymorphic scope id into a name.**
+`appointments.scope_id`, `budgets.owner_scope_id`, `activities.host_scope_id` and
+`documents.owner_scope_id` are the same problem, and governance owns the polymorphism. A
+second implementation would be a second answer to "what is this club called" the first time
+one is renamed.
+
+**`finance:read:club` covers income AND expenditure, and club secretaries hold it.** The
+predecessor showed secretaries what the club had collected and not what it had spent; the
+district logged it as a complaint. There is a test for it, because it is the sort of thing
+somebody tidies back.
+
+**Two indexes Prisma cannot see**: `financial_transactions` by `(district, year, owner)` and
+by `category`, both partial on `deleted_at IS NULL`. The summary aggregates over both, and
+without them it is a sequential scan of every transaction the district has ever recorded —
+fine at 200 rows, not fine in year three.
+
+**The seed gives two thirds of clubs a budget, not all of them** — 38 budgets, 15 approved,
+207 lines, 309 transactions. A dataset where every club has filed tidily hides the screen the
+District Treasurer actually needs, which is the one showing who has NOT. Same reasoning as
+the activity seed, where some clubs report nothing.
+
+It also has to insert the lines BEFORE setting `approved_at`, and does the approvals in a
+second pass. Seeding them the other way round is refused by the DIS03 guard — which is the
+guard working, and a small demonstration that it holds for a writer that is not the API.
+
 ---
 
 ## 4a. Axiom conformance
@@ -1418,7 +1497,7 @@ nobody may ever qualify becomes an axiom people route around silently.
 |---|---|---|---|
 | 1 | The Rotary Year is a dimension, not a filter | **holds** | Six new modules, and not one of them names `rotaryYearId` in a Prisma query — the layer stamps and filters it. The one place it IS named by hand is `modules/membership/analytics.ts`, where raw SQL bypasses the extension; every query there binds it explicitly and there is a test proving another district's events stay out of the totals. |
 | 2 | District affiliation is temporal | **holds** | The first surface actually built on it. `clubs` still has no `district_id`, and "the clubs of this district this year" is a join written once in `clubs.repository.ts`. `CLUB_AFFILIATED_ELSEWHERE` refuses a second affiliation without reading the other district's row to say so. |
-| 3 | Membership is an event log | **holds, and the view was fixed again** | No `PUT`, no `DELETE`, and the database guard proves it for paths nobody has written. `club_rosters` had a SECOND defect — a CORRECTION ranked as a state, so retracting a wrongly-recorded TERMINATE left the member deleted. Found by a hand-computed fixture; schema.sql v1.9. |
+| 3 | Membership is an event log | **holds, and the view was fixed again** | No `PUT`, no `DELETE`, and the database guard proves it for paths nobody has written. `club_rosters` had a SECOND defect — a CORRECTION ranked as a state, so retracting a wrongly-recorded TERMINATE left the member deleted. Found by a hand-computed fixture; schema v1.9. |
 | 4 | One activity model | **holds** | One table, one service, and no per-type branch anywhere — not in the validator, not in the reporting form. Requirements are read from the type's row, so adding a type is an insert. `field_config` is the contract between configuration and UI. |
 | 5 | The assessment rubric is data | **not yet exercised** | No assessment code exists beyond `markStale()`, which is a deliberate no-op. M5. The *activity type* analogue was honoured: requirements are rows a district officer edits, never constants. |
 | 6 | Personal data is private by default | **holds, and now has one gate** | `serialisePerson` is the single place the decision is made, used by every module that returns a person. Contact fields are ABSENT rather than null. `person:read:contact` is bounded by scope, visibility flags still default closed, erasure anonymises rather than deletes, and EXIF — including GPS — is stripped from every photograph, proven against a genuinely GPS-tagged fixture. |

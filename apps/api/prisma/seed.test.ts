@@ -169,6 +169,32 @@ describe('the seeded dataset', () => {
     ]);
   });
 
+  it('gives most clubs a budget and some none, with the approved ones fully lined', async () => {
+    const [budgets, approved, lines, transactions] = await Promise.all([
+      unscopedPrisma.budget.count(),
+      unscopedPrisma.budget.count({ where: { approvedAt: { not: null } } }),
+      unscopedPrisma.budgetLine.count(),
+      unscopedPrisma.financialTransaction.count(),
+    ]);
+
+    // Not every club, deliberately: a dataset where everybody has filed hides the screen
+    // the District Treasurer actually needs, which is the one showing who has not.
+    expect(budgets).toBeGreaterThan(TOTAL_CLUBS * 0.4);
+    expect(budgets).toBeLessThan(TOTAL_CLUBS);
+    expect(approved).toBeGreaterThan(0);
+    expect(transactions).toBeGreaterThan(0);
+
+    // Every budget has lines, INCLUDING the approved ones. That is the interesting half:
+    // the DIS03 guard freezes an approved budget's lines, so the seed has to insert them
+    // before it approves. An approved budget with no lines would mean the seed had been
+    // quietly losing them to a refused write.
+    expect(lines).toBeGreaterThan(budgets);
+    const approvedWithNoLines = await unscopedPrisma.budget.count({
+      where: { approvedAt: { not: null }, lines: { none: {} } },
+    });
+    expect(approvedWithNoLines).toBe(0);
+  });
+
   it('does not duplicate the notification templates a migration already inserted', async () => {
     const auth = await unscopedPrisma.notificationTemplate.count({
       where: { code: { in: ['AUTH_PASSWORD_RESET', 'AUTH_INVITE'] } },

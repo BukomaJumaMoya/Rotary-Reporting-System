@@ -72,7 +72,8 @@ Declared in `apps/api/src/platform/errors.ts`, which is the list that is actuall
 `UNSUPPORTED_MEDIA_TYPE` · `FILE_TOO_LARGE` · `MISSING_REQUIRED_FIELD_FOR_TYPE` ·
 `PERIOD_CLOSED` ·
 `MEMBERSHIP_IMMUTABLE` ·
-`AUDIT_IMMUTABLE` · the auth codes in §2.
+`AUDIT_IMMUTABLE` ·
+`BUDGET_EXISTS` · `BUDGET_APPROVED` · `CATEGORY_DIRECTION_MISMATCH` · the auth codes in §2.
 
 **Designed, not yet built:** `FRAMEWORK_LOCKED` · `TIER_NOT_APPLICABLE` ·
 `ASSESSMENT_FINALISED` · `DISPUTE_WINDOW_CLOSED`.
@@ -81,9 +82,13 @@ Declared in `apps/api/src/platform/errors.ts`, which is the list that is actuall
 the district boundary to write a better error message is exactly the read this system does
 not permit itself, and the unique on `(club_id, rotary_year_id)` already knows the answer.
 
-`MEMBERSHIP_IMMUTABLE` and `AUDIT_IMMUTABLE` are mapped from database guard SQLSTATEs
-(ADR-012). Prisma 7's driver adapter nests the code two levels deeper than the obvious
-place, which is why `sqlStateOf()` reads three candidates.
+`MEMBERSHIP_IMMUTABLE`, `AUDIT_IMMUTABLE` and `BUDGET_APPROVED` are mapped from database
+guard SQLSTATEs (ADR-012 — DIS01, DIS02, DIS03). Prisma 7's driver adapter nests the code two
+levels deeper than the obvious place, which is why `sqlStateOf()` reads three candidates.
+
+`BUDGET_APPROVED` is a guard rather than a handler check for the same reason the other two
+are: approval is the moment a budget stops being a working document and becomes what the
+district agreed to. A check in the service would hold for the service and for nothing else.
 
 ### Idempotency
 
@@ -322,11 +327,41 @@ predecessor that published members' locations.
 
 ## 7. Finance
 
+**Built in M4 session 1:** categories, budgets, lines, transactions and the summary.
+
+| Method | Path | Permission |
+|---|---|---|
+| `GET` | `/finance/categories` | `finance:read:club` |
+| `POST` | `/finance/categories` | `finance:write:club` |
+| `GET` `POST` | `/budgets` | read / write |
+| `GET` `PATCH` | `/budgets/:id` | read / write |
+| `POST` | `/budgets/:id/approval` | `finance:write:club` **and a district-wide appointment** |
+| `GET` `POST` | `/budgets/:id/lines` | read / write |
+| `PATCH` `DELETE` | `/budgets/:id/lines/:lineId` | `finance:write:club` |
+| `GET` `POST` | `/transactions` | read / write |
+| `GET` | `/finance/summary` — income, expenditure, variance vs budget | `finance:read:club` |
+
+**Money is a decimal STRING in both directions**, never a JSON number — `NUMERIC(14,2)` in
+Postgres, `Decimal` in Prisma, a string on the wire. A float that reaches an award tally or
+a receipt is a figure the district cannot defend.
+
+A transaction's `direction` comes from its CATEGORY, never from the request. Letting a
+caller send `INCOME` against an expenditure category is how a club's books stop adding up,
+and the error would surface months later as a variance nobody can explain.
+
+Variance is oriented so **positive is good in both directions**: `actual − planned` for
+income, `planned − actual` for expenditure. One subtraction for both would make half of a
+variance table mean the opposite of the other half.
+
+There is no `budget:approve` permission and there should not be one. Approval requires
+`finance:write:club` **and** a district-wide appointment, so a club treasurer — who holds
+that permission scoped to their own club — cannot approve their own budget. Un-approval is
+deliberately available, and leaves an audit row.
+
+**Still to build (M4 sessions 2–3):**
+
 | Method | Path |
 |---|---|
-| `GET` `POST` `PATCH` | `/budgets`, `/budgets/:id/lines` |
-| `GET` `POST` | `/transactions` |
-| `GET` | `/finance/summary` — income, expenditure, variance vs budget |
 | `GET` `POST` | `/dues/invoices` |
 | `POST` | `/dues/invoices/:id/payments` |
 | `GET` | `/dues/status` — district-wide: unpaid / partial / paid by club |

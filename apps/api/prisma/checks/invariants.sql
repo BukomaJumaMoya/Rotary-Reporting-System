@@ -478,4 +478,86 @@ BEGIN
 EXCEPTION WHEN check_violation THEN RAISE NOTICE 'PASS 28 negative follower count rejected';
 END $$;
 
+-- ---------------------------------------------------------------------
+-- Finance (M4 session 1)
+-- ---------------------------------------------------------------------
+
+INSERT INTO finance_categories (id, district_id, code, name, direction)
+VALUES ('66666666-6666-6666-6666-666666666666', '11111111-1111-1111-1111-111111111111',
+        'FUNDRAISING', 'Fundraising', 'INCOME');
+INSERT INTO budgets (id, district_id, rotary_year_id, owner_scope_type, owner_scope_id)
+VALUES ('77777777-7777-7777-7777-777777777777', '11111111-1111-1111-1111-111111111111',
+        '22222222-2222-2222-2222-222222222222', 'CLUB', '33333333-3333-3333-3333-333333333333');
+INSERT INTO budget_lines (id, budget_id, category_id, description, amount_planned)
+VALUES ('88888888-8888-8888-8888-888888888888', '77777777-7777-7777-7777-777777777777',
+        '66666666-6666-6666-6666-666666666666', 'Car wash', 1500000.00);
+
+-- 29. one budget per owner per year
+DO $$
+BEGIN
+  INSERT INTO budgets (district_id, rotary_year_id, owner_scope_type, owner_scope_id)
+  VALUES ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222',
+          'CLUB', '33333333-3333-3333-3333-333333333333');
+  RAISE NOTICE 'FAIL 29 a second budget for the same owner and year was accepted';
+EXCEPTION WHEN unique_violation THEN RAISE NOTICE 'PASS 29 one budget per owner per year';
+END $$;
+
+-- 30. a transaction amount may not be negative: direction carries the sign
+DO $$
+BEGIN
+  INSERT INTO financial_transactions (district_id, rotary_year_id, owner_scope_type,
+                                      owner_scope_id, category_id, direction, amount, occurred_on)
+  VALUES ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222',
+          'CLUB', '33333333-3333-3333-3333-333333333333',
+          '66666666-6666-6666-6666-666666666666', 'INCOME', -5000, '2027-08-01');
+  RAISE NOTICE 'FAIL 30 a negative amount was accepted';
+EXCEPTION WHEN check_violation THEN RAISE NOTICE 'PASS 30 negative amount rejected';
+END $$;
+
+-- 31. lines may still be edited while the budget is a draft
+DO $$
+BEGIN
+  UPDATE budget_lines SET amount_planned = 1600000.00
+   WHERE id = '88888888-8888-8888-8888-888888888888';
+  RAISE NOTICE 'PASS 31 a draft budget''s lines are editable';
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'FAIL 31 draft line edit rejected: %', SQLERRM;
+END $$;
+
+-- 32. approval freezes the lines (DIS03)
+UPDATE budgets SET approved_at = now() WHERE id = '77777777-7777-7777-7777-777777777777';
+
+DO $$
+BEGIN
+  UPDATE budget_lines SET amount_planned = 9999999.00
+   WHERE id = '88888888-8888-8888-8888-888888888888';
+  RAISE NOTICE 'FAIL 32a an approved budget''s line was changed';
+EXCEPTION WHEN SQLSTATE 'DIS03' THEN RAISE NOTICE 'PASS 32a approved line UPDATE blocked with DIS03';
+END $$;
+
+DO $$
+BEGIN
+  DELETE FROM budget_lines WHERE id = '88888888-8888-8888-8888-888888888888';
+  RAISE NOTICE 'FAIL 32b an approved budget''s line was deleted';
+EXCEPTION WHEN SQLSTATE 'DIS03' THEN RAISE NOTICE 'PASS 32b approved line DELETE blocked with DIS03';
+END $$;
+
+DO $$
+BEGIN
+  INSERT INTO budget_lines (budget_id, category_id, description, amount_planned)
+  VALUES ('77777777-7777-7777-7777-777777777777', '66666666-6666-6666-6666-666666666666',
+          'Added after approval', 100.00);
+  RAISE NOTICE 'FAIL 32c a line was added to an approved budget';
+EXCEPTION WHEN SQLSTATE 'DIS03' THEN RAISE NOTICE 'PASS 32c approved line INSERT blocked with DIS03';
+END $$;
+
+-- 33. un-approving is the way back, and it restores the lines
+DO $$
+BEGIN
+  UPDATE budgets SET approved_at = NULL WHERE id = '77777777-7777-7777-7777-777777777777';
+  UPDATE budget_lines SET amount_planned = 1700000.00
+   WHERE id = '88888888-8888-8888-8888-888888888888';
+  RAISE NOTICE 'PASS 33 un-approving restores the lines';
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'FAIL 33 line still frozen after un-approval: %', SQLERRM;
+END $$;
+
 ROLLBACK;

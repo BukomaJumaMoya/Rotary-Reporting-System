@@ -213,7 +213,7 @@ permission, an error code or a table.
 **M0 — Foundations, M1 — Governance core and M2 — the reporting spine are all complete**
 (August 2026). **M3 — offline and mobile — is code-complete**: sessions 1, 2 and 3 are done.
 Session 4 is the manual device pass and has NOT been run, so M3 is not closed.
-`docs/schema.sql` is at v1.9; 433 tests.
+`docs/schema.sql` is at v2.0; 460 tests.
 
 M0: monorepo and CI, schema translated and migrated, session authentication with lockout,
 mail delivery, TOTP with encrypted secrets and recovery codes, the request context and

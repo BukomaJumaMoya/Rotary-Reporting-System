@@ -319,3 +319,24 @@ export async function listClubOfficerPersonIds(
   });
   return [...new Set(rows.map((row) => row.personId))];
 }
+
+/**
+ * Display names for a set of org units, whatever kind they are.
+ *
+ * Exported because `appointments.scope_id`, `budgets.owner_scope_id`,
+ * `activities.host_scope_id` and `documents.owner_scope_id` are all the same problem: a
+ * bare UUID that may name a club, a cluster, a region or a committee. Governance owns the
+ * resolution because it owns the polymorphism — this is the one place in the schema that
+ * trades referential integrity for it.
+ *
+ * Modules call THIS rather than the repository, and never query the four tables
+ * themselves: a second implementation is a second answer to "what is this club called"
+ * the first time a club is renamed.
+ */
+export async function scopeNames(
+  ctx: RequestContext,
+  targets: { scopeType: OrgScopeValue; scopeId: string }[],
+): Promise<Map<string, string>> {
+  if (targets.length === 0) return new Map();
+  return repository.findScopeNames(ctx, targets);
+}

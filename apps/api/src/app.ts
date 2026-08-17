@@ -3,6 +3,7 @@ import express, { type Express, type Router } from 'express';
 import { activityRouter } from './modules/activity/routes.js';
 import { adminRouter } from './modules/admin/routes.js';
 import { authRouter } from './modules/auth/routes.js';
+import { financeRouter } from './modules/finance/routes.js';
 import { governanceRouter } from './modules/governance/routes.js';
 import { membershipRouter } from './modules/membership/routes.js';
 import { orgRouter } from './modules/org/routes.js';
@@ -108,6 +109,7 @@ export function createApp(mountExtra?: (mount: MountFn) => void): Express {
   mount('/api/v1', peopleRouter);
   mount('/api/v1', membershipRouter);
   mount('/api/v1', activityRouter);
+  mount('/api/v1', financeRouter);
 
   mountExtra?.(mount);
 
