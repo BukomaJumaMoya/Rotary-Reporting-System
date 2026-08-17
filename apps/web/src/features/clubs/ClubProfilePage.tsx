@@ -13,15 +13,16 @@ import { cx } from '../../lib/cx';
 import { queryKeys, useList } from '../../lib/queries';
 import { ClubRosterPanel, MembershipStatsPanel } from '../membership/MembershipPages';
 import { useAuth, useScope } from '../auth/useAuth';
+import { FinanceSummaryPanel } from '../finance/FinanceSummaryPanel';
 import type { Club, ClubSummaryResponse } from './types';
 
 /**
  * One club.
  *
- * Six tabs, one of which has content. The other five carry an EmptyState naming the
- * milestone that fills them, rather than being hidden — a club officer who cannot find the
- * Members tab assumes the system does not do membership, and the tab that says "arriving
- * with the membership log" is the difference between an unfinished system and a broken one.
+ * Six tabs. The two still empty carry an EmptyState naming the milestone that fills them,
+ * rather than being hidden — a club officer who cannot find the Members tab assumes the
+ * system does not do membership, and a tab that says "arriving with the assessment engine"
+ * is the difference between an unfinished system and a broken one.
  *
  * The Overview reads `/clubs/:id/summary`: ONE request, not six. On metered Android data
  * six round trips is the difference between a page that opens and a page a secretary gives
@@ -32,7 +33,7 @@ const TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'members', label: 'Members' },
   { key: 'activities', label: 'Activities' },
-  { key: 'finance', label: 'Finance', milestone: 'the finance module (M4)' },
+  { key: 'finance', label: 'Finance' },
   { key: 'documents', label: 'Documents', milestone: 'document management (M7)' },
   { key: 'scorecard', label: 'Scorecard', milestone: 'the assessment engine (M5)' },
 ] as const;
@@ -114,6 +115,19 @@ export function ClubProfilePage() {
             Open the activity list for this club
           </Link>
         </Card>
+      ) : tab === 'finance' ? (
+        <div className="flex flex-col gap-4">
+          {/*
+            Income AND expenditure, to a secretary as readily as to a treasurer. The
+            predecessor showed one half and not the other, and the district logged it.
+          */}
+          <FinanceSummaryPanel ownerScopeType="CLUB" ownerScopeId={club.id} />
+          <p className="text-ink-500 text-sm">
+            <Link className="text-cranberry-600 underline" to="/finance/transactions">
+              Open the transaction list
+            </Link>
+          </p>
+        </div>
       ) : tab === 'members' ? (
         <div className="flex flex-col gap-4">
           <MembershipStatsPanel clubId={club.id} />

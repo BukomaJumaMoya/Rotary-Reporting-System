@@ -73,4 +73,11 @@ export const queryKeys = {
   invitations: ['invitations'] as const,
   audit: ['audit'] as const,
   persons: ['persons'] as const,
+  budgets: ['budgets'] as const,
+  transactions: ['transactions'] as const,
+  financeCategories: ['finance-categories'] as const,
+  financeSummary: ['finance-summary'] as const,
+  dues: ['dues'] as const,
+  memberDues: ['member-dues'] as const,
+  trf: ['trf'] as const,
 };

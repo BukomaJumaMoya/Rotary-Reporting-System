@@ -43,6 +43,23 @@ import { MembershipHistoryPage, TransitionsPage } from './features/membership/Me
 import { RecordEventPage } from './features/membership/RecordEventPage';
 import { PendingPage } from './features/offline/PendingPage';
 
+/*
+ * Finance is LAZY. A club treasurer uses it and a secretary reads it, so it is not quite an
+ * admin screen — but it is not on the path a member opens at eleven at night to file a
+ * report either, and that path is what the eager bundle is for.
+ */
+const BudgetPage = lazy(() =>
+  import('./features/finance/BudgetPage').then((m) => ({ default: m.BudgetPage })),
+);
+const DuesPage = lazy(() =>
+  import('./features/finance/DuesPage').then((m) => ({ default: m.DuesPage })),
+);
+const TransactionsPage = lazy(() =>
+  import('./features/finance/TransactionsPage').then((m) => ({ default: m.TransactionsPage })),
+);
+const TrfPage = lazy(() =>
+  import('./features/finance/TrfPage').then((m) => ({ default: m.TrfPage })),
+);
 const ActivityTypesPage = lazy(() =>
   import('./features/activities/ActivityTypesPage').then((m) => ({ default: m.ActivityTypesPage })),
 );
@@ -210,6 +227,38 @@ export function App() {
           element={
             <RequireAuth>
               <PendingPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/finance/transactions"
+          element={
+            <RequireAuth>
+              <TransactionsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/finance/budget"
+          element={
+            <RequireAuth>
+              <BudgetPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/finance/dues"
+          element={
+            <RequireAuth>
+              <DuesPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/finance/trf"
+          element={
+            <RequireAuth>
+              <TrfPage />
             </RequireAuth>
           }
         />

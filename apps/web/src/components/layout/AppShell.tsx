@@ -39,6 +39,15 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/report', label: 'Report', permission: 'activity:create:club', glyph: '✎' },
   { to: '/membership/record', label: 'Members', permission: 'membership:write:club', glyph: '✚' },
   {
+    to: '/finance/transactions',
+    label: 'Money',
+    permission: 'finance:read:club',
+    glyph: '¤',
+  },
+  { to: '/finance/dues', label: 'Dues', permission: 'finance:read:club', glyph: '≡' },
+  { to: '/finance/budget', label: 'Budget', permission: 'finance:read:club', glyph: '◱' },
+  { to: '/finance/trf', label: 'TRF', permission: 'finance:read:club', glyph: '◈' },
+  {
     to: '/membership/transitions',
     label: 'Transitions',
     permission: 'membership:read:club',

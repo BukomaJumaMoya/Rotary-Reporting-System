@@ -4,7 +4,7 @@
 describe what the system *should* be; this one records what has actually been built, what
 was decided along the way, and what is deliberately unfinished.
 
-Last updated: 17 August 2026, after M4 session 3. **M0, M1 and M2 are complete; M3 is
+Last updated: 17 August 2026, after M4 session 4. **M0, M1 and M2 are complete; M3 is
 code-complete but NOT closed — its device pass has not been run; M4 is under way.**
 
 <!-- dis:state milestone=M2 schema=v2.1 tests=501 -->
@@ -148,7 +148,7 @@ full history is in §4.
 | 1 — Budgets and transactions | **done** | this commit |
 | 2 — Dues invoicing and reconciliation | **done** | this commit |
 | 3 — TRF contributions | **done** | this commit |
-| 4 — Finance UI | not started | |
+| 4 — Finance UI | **done** | this commit |
 | 5 — Finance hardening | not started | |
 
 CI runs typecheck → lint → format:check → test → build → `npm audit` against a
@@ -302,6 +302,7 @@ apps/web/src/
   lib/           api.ts (fetch wrapper + ApiError) · queries.ts (TanStack keys,
                  useList, useApiMutation) · cx.ts · toast.ts · uuid.ts
                  images.ts — shrinks a photograph BEFORE it leaves the phone
+                 money.ts   formats a decimal STRING. The one permitted conversion.
   lib/offline/   outbox.ts   THE QUEUE — IndexedDB, backoff, 409-as-success
                  transport.ts  send/sendFile, shared with sw.ts. No React.
                  submit.ts   the one submission path + the drain scheduler
@@ -318,6 +319,10 @@ apps/web/src/
     offline/     PendingPage — what is waiting to be sent, and why
     clubs/       ClubsPage (directory) · ClubProfilePage (tabs, one summary call)
                  ClubFormPage (charter and edit) · ClustersPage · types.ts
+    finance/     FinanceSummaryPanel — income, expenditure, variance by category
+                 TransactionsPage · BudgetPage (line builder, approval)
+                 DuesPage — the treasurer's grid AND the club's own invoice
+                 TrfPage — a transcription surface for My Rotary · types.ts
     activities/  ReportPage — THE screen: four steps, rendered from the type
                  draft.ts — the draft's shape and storage; restoreReportDraft turns a
                  refused submission back into a form the member can correct
@@ -1606,6 +1611,50 @@ its keep.
 **Only clubs that have contributed appear in `byClub`.** A district of 68 clubs mostly at zero
 is a table nobody reads; showing who has done NOTHING is the dues grid's job, and that grid is
 built from the club list outward for exactly that reason.
+
+#### Session 4 — the finance screens
+
+**`lib/money.ts` is the ONLY place a money string becomes a number**, and it does so solely
+to hand to `Intl.NumberFormat`. There is no `sum` in that file and there must not be: a
+double holds every integer to 2^53, so one fourteen-digit figure formats exactly, but the
+moment two are added the guarantee is gone. **Every total on every finance screen comes from
+the server** — including the budget's running totals, which is an extra round trip taken
+deliberately.
+
+**`isNegative` and `isZero` read the STRING**, not a parsed value, so colour-coding stays
+correct for figures beyond what a double holds exactly.
+
+**The variance colour rule is one rule.** The API orients variance so positive is good in
+both directions, so `varianceTone` needs no knowledge of which way the money went — which is
+the payoff for having done that server-side in session 1.
+
+**One dues screen, two audiences.** `dues:manage:district` switches between the District
+Treasurer's grid and a club's own invoice. The grid is built from the CLUB list, so a club
+nobody has invoiced shows as "Not invoiced" rather than being absent — and the count of them
+is one of the four figures at the top, because it is the number that needs acting on.
+
+**Buttons are hidden where the SERVER would refuse, not to be clever.** Budget approval is
+shown only to a district-wide caller because `setBudgetApproval` throws for anybody else; a
+visible button that always fails is worse than none.
+
+**No direction field on the transaction form.** The category carries it. The form shows what
+the choice implies — "Money coming IN" — rather than asking twice and letting the two
+disagree.
+
+**`inputMode="decimal"`, never `type="number"`.** The latter gives a spinner on money and
+lets the browser hand back a float. The string goes to the server untouched; parsing it here
+to "validate" would be the one place a float gets in.
+
+**The TRF form is built for a SITTING, not an entry.** Club and fund stay selected after a
+save and the dialog stays open, because the Chair is reading down one club's row on My Rotary
+— Annual Fund, then PolioPlus, then the next club. A form that reset itself would add two
+taps to every line of a report with dozens of them, which is how the reconciliation stops
+happening.
+
+**Finance is lazy.** A treasurer uses it and a secretary reads it, so it is not quite an
+admin screen — but it is not on the path a member opens at eleven at night to file a report
+either, and that path is what the eager bundle is for. Initial JS went 90.6 → **91.6 KB**
+gzipped for five screens; thirteen lazy chunks now.
 
 ---
 
