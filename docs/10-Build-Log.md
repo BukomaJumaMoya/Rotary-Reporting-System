@@ -7,7 +7,7 @@ was decided along the way, and what is deliberately unfinished.
 Last updated: 17 August 2026, after M4 session 5. **M4 is code-complete.** **M0, M1 and M2 are complete; M3 is
 code-complete but NOT closed — its device pass has not been run; M4 is under way.**
 
-<!-- dis:state milestone=M2 schema=v2.1 tests=509 -->
+<!-- dis:state milestone=M2 schema=v2.1 tests=522 -->
 
 ---
 
@@ -331,6 +331,11 @@ apps/web/src/
                  Can.tsx — permission-gated rendering, presentation only
                  layout/AppShell.tsx — sidebar (expanded · rail · drawer), header,
                                 Rotary Year badge and the read-only year strip
+                 layout/navigation.ts — ONE nav model, read by the sidebar and the
+                                palette, so the two cannot disagree about a permission
+                 layout/CommandPalette.tsx — ⌘K over SCREENS. Record search waits
+                                for a server endpoint; see the note in the file.
+                 layout/useCommandPalette.ts — ⌘K and the `g`-prefixed jumps
                  layout/ConnectionBanner.tsx — offline, update, install; never modal
   test/setup.ts  fake-indexeddb, for the web suite (vitest, node environment)
   features/
@@ -358,7 +363,7 @@ apps/web/src/
 Dockerfile · fly.toml · .github/workflows/deploy-staging.yml · README.md
 ```
 
-**509 tests** — 493 in the API, integration-style against real PostgreSQL, and 16 in the web
+**522 tests** — 496 in the API, integration-style against real PostgreSQL, and 26 in the web
 workspace against `fake-indexeddb`. The suites that are load bearing rather than incidental:
 `no-pii.test.ts` (walks every route unauthenticated), `invariants.test.ts` (49 ADR-012
 guards), `scope*.test.ts` (the data access layer), `audit.test.ts`, `rollover.test.ts` (dry
@@ -1731,6 +1736,85 @@ Postgres correctly ignores them — leave that alone.** `dues_invoices` grows at
 types × N years: about 1,360 rows after a decade, and a sequential scan over that is genuinely
 the right plan. Somebody will one day see "Seq Scan" in a plan and try to fix it. There is
 nothing to fix.
+
+### The design pass — tokens, typography, shell
+
+Run after M4 code-complete and before the device pass, against a written design
+specification. Presentation only: **no endpoint, no schema, no permission and no contract
+changed.** 522 tests passed before it and after it.
+
+**The premise.** People judge whether software works by whether it looks like it works. A
+club secretary who finds the application cheap will distrust a score that is correct, and
+adoption is this project's principal risk. The budget is what makes that affordable rather
+than what fights it — the things that read as expensive (typography, spacing discipline,
+motion timing, perceived speed) are nearly free, and the things that read as cheap
+(component libraries, motion frameworks, glassmorphism) are heavy. Initial JS went from
+93 KB to **101.4 KB of the 250 KB budget**, and none of the increase is a dependency.
+
+**Every colour is now a token, and components consume a semantic layer.** Six hues generated
+in OKLCH — perceptually uniform, so a ramp stepped by lightness looks evenly stepped and dark
+mode is derived (lift lightness, cut chroma) instead of hand-tuned per colour. Components
+name `surface`, `text-primary`, `accent`, `danger`; nothing names a ramp step. 282 ramp
+classes were migrated across 25 files to get there, mechanically, by script.
+
+**Danger is ember at hue 30, not red — and this is the load-bearing colour decision.**
+Cranberry *is* red. A conventional red destructive button would read as the primary button,
+in a system whose destructive actions include erasure and rollover. Never place a cranberry
+and an ember button adjacent.
+
+**Two self-hosted faces, 64 KB.** The previous stylesheet argued for the system stack on
+payload grounds and that was defensible, but a system-font interface cannot be made to look
+considered, because the decision that most determines whether it does has been given away.
+Fraunces is pinned to one instance (optical size 144, weight 600) at 17 KB rather than 66 KB
+for the two-axis variable font: it is restricted to display sizes, so that axis would have
+sat at its display end permanently.
+
+**The pre-paint script is admitted by CSP hash.** Theme and sidebar state are stamped on
+`<html>` before first paint, which needs an inline script under `script-src 'self'`. A hash
+is stricter than `'self'` — it pins exact bytes — but it couples `index.html` to
+`security-headers.ts` across workspaces, and the failure is silent: the browser refuses the
+script, nothing throws, and the application merely flashes white on every cold load.
+`security-headers.test.ts` recomputes the hash from the file, and from `dist/index.html`
+when a build exists. **Do not edit that script without running the API suite.**
+
+**The sidebar has three states and the width does not animate.** Expanded, a 64px rail with
+a 200ms hover-peek that floats over the content without reflowing it, and an overlay drawer
+below `md`. Transitioning `width` would run layout on every frame for the whole page, which
+drops frames on the mid-range Android this system is actually used on; instead the width
+snaps and the labels cross-fade, which reads as smooth because the eye follows the text
+rather than the edge.
+
+**The Rotary Year is visible in the shell.** Axiom 1 says it is a dimension rather than a
+filter, and this is where a member can see it: a neutral pill in the current year, amber with
+a history icon plus a strip across the content when the context cannot be written to. It
+exists to prevent the worst failure mode of a year-scoped system — filling in a form and
+being refused on submit with `YEAR_LOCKED`.
+
+**Icons are hand-written paths.** The text glyphs they replaced (`◎`, `⌂`, `⬡`) cost nothing
+and looked it: the glyph coverage of the default Android font differs from the desktop one,
+so several rendered as a dotted missing-glyph box on precisely the devices this system
+targets. No icon library — a wholesale import is hundreds of kilobytes.
+
+**All 39 domain codes now have a sentence.** `lib/errors.ts` maps each to what happened AND
+what to do; `errors.test.ts` reads the server's own registry, so adding a code fails the
+build until somebody writes its line, while they still have the context to write a good one.
+`ErrorState` also asks `isRetryable` before offering a retry, because a retry button on a
+locked year never works, and one that never works teaches people to distrust every other.
+
+**Deferred, deliberately.** The command palette searches SCREENS only. §4.9 of the
+specification also wants clubs, members and activities in it, permission-filtered
+server-side — which is right, and needs a search endpoint that filters in the database.
+Doing it on the client would mean shipping the district's member list to every device in
+order to search it, which is the exact failure this system exists to correct. It waits for
+an endpoint.
+
+**Also unbuilt from the specification**, for want of the screens rather than the will:
+the scorecard showcase surface, progress arcs and score count-up, the generated club identity
+mark, and standings — all of which belong to the assessment milestone that owns those pages.
+The mobile bottom bar described in §4.1 and §4.5 was **not** built; §4.3's overlay drawer was,
+because fifteen destinations had already broken the bar once and a five-item cap plus a
+"More" sheet solves the same problem the drawer already solves. That is a deliberate
+divergence from the specification, not an omission.
 
 ---
 

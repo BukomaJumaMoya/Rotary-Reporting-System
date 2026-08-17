@@ -214,7 +214,7 @@ permission, an error code or a table.
 (August 2026). **M3 — offline and mobile — and M4 — finance — are both CODE-COMPLETE.**
 M4 closed all eight of its exit criteria. M3 has not: session 4 is the manual device pass and
 has NOT been run, so neither milestone is closed until it has been.
-`docs/schema.sql` is at v2.1; 509 tests.
+`docs/schema.sql` is at v2.1; 522 tests.
 
 M0: monorepo and CI, schema translated and migrated, session authentication with lockout,
 mail delivery, TOTP with encrypted secrets and recovery codes, the request context and

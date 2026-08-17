@@ -5,6 +5,7 @@ import type { MeResponse } from '@dis/contracts';
 import { AuthShell } from '../../components/layout/AppShell';
 import { Button, Input } from '../../components/ui';
 import { api, ApiError } from '../../lib/api';
+import { errorSentence } from '../../lib/errors';
 import { authQueryKey } from './useAuth';
 
 /**
@@ -112,7 +113,7 @@ export function LoginPage() {
             />
             <button
               type="button"
-              className="text-info self-start text-sm underline"
+              className="text-text-muted hover:text-text-primary text-body-sm self-start underline underline-offset-2 transition-colors"
               onClick={() => {
                 setUseRecoveryCode((current) => !current);
                 setSecondFactor('');
@@ -124,16 +125,29 @@ export function LoginPage() {
         )}
 
         {error && (
-          <p role="alert" className="text-danger-text text-sm">
-            {error.message}
+          <p
+            role="alert"
+            className="bg-danger-subtle text-danger-text text-body-sm flex items-start gap-2 rounded-sm px-3 py-2"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 16 16"
+              className="mt-0.5 size-4 shrink-0 fill-current"
+            >
+              <path d="M8 1.5 15 14H1L8 1.5Zm0 4.25a.75.75 0 0 0-.75.75v2.5a.75.75 0 0 0 1.5 0v-2.5A.75.75 0 0 0 8 5.75Zm0 6.5a.9.9 0 1 0 0-1.8.9.9 0 0 0 0 1.8Z" />
+            </svg>
+            <span>{errorSentence(error)}</span>
           </p>
         )}
 
-        <Button type="submit" isLoading={isSubmitting} fullWidth>
+        <Button type="submit" size="lg" isLoading={isSubmitting} fullWidth>
           {needsSecondFactor ? 'Verify and sign in' : 'Sign in'}
         </Button>
 
-        <Link to="/forgot" className="text-info text-center text-sm underline">
+        <Link
+          to="/forgot"
+          className="text-text-muted hover:text-text-primary text-body-sm text-center underline underline-offset-2 transition-colors"
+        >
           Forgotten your password?
         </Link>
       </form>

@@ -6,9 +6,12 @@ import { clearDeviceState } from '../../lib/offline/caches';
 import { startOutboxScheduler, useOutbox } from '../../lib/offline/submit';
 import { useSidebar, useTheme } from '../../lib/theme';
 import { Button } from '../ui';
-import { Icon, type IconName } from '../ui/icons';
+import { Icon } from '../ui/icons';
 import { cx } from '../../lib/cx';
 import { ConnectionBanner } from './ConnectionBanner';
+import { NAV_GROUPS, type NavGroup } from './navigation';
+import { CommandPalette, CommandPaletteTrigger } from './CommandPalette';
+import { useCommandPalette } from './useCommandPalette';
 
 /**
  * THE FRAME.
@@ -36,131 +39,6 @@ import { ConnectionBanner } from './ConnectionBanner';
  *  * **The pending count** — a badge on the menu button itself. Three unsent reports are not
  *    something a member should have to go browsing to discover.
  */
-
-interface NavItem {
-  to: string;
-  label: string;
-  icon: IconName;
-  /** Undefined means every signed-in member sees it. */
-  permission?: string;
-}
-
-interface NavGroup {
-  /** Rendered as a micro, tracked, muted heading. Hidden in the rail. */
-  label: string;
-  items: NavItem[];
-}
-
-/**
- * Grouped, because flat navigation fails at this size.
- *
- * Every item is filtered through the member's permissions, so most people see two of these
- * groups and never learn the others exist. A club secretary's sidebar is Overview and My
- * Club; the district secretary's is all five.
- */
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: 'Overview',
-    items: [{ to: '/', label: 'Dashboard', icon: 'dashboard' }],
-  },
-  {
-    label: 'My Club',
-    items: [
-      {
-        to: '/report',
-        label: 'Report activity',
-        icon: 'report',
-        permission: 'activity:create:club',
-      },
-      {
-        to: '/activities',
-        label: 'Activities',
-        icon: 'activities',
-        permission: 'activity:read:club',
-      },
-      {
-        to: '/membership/record',
-        label: 'Members',
-        icon: 'members',
-        permission: 'membership:write:club',
-      },
-      {
-        to: '/membership/transitions',
-        label: 'Transitions',
-        icon: 'transitions',
-        permission: 'membership:read:club',
-      },
-    ],
-  },
-  {
-    label: 'Finance',
-    items: [
-      {
-        to: '/finance/transactions',
-        label: 'Transactions',
-        icon: 'money',
-        permission: 'finance:read:club',
-      },
-      { to: '/finance/budget', label: 'Budget', icon: 'budget', permission: 'finance:read:club' },
-      { to: '/finance/dues', label: 'Dues', icon: 'dues', permission: 'finance:read:club' },
-      { to: '/finance/trf', label: 'TRF', icon: 'trf', permission: 'finance:read:club' },
-    ],
-  },
-  {
-    label: 'District',
-    items: [
-      { to: '/clubs', label: 'Clubs', icon: 'clubs', permission: 'club:read:district' },
-      {
-        to: '/admin/clusters',
-        label: 'Clusters',
-        icon: 'clusters',
-        permission: 'cluster:manage:district',
-      },
-    ],
-  },
-  {
-    label: 'Administration',
-    items: [
-      {
-        to: '/admin/positions',
-        label: 'Positions',
-        icon: 'positions',
-        permission: 'position:manage:district',
-      },
-      {
-        to: '/admin/appointments',
-        label: 'Appointments',
-        icon: 'appointments',
-        permission: 'appointment:read:district',
-      },
-      {
-        to: '/admin/committees',
-        label: 'Committees',
-        icon: 'committees',
-        permission: 'committee:manage:district',
-      },
-      {
-        to: '/admin/invitations',
-        label: 'Invitations',
-        icon: 'invites',
-        permission: 'person:invite:club',
-      },
-      {
-        to: '/admin/activity-types',
-        label: 'Activity types',
-        icon: 'types',
-        permission: 'activitytype:manage:district',
-      },
-      { to: '/admin/audit', label: 'Audit', icon: 'audit', permission: 'audit:read:district' },
-      {
-        to: '/admin/rollover',
-        label: 'Rollover',
-        icon: 'rollover',
-        permission: 'year:rollover:district',
-      },
-    ],
-  },
-];
 
 function useVisibleGroups(): NavGroup[] {
   const { permissions } = useAuth();
@@ -341,6 +219,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { count } = useOutbox();
   const { isRail, toggle: toggleSidebar } = useSidebar();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const palette = useCommandPalette();
   /** Rail hover-peek: the expanded panel floats over the content without reflowing it. */
   const [isPeeking, setIsPeeking] = useState(false);
   const peekTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -580,11 +459,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            <CommandPaletteTrigger onClick={palette.open} />
             <YearBadge />
             <ThemeToggle />
             <ReportShortcut />
           </div>
         </header>
+
+        {palette.isOpen && <CommandPalette onClose={palette.close} />}
 
         <ReadOnlyYearStrip />
 

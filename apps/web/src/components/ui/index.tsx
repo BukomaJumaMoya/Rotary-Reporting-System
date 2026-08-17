@@ -628,6 +628,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const show = useCallback((tone: ToastMessage['tone'], text: string) => {
     const id = Date.now() + Math.random();
     setMessages((current) => [...current.slice(-(TOAST_MAX - 1)), { id, tone, text }]);
+
+    /*
+     * Eight milliseconds on a success, and never on a failure.
+     *
+     * Barely perceptible, and it is most of what separates a web application from a native
+     * one on a phone. It goes here because every mutation in the system ends in a toast, so
+     * one line covers all of them. Never on an error: a buzz on failure reads as punishment,
+     * and the member filing a report at eleven at night on a bad connection is already
+     * having a worse time than they should be.
+     *
+     * Desktop browsers do not implement it, which is the correct behaviour rather than
+     * something to feature-detect around.
+     */
+    if (tone === 'success') navigator.vibrate?.(8);
     // An error stays until it is dismissed. It usually carries an instruction, and four
     // seconds is not long enough to read one and act on it.
     if (tone !== 'error') {
