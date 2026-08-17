@@ -108,7 +108,7 @@ export function RecordEventPage() {
   if (!permissions.has('membership:write:club')) {
     return (
       <Card>
-        <p className="text-text-secondary text-sm">
+        <p className="text-text-secondary text-table">
           You do not have permission to record membership events.
         </p>
       </Card>
@@ -231,8 +231,8 @@ export function RecordEventPage() {
                     : 'border-border-subtle hover:bg-surface-sunken',
                 )}
               >
-                <span className="block text-sm font-medium">{option.label}</span>
-                <span className="text-text-muted block text-xs">{option.hint}</span>
+                <span className="block text-table font-medium">{option.label}</span>
+                <span className="text-text-muted block text-meta">{option.hint}</span>
               </button>
             ))}
           </div>
@@ -243,7 +243,7 @@ export function RecordEventPage() {
             <Card title="Who, and where?">
               <div className="flex flex-col gap-3">
                 {ownClub ? (
-                  <p className="text-text-secondary text-sm">
+                  <p className="text-text-secondary text-table">
                     Recording for{' '}
                     <span className="text-text-primary font-medium">{ownClub.name}</span>
                   </p>
@@ -410,12 +410,12 @@ function PersonPicker({
       />
 
       {selected && (
-        <p className="text-success-text text-sm">
+        <p className="text-success-text text-table">
           Selected: {selected.firstName} {selected.lastName}
         </p>
       )}
       {newPerson && (
-        <p className="text-success-text text-sm">
+        <p className="text-success-text text-table">
           Will add: {newPerson.firstName} {newPerson.lastName}
         </p>
       )}
@@ -430,16 +430,16 @@ function PersonPicker({
               onClick={() => onSelect(person.id)}
               className="hover:bg-surface-sunken flex min-h-11 w-full flex-col items-start px-3 py-2 text-left"
             >
-              <span className="text-sm">
+              <span className="text-table">
                 {person.firstName} {person.lastName}
               </span>
               {person.clubs?.[0] && (
-                <span className="text-text-muted text-xs">{person.clubs[0].name}</span>
+                <span className="text-text-muted text-meta">{person.clubs[0].name}</span>
               )}
             </button>
           ))}
           {!isSearching && results.length === 0 && (
-            <p className="text-text-muted px-3 py-2 text-sm">Nobody found.</p>
+            <p className="text-text-muted px-3 py-2 text-table">Nobody found.</p>
           )}
           {canCreate && (
             <button
@@ -447,7 +447,7 @@ function PersonPicker({
               onClick={() =>
                 onCreate({ firstName: words[0] ?? '', lastName: words.slice(1).join(' ') })
               }
-              className="text-accent hover:bg-surface-sunken border-border-subtle min-h-11 w-full border-t px-3 py-2 text-left text-sm font-medium"
+              className="text-accent hover:bg-surface-sunken border-border-subtle min-h-11 w-full border-t px-3 py-2 text-left text-table font-medium"
             >
               Add “{search.trim()}” as a new member
             </button>

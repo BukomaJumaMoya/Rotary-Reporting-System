@@ -65,7 +65,7 @@ export function FinanceSummaryPanel({
 
       <Card title="Against the budget">
         {data.categories.length === 0 ? (
-          <p className="text-text-muted text-sm">
+          <p className="text-text-muted text-table">
             Nothing recorded yet. Categories appear here as money moves.
           </p>
         ) : (
@@ -77,7 +77,7 @@ export function FinanceSummaryPanel({
                 render: (row: CategoryVariance) => (
                   <div className="min-w-0">
                     <p className="text-text-primary font-medium">{row.categoryName}</p>
-                    <p className="text-text-muted text-xs">
+                    <p className="text-text-muted text-meta">
                       {row.direction === 'INCOME' ? 'Income' : 'Expenditure'}
                     </p>
                   </div>
@@ -110,7 +110,7 @@ export function FinanceSummaryPanel({
         )}
 
         {!data.budgetId && (
-          <p className="text-text-muted mt-3 text-xs">
+          <p className="text-text-muted mt-3 text-meta">
             This owner has no budget for the current Rotary Year, so every planned figure is zero.
             The actuals are real.
           </p>
@@ -131,10 +131,10 @@ function Figure({
 }) {
   return (
     <div>
-      <dt className="text-text-muted text-xs">{label}</dt>
+      <dt className="text-text-muted text-meta">{label}</dt>
       <dd
         className={cx(
-          'mt-0.5 text-lg font-semibold tabular-nums',
+          'mt-0.5 text-subsection font-semibold tabular-nums',
           tone === 'success'
             ? 'text-success-text'
             : tone === 'danger'

@@ -76,7 +76,7 @@ export function ClubsPage() {
       render: (club: Club) => (
         <div className="min-w-0">
           <p className="text-text-primary font-medium">{club.name}</p>
-          <p className="text-text-muted text-xs">
+          <p className="text-text-muted text-meta">
             {club.riClubId ? `RI ${club.riClubId}` : 'No RI Club ID'}
             {club.affiliation?.clusterName ? ` · ${club.affiliation.clusterName}` : ''}
           </p>

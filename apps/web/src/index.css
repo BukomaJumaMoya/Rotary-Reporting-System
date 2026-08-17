@@ -383,82 +383,92 @@
 :root {
   color-scheme: light;
 
-  /* Paper. Warmed toward hue 85 so the screen reads as a printed page. */
-  --sem-background: oklch(0.985 0.004 85);
+  /*
+   * SURFACES HAVE SEPARATION AGAIN.
+   *
+   * The institutional pass set every surface to the same value and every shadow to `none`,
+   * on the theory that a published page does not float. That is true of a published page. It
+   * is not true of an interface, where a card that is exactly the same colour as the page
+   * behind it, with no shadow and a hairline border, does not read as restrained — it reads
+   * as unstyled. The page still warms toward paper; it just has depth again.
+   */
+  --sem-background: oklch(0.975 0.006 85);
   --sem-surface: oklch(1 0 0);
-  --sem-surface-raised: oklch(1 0 0);
+  --sem-surface-raised: oklch(0.99 0.005 85);
   --sem-surface-overlay: oklch(1 0 0);
-  --sem-surface-sunken: oklch(0.965 0.004 85);
+  --sem-surface-sunken: oklch(0.955 0.007 85);
 
-  /* Rules, not borders. A hairline and a strong rule are the only two weights a
-     statistical table needs. */
-  --sem-border-subtle: oklch(0.9 0.004 85);
-  --sem-border: oklch(0.9 0.004 85);
-  --sem-border-strong: oklch(0.78 0.006 85);
+  /* Two distinct weights, where there was one. A subtle rule inside a card and a real border
+     around it are different jobs. */
+  --sem-border-subtle: oklch(0.93 0.005 85);
+  --sem-border: oklch(0.87 0.007 85);
+  --sem-border-strong: oklch(0.76 0.008 85);
 
   --sem-text-primary: oklch(0.2 0.012 85);
   --sem-text-secondary: oklch(0.38 0.01 85);
   --sem-text-muted: oklch(0.52 0.008 85);
-  --sem-text-inverse: oklch(0.985 0.004 85);
+  --sem-text-inverse: oklch(0.99 0.004 85);
 
   /*
-   * CRANBERRY HAS RETREATED.
+   * Cranberry is allowed to do its job again: the primary action, the active navigation
+   * state, and the accents that tell somebody where they are. The previous rule — three
+   * appearances per screen, navigation in ink — is right for a printed report and wrong for
+   * a tool somebody uses every week, where the brand colour is most of how a screen becomes
+   * recognisable at a glance.
    *
-   * In the first pass it was the primary action AND the active navigation state. That is too
-   * much presence for this register. It now appears in three places only: the brand mark and
-   * sign-in, the ONE primary action on a page, and a single chart series.
-   *
-   * Everything else is ink on paper — including the active navigation state, which is now an
-   * ink rule and a weight change. The focus ring stays cranberry, because a focus ring must
-   * be unmistakable and that is the one job colour is genuinely best at.
+   * It is still not decoration. It marks what is actionable and what is current, and nothing
+   * else.
    */
   --sem-accent: oklch(0.55 0.22 358);
-  --sem-accent-hover: oklch(0.48 0.2 358);
-  --sem-accent-active: oklch(0.4 0.16 358);
-  --sem-accent-subtle: oklch(0.97 0.012 358);
-  --sem-accent-text: oklch(0.4 0.16 358);
+  --sem-accent-hover: oklch(0.49 0.2 358);
+  --sem-accent-active: oklch(0.43 0.17 358);
+  --sem-accent-subtle: oklch(0.955 0.035 358);
+  --sem-accent-text: oklch(0.42 0.18 358);
 
-  /* Status stays muted. These mark a fact about a record, not a mood. */
-  --sem-info: oklch(0.42 0.09 250);
-  --sem-info-subtle: oklch(0.965 0.008 250);
-  --sem-info-text: oklch(0.36 0.075 250);
+  /* Status carries real colour. A verified badge that is nearly grey is a badge nobody sees. */
+  --sem-info: oklch(0.5 0.13 250);
+  --sem-info-subtle: oklch(0.95 0.032 250);
+  --sem-info-text: oklch(0.38 0.11 250);
 
-  --sem-success: oklch(0.52 0.1 148);
-  --sem-success-subtle: oklch(0.965 0.008 148);
-  --sem-success-text: oklch(0.4 0.08 148);
+  --sem-success: oklch(0.55 0.14 148);
+  --sem-success-subtle: oklch(0.95 0.04 148);
+  --sem-success-text: oklch(0.38 0.11 148);
 
-  --sem-warning: oklch(0.62 0.11 55);
-  --sem-warning-subtle: oklch(0.97 0.012 55);
-  --sem-warning-text: oklch(0.42 0.08 55);
+  --sem-warning: oklch(0.72 0.15 70);
+  --sem-warning-subtle: oklch(0.96 0.045 75);
+  --sem-warning-text: oklch(0.44 0.1 60);
 
-  --sem-danger: oklch(0.5 0.16 30);
-  --sem-danger-hover: oklch(0.44 0.15 30);
-  --sem-danger-subtle: oklch(0.965 0.012 30);
-  --sem-danger-text: oklch(0.4 0.13 30);
+  --sem-danger: oklch(0.55 0.19 30);
+  --sem-danger-hover: oklch(0.48 0.17 30);
+  --sem-danger-subtle: oklch(0.95 0.035 30);
+  --sem-danger-text: oklch(0.42 0.15 30);
 
-  --sem-achievement: oklch(0.62 0.11 88);
-  --sem-achievement-subtle: oklch(0.965 0.01 88);
-  --sem-achievement-text: oklch(0.42 0.07 88);
+  --sem-achievement: oklch(0.68 0.13 88);
+  --sem-achievement-subtle: oklch(0.96 0.04 88);
+  --sem-achievement-text: oklch(0.44 0.09 88);
 
   /*
-   * Elevation is nearly gone with the decoration. A published page does not float; it sits
-   * on the paper. Rules do the separating, and shadow is reserved for things that genuinely
-   * are above the page — an overlay, a drawer.
+   * Layered and tinted, never a single flat black. Real shadows are diffuse and coloured by
+   * their surroundings; one hard black shadow is the most recognisable cheap tell in web
+   * design, and no shadow at all — which is what was here — is the second.
    */
-  --shadow-sm: none;
-  --shadow-md: 0 1px 3px oklch(0.2 0.012 85 / 0.07), 0 4px 12px oklch(0.2 0.012 85 / 0.05);
-  --shadow-lg: 0 2px 6px oklch(0.2 0.012 85 / 0.06), 0 12px 32px oklch(0.2 0.012 85 / 0.1);
-  --scrim: oklch(0.2 0.012 85 / 0.4);
+  --shadow-sm: 0 1px 2px oklch(0.2 0.012 85 / 0.04), 0 1px 3px oklch(0.2 0.012 85 / 0.05);
+  --shadow-md:
+    0 1px 3px oklch(0.2 0.012 85 / 0.04), 0 4px 10px oklch(0.2 0.012 85 / 0.05),
+    0 10px 24px oklch(0.2 0.012 85 / 0.04);
+  --shadow-lg:
+    0 2px 6px oklch(0.2 0.012 85 / 0.05), 0 8px 20px oklch(0.2 0.012 85 / 0.07),
+    0 20px 48px oklch(0.2 0.012 85 / 0.09);
+  --scrim: oklch(0.2 0.012 85 / 0.45);
   --hairline: transparent;
 
-  /* Provisional data is HATCHED, not tinted — it survives greyscale and photocopying, which
-     colour alone does not. A board pack printed in black and white is the normal case. */
+  /* Provisional data is hatched, so the mark survives greyscale and a photocopier. */
   --hatch: repeating-linear-gradient(
     45deg,
     transparent,
     transparent 3px,
-    oklch(0.2 0.012 85 / 0.18) 3px,
-    oklch(0.2 0.012 85 / 0.18) 4px
+    oklch(0.2 0.012 85 / 0.16) 3px,
+    oklch(0.2 0.012 85 / 0.16) 4px
   );
 }
 
@@ -473,68 +483,65 @@
 [data-theme='dark'] {
   color-scheme: dark;
 
-  --sem-background: oklch(0.16 0.006 260);
-  --sem-surface: oklch(0.2 0.008 260);
-  --sem-surface-raised: oklch(0.24 0.009 260);
-  --sem-surface-overlay: oklch(0.24 0.009 260);
-  --sem-surface-sunken: oklch(0.14 0.006 260);
+  --sem-background: oklch(0.17 0.008 260);
+  --sem-surface: oklch(0.215 0.01 260);
+  --sem-surface-raised: oklch(0.255 0.012 260);
+  --sem-surface-overlay: oklch(0.255 0.012 260);
+  --sem-surface-sunken: oklch(0.145 0.007 260);
 
-  --sem-border-subtle: oklch(0.3 0.008 260);
-  --sem-border: oklch(0.3 0.008 260);
-  --sem-border-strong: oklch(0.42 0.01 260);
+  --sem-border-subtle: oklch(0.28 0.01 260);
+  --sem-border: oklch(0.35 0.012 260);
+  --sem-border-strong: oklch(0.46 0.014 260);
 
   --sem-text-primary: oklch(0.96 0.004 260);
   --sem-text-secondary: oklch(0.8 0.008 260);
-  --sem-text-muted: oklch(0.64 0.01 260);
-  --sem-text-inverse: oklch(0.16 0.006 260);
+  --sem-text-muted: oklch(0.65 0.01 260);
+  --sem-text-inverse: oklch(0.17 0.008 260);
 
-  --sem-accent: oklch(0.68 0.16 358);
-  --sem-accent-hover: oklch(0.74 0.14 358);
-  --sem-accent-active: oklch(0.62 0.17 358);
-  --sem-accent-subtle: oklch(0.26 0.05 358);
-  --sem-accent-text: oklch(0.82 0.11 358);
+  --sem-accent: oklch(0.7 0.17 358);
+  --sem-accent-hover: oklch(0.76 0.15 358);
+  --sem-accent-active: oklch(0.64 0.18 358);
+  --sem-accent-subtle: oklch(0.3 0.07 358);
+  --sem-accent-text: oklch(0.84 0.12 358);
 
-  --sem-info: oklch(0.68 0.09 250);
-  --sem-info-subtle: oklch(0.26 0.035 250);
-  --sem-info-text: oklch(0.82 0.07 250);
+  --sem-info: oklch(0.72 0.11 250);
+  --sem-info-subtle: oklch(0.29 0.05 250);
+  --sem-info-text: oklch(0.85 0.08 250);
 
-  --sem-success: oklch(0.7 0.09 148);
-  --sem-success-subtle: oklch(0.25 0.035 148);
-  --sem-success-text: oklch(0.83 0.07 148);
+  --sem-success: oklch(0.74 0.12 148);
+  --sem-success-subtle: oklch(0.28 0.05 148);
+  --sem-success-text: oklch(0.86 0.09 148);
 
-  --sem-warning: oklch(0.78 0.1 55);
-  --sem-warning-subtle: oklch(0.27 0.04 55);
-  --sem-warning-text: oklch(0.87 0.08 55);
+  --sem-warning: oklch(0.82 0.13 70);
+  --sem-warning-subtle: oklch(0.3 0.055 70);
+  --sem-warning-text: oklch(0.89 0.09 70);
 
-  --sem-danger: oklch(0.66 0.13 30);
-  --sem-danger-hover: oklch(0.72 0.12 30);
-  --sem-danger-subtle: oklch(0.26 0.05 30);
-  --sem-danger-text: oklch(0.81 0.1 30);
+  --sem-danger: oklch(0.68 0.16 30);
+  --sem-danger-hover: oklch(0.74 0.14 30);
+  --sem-danger-subtle: oklch(0.3 0.07 30);
+  --sem-danger-text: oklch(0.83 0.11 30);
 
-  --sem-achievement: oklch(0.78 0.09 88);
-  --sem-achievement-subtle: oklch(0.27 0.035 88);
-  --sem-achievement-text: oklch(0.86 0.07 88);
+  --sem-achievement: oklch(0.8 0.11 88);
+  --sem-achievement-subtle: oklch(0.3 0.05 88);
+  --sem-achievement-text: oklch(0.88 0.08 88);
 
+  /* Elevation on dark is surface lightness plus a hairline, not shadow — but a shadow still
+     helps an overlay separate from the page beneath it. */
   --shadow-sm: none;
-  --shadow-md: 0 4px 12px oklch(0 0 0 / 0.35);
-  --shadow-lg: 0 8px 32px oklch(0 0 0 / 0.45);
-  --scrim: oklch(0.1 0.004 260 / 0.6);
-  --hairline: oklch(1 0 0 / 0.08);
+  --shadow-md: 0 4px 14px oklch(0 0 0 / 0.4);
+  --shadow-lg: 0 12px 40px oklch(0 0 0 / 0.5);
+  --scrim: oklch(0.1 0.005 260 / 0.65);
+  --hairline: oklch(1 0 0 / 0.07);
 
   --hatch: repeating-linear-gradient(
     45deg,
     transparent,
     transparent 3px,
-    oklch(1 0 0 / 0.18) 3px,
-    oklch(1 0 0 / 0.18) 4px
+    oklch(1 0 0 / 0.16) 3px,
+    oklch(1 0 0 / 0.16) 4px
   );
 }
 
-/*
- * The system preference, for the window before the inline script runs and for anyone who
- * has never touched the toggle. Guarded against an explicit light choice so the toggle wins
- * in both directions.
- */
 /*
  * The system preference, for the window before the inline script runs and for anyone who has
  * never touched the toggle. Guarded against an explicit choice so the toggle wins both ways.
@@ -545,60 +552,62 @@
   :root:not([data-theme='light']):not([data-theme='dark']) {
     color-scheme: dark;
 
-    --sem-background: oklch(0.16 0.006 260);
-    --sem-surface: oklch(0.2 0.008 260);
-    --sem-surface-raised: oklch(0.24 0.009 260);
-    --sem-surface-overlay: oklch(0.24 0.009 260);
-    --sem-surface-sunken: oklch(0.14 0.006 260);
+    --sem-background: oklch(0.17 0.008 260);
+    --sem-surface: oklch(0.215 0.01 260);
+    --sem-surface-raised: oklch(0.255 0.012 260);
+    --sem-surface-overlay: oklch(0.255 0.012 260);
+    --sem-surface-sunken: oklch(0.145 0.007 260);
 
-    --sem-border-subtle: oklch(0.3 0.008 260);
-    --sem-border: oklch(0.3 0.008 260);
-    --sem-border-strong: oklch(0.42 0.01 260);
+    --sem-border-subtle: oklch(0.28 0.01 260);
+    --sem-border: oklch(0.35 0.012 260);
+    --sem-border-strong: oklch(0.46 0.014 260);
 
     --sem-text-primary: oklch(0.96 0.004 260);
     --sem-text-secondary: oklch(0.8 0.008 260);
-    --sem-text-muted: oklch(0.64 0.01 260);
-    --sem-text-inverse: oklch(0.16 0.006 260);
+    --sem-text-muted: oklch(0.65 0.01 260);
+    --sem-text-inverse: oklch(0.17 0.008 260);
 
-    --sem-accent: oklch(0.68 0.16 358);
-    --sem-accent-hover: oklch(0.74 0.14 358);
-    --sem-accent-active: oklch(0.62 0.17 358);
-    --sem-accent-subtle: oklch(0.26 0.05 358);
-    --sem-accent-text: oklch(0.82 0.11 358);
+    --sem-accent: oklch(0.7 0.17 358);
+    --sem-accent-hover: oklch(0.76 0.15 358);
+    --sem-accent-active: oklch(0.64 0.18 358);
+    --sem-accent-subtle: oklch(0.3 0.07 358);
+    --sem-accent-text: oklch(0.84 0.12 358);
 
-    --sem-info: oklch(0.68 0.09 250);
-    --sem-info-subtle: oklch(0.26 0.035 250);
-    --sem-info-text: oklch(0.82 0.07 250);
+    --sem-info: oklch(0.72 0.11 250);
+    --sem-info-subtle: oklch(0.29 0.05 250);
+    --sem-info-text: oklch(0.85 0.08 250);
 
-    --sem-success: oklch(0.7 0.09 148);
-    --sem-success-subtle: oklch(0.25 0.035 148);
-    --sem-success-text: oklch(0.83 0.07 148);
+    --sem-success: oklch(0.74 0.12 148);
+    --sem-success-subtle: oklch(0.28 0.05 148);
+    --sem-success-text: oklch(0.86 0.09 148);
 
-    --sem-warning: oklch(0.78 0.1 55);
-    --sem-warning-subtle: oklch(0.27 0.04 55);
-    --sem-warning-text: oklch(0.87 0.08 55);
+    --sem-warning: oklch(0.82 0.13 70);
+    --sem-warning-subtle: oklch(0.3 0.055 70);
+    --sem-warning-text: oklch(0.89 0.09 70);
 
-    --sem-danger: oklch(0.66 0.13 30);
-    --sem-danger-hover: oklch(0.72 0.12 30);
-    --sem-danger-subtle: oklch(0.26 0.05 30);
-    --sem-danger-text: oklch(0.81 0.1 30);
+    --sem-danger: oklch(0.68 0.16 30);
+    --sem-danger-hover: oklch(0.74 0.14 30);
+    --sem-danger-subtle: oklch(0.3 0.07 30);
+    --sem-danger-text: oklch(0.83 0.11 30);
 
-    --sem-achievement: oklch(0.78 0.09 88);
-    --sem-achievement-subtle: oklch(0.27 0.035 88);
-    --sem-achievement-text: oklch(0.86 0.07 88);
+    --sem-achievement: oklch(0.8 0.11 88);
+    --sem-achievement-subtle: oklch(0.3 0.05 88);
+    --sem-achievement-text: oklch(0.88 0.08 88);
 
+    /* Elevation on dark is surface lightness plus a hairline, not shadow — but a shadow still
+       helps an overlay separate from the page beneath it. */
     --shadow-sm: none;
-    --shadow-md: 0 4px 12px oklch(0 0 0 / 0.35);
-    --shadow-lg: 0 8px 32px oklch(0 0 0 / 0.45);
-    --scrim: oklch(0.1 0.004 260 / 0.6);
-    --hairline: oklch(1 0 0 / 0.08);
+    --shadow-md: 0 4px 14px oklch(0 0 0 / 0.4);
+    --shadow-lg: 0 12px 40px oklch(0 0 0 / 0.5);
+    --scrim: oklch(0.1 0.005 260 / 0.65);
+    --hairline: oklch(1 0 0 / 0.07);
 
     --hatch: repeating-linear-gradient(
       45deg,
       transparent,
       transparent 3px,
-      oklch(1 0 0 / 0.18) 3px,
-      oklch(1 0 0 / 0.18) 4px
+      oklch(1 0 0 / 0.16) 3px,
+      oklch(1 0 0 / 0.16) 4px
     );
   }
 }

@@ -93,7 +93,7 @@ export function AppointmentsPage() {
               render: (row) => (
                 <div>
                   <p>{row.positionName}</p>
-                  <p className="text-text-muted text-xs">{row.scopeName ?? row.scopeType}</p>
+                  <p className="text-text-muted text-meta">{row.scopeName ?? row.scopeType}</p>
                 </div>
               ),
             },
@@ -101,7 +101,7 @@ export function AppointmentsPage() {
               key: 'term',
               header: 'Term',
               render: (row) => (
-                <span className="text-xs">
+                <span className="text-meta">
                   {row.startsOn} → {row.endsOn ?? 'open'}
                 </span>
               ),
@@ -253,14 +253,14 @@ function CreateAppointmentDialog({ onClose }: { onClose: () => void }) {
                   <button
                     type="button"
                     onClick={() => setPersonId(person.id)}
-                    className={`flex min-h-11 w-full items-center justify-between px-3 text-left text-sm ${
+                    className={`flex min-h-11 w-full items-center justify-between px-3 text-left text-table ${
                       personId === person.id ? 'bg-accent-subtle text-accent-text' : ''
                     }`}
                   >
                     <span>
                       {person.firstName} {person.lastName}
                     </span>
-                    <span className="text-text-muted text-xs">{person.clubs?.[0]?.name}</span>
+                    <span className="text-text-muted text-meta">{person.clubs?.[0]?.name}</span>
                   </button>
                 </li>
               ))}
@@ -285,7 +285,7 @@ function CreateAppointmentDialog({ onClose }: { onClose: () => void }) {
         />
 
         {position && position.scope === 'DISTRICT' && (
-          <p className="text-text-muted text-sm">
+          <p className="text-text-muted text-table">
             A district appointment names no scope — it covers the whole district.
           </p>
         )}

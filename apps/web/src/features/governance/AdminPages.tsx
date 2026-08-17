@@ -123,13 +123,13 @@ export function InvitationsPage() {
           </Button>
 
           {lastBatch && lastBatch.results.length > 0 && (
-            <ul className="mt-3 flex flex-col gap-1 text-sm">
+            <ul className="mt-3 flex flex-col gap-1 text-table">
               {lastBatch.results.map((result) => (
                 <li key={result.personId} className="flex items-center gap-2">
                   <Badge tone={result.status === 'SENT' ? 'success' : 'danger'}>
                     {result.status}
                   </Badge>
-                  <span className="text-text-muted font-mono text-xs">
+                  <span className="text-text-muted font-mono text-meta">
                     {result.reason ?? 'invitation sent'}
                   </span>
                 </li>
@@ -146,7 +146,7 @@ export function InvitationsPage() {
               {
                 key: 'issued',
                 header: 'Issued',
-                render: (row) => <span className="text-xs">{row.issuedAt.slice(0, 10)}</span>,
+                render: (row) => <span className="text-meta">{row.issuedAt.slice(0, 10)}</span>,
               },
               {
                 key: 'expires',
@@ -155,7 +155,7 @@ export function InvitationsPage() {
                   row.isExpired ? (
                     <Badge tone="danger">Expired</Badge>
                   ) : (
-                    <span className="text-xs">{row.expiresAt.slice(0, 10)}</span>
+                    <span className="text-meta">{row.expiresAt.slice(0, 10)}</span>
                   ),
               },
               {
@@ -267,16 +267,16 @@ export function AuditPage() {
                     <Badge tone={entry.action === 'DELETE' ? 'danger' : 'info'}>
                       {entry.action}
                     </Badge>
-                    <span className="text-sm font-medium">{entry.entityType}</span>
+                    <span className="text-table font-medium">{entry.entityType}</span>
                   </div>
-                  <span className="text-text-muted text-xs">
+                  <span className="text-text-muted text-meta">
                     {entry.actorName ?? 'system'} ·{' '}
                     {entry.occurredAt.replace('T', ' ').slice(0, 16)}
                   </span>
                 </div>
 
                 {entry.changes.length > 0 && (
-                  <table className="mt-2 w-full text-left text-xs">
+                  <table className="mt-2 w-full text-left text-meta">
                     <thead className="text-text-muted">
                       <tr>
                         <th className="py-1 font-medium">Field</th>
@@ -389,7 +389,7 @@ export function RolloverPage() {
               Run a dry run
             </Button>
           </div>
-          <p className="text-text-muted mt-2 text-sm">
+          <p className="text-text-muted mt-2 text-table">
             Everything runs inside a transaction and is then rolled back, so the report below
             describes work that actually executed rather than work that was predicted.
           </p>
@@ -406,15 +406,15 @@ export function RolloverPage() {
                   ['Clubs flagged', report.flaggedClubs.length],
                 ].map(([label, value]) => (
                   <div key={String(label)} className="border-border-subtle rounded-lg border p-3">
-                    <dt className="text-text-muted text-xs">{label}</dt>
-                    <dd className="text-text-primary text-xl font-semibold">{value}</dd>
+                    <dt className="text-text-muted text-meta">{label}</dt>
+                    <dd className="text-text-primary text-section font-semibold">{value}</dd>
                   </div>
                 ))}
               </dl>
 
               {report.tierChanges.length > 0 && (
                 <div className="mb-4">
-                  <h3 className="mb-2 text-sm font-semibold">Tier changes</h3>
+                  <h3 className="mb-2 text-table font-semibold">Tier changes</h3>
                   <Table
                     columns={[
                       { key: 'club', header: 'Club', render: (row) => row.clubName },
@@ -437,10 +437,10 @@ export function RolloverPage() {
 
               {report.flaggedClubs.length > 0 && (
                 <div className="mb-4">
-                  <h3 className="text-danger-text mb-2 text-sm font-semibold">
+                  <h3 className="text-danger-text mb-2 text-table font-semibold">
                     Look at these before confirming
                   </h3>
-                  <ul className="text-sm">
+                  <ul className="text-table">
                     {report.flaggedClubs.map((club) => (
                       <li key={club.clubId} className="flex items-center gap-2 py-1">
                         <Badge tone="warning">{club.reason}</Badge>
@@ -453,8 +453,10 @@ export function RolloverPage() {
 
               {report.expiringByPosition.length > 0 && (
                 <div>
-                  <h3 className="mb-2 text-sm font-semibold">Appointments expiring, by position</h3>
-                  <ul className="flex flex-wrap gap-2 text-sm">
+                  <h3 className="mb-2 text-table font-semibold">
+                    Appointments expiring, by position
+                  </h3>
+                  <ul className="flex flex-wrap gap-2 text-table">
                     {report.expiringByPosition.map((entry) => (
                       <li key={entry.position}>
                         <Badge>
@@ -469,7 +471,7 @@ export function RolloverPage() {
 
             {!isCommitted && (
               <Card title="3 — Commit">
-                <p className="text-text-secondary mb-3 text-sm">
+                <p className="text-text-secondary mb-3 text-table">
                   This locks {report.fromYearLabel}, expires every appointment in it, and opens{' '}
                   {report.toYearLabel}. It cannot be undone. Type{' '}
                   <strong>{report.toYearLabel}</strong> to confirm.
@@ -501,7 +503,7 @@ export function RolloverPage() {
                     Roll over
                   </Button>
                 </div>
-                <p className="text-text-muted mt-2 text-xs">
+                <p className="text-text-muted mt-2 text-meta">
                   The confirmation expires thirty minutes after the dry run. After that, run it
                   again and read the diff again.
                 </p>

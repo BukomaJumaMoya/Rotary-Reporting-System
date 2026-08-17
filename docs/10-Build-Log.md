@@ -324,6 +324,10 @@ apps/web/src/
                  caches.ts (cleared on sign-out) · connectivity.ts (heartbeat)
                  pwa.ts (registration, update prompt, install prompt)
   components/    ui/index.tsx — the whole design system in one file
+                 ui/page.tsx — the PAGE-level blocks: StatGrid, ListGroup/ListRow,
+                                FilterBar, SearchField, FilterTabs, SectionHeading,
+                                PageLayout. Added because the screens had none —
+                                see the design-pass note in §4.
                  ui/document.tsx — the document apparatus: Provenance (origin,
                                 verification, as-at, COVERAGE), Caption, Section,
                                 DocumentHeader, Statistic, Identifier
@@ -344,6 +348,9 @@ apps/web/src/
   features/
     auth/        LoginPage (password → TOTP → recovery), PasswordPages
                  (forgot, reset, accept invite), useAuth/useScope
+    settings/    SettingsPage — device preferences: theme (light · dark · match
+                 my device) and sidebar. The theme control lives HERE, not in the
+                 application header.
     help/        AccessibilityPage — the statement at /accessibility. Deliberately
                  OUTSIDE RequireAuth: a procurement officer deciding whether the
                  system is usable cannot sign in to read it.

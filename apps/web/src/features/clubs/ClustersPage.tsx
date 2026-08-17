@@ -65,7 +65,7 @@ export function ClustersPage() {
               >
                 <div className="min-w-0">
                   <p className="text-text-primary font-medium">{cluster.name}</p>
-                  <p className="text-text-muted text-xs">{cluster.regionName ?? 'No region'}</p>
+                  <p className="text-text-muted text-meta">{cluster.regionName ?? 'No region'}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={cluster.clubCount === 0 ? 'warning' : 'neutral'}>
@@ -223,7 +223,7 @@ function AssignDialog({ cluster, onClose }: { cluster: Cluster; onClose: () => v
         <SkeletonList rows={5} />
       ) : (
         <>
-          <p className="text-text-muted mb-2 text-xs">
+          <p className="text-text-muted mb-2 text-meta">
             A club already in another cluster moves here. The whole membership is sent, so unticking
             a club removes it.
           </p>

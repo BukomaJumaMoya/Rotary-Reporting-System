@@ -4,7 +4,7 @@ import { api } from '../../lib/api';
 import { useAuth, useClearAuth } from '../../features/auth/useAuth';
 import { clearDeviceState } from '../../lib/offline/caches';
 import { startOutboxScheduler, useOutbox } from '../../lib/offline/submit';
-import { useSidebar, useTheme } from '../../lib/theme';
+import { useSidebar } from '../../lib/theme';
 import { Button } from '../ui';
 import { Icon } from '../ui/icons';
 import { cx } from '../../lib/cx';
@@ -171,21 +171,6 @@ function SignedInAs({ compact = false }: { compact?: boolean }) {
         )}
       </div>
     </div>
-  );
-}
-
-function ThemeToggle() {
-  const { theme, toggle } = useTheme();
-
-  return (
-    <button
-      type="button"
-      onClick={toggle}
-      aria-label={theme === 'dark' ? 'Switch to the light theme' : 'Switch to the dark theme'}
-      className="text-text-secondary hover:bg-surface-raised press grid size-10 shrink-0 place-items-center rounded-md"
-    >
-      <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
-    </button>
   );
 }
 
@@ -479,7 +464,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="ml-auto flex items-center gap-2">
             <CommandPaletteTrigger onClick={palette.open} />
             <YearBadge />
-            <ThemeToggle />
             <ReportShortcut />
           </div>
         </header>

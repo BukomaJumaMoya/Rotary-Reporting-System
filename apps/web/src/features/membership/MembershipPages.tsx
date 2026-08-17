@@ -59,10 +59,10 @@ export function ClubRosterPanel({ clubId }: { clubId: string }) {
             {entry.person.firstName} {entry.person.lastName}
           </p>
           {/* Absent, not empty — the serialiser leaves out what the caller may not see. */}
-          {entry.person.email && <p className="text-text-muted text-xs">{entry.person.email}</p>}
-          {entry.person.phone && <p className="text-text-muted text-xs">{entry.person.phone}</p>}
+          {entry.person.email && <p className="text-text-muted text-meta">{entry.person.email}</p>}
+          {entry.person.phone && <p className="text-text-muted text-meta">{entry.person.phone}</p>}
           {entry.person.isRedacted && !entry.person.email && !entry.person.phone && (
-            <p className="text-text-muted text-xs">Contact details are private</p>
+            <p className="text-text-muted text-meta">Contact details are private</p>
           )}
         </div>
       ),
@@ -226,17 +226,17 @@ export function MembershipHistoryPage() {
                       <p className="text-text-primary font-medium">
                         {event.person.firstName} {event.person.lastName}
                       </p>
-                      <p className="text-text-muted text-xs">
+                      <p className="text-text-muted text-meta">
                         {event.effectiveOn}
                         {event.reasonCode ? ` · ${event.reasonCode}` : ''}
                         {event.counterpartyClubName ? ` · ${event.counterpartyClubName}` : ''}
                         {event.rotaryClubName ? ` · ${event.rotaryClubName}` : ''}
                       </p>
                       {event.reasonNote && (
-                        <p className="text-text-secondary mt-1 text-xs">{event.reasonNote}</p>
+                        <p className="text-text-secondary mt-1 text-meta">{event.reasonNote}</p>
                       )}
                       {event.supersedesEventId && (
-                        <p className="text-text-muted mt-1 text-xs">
+                        <p className="text-text-muted mt-1 text-meta">
                           Corrects{' '}
                           {byId.get(event.supersedesEventId)
                             ? `the ${byId.get(event.supersedesEventId)?.eventType} of ${byId.get(event.supersedesEventId)?.effectiveOn}`
@@ -332,7 +332,7 @@ function CorrectDialog({
       }
     >
       <div className="flex flex-col gap-3">
-        <p className="text-text-secondary text-sm">
+        <p className="text-text-secondary text-table">
           {event.eventType} for {event.person.firstName} {event.person.lastName} on{' '}
           {event.effectiveOn}. The original stays in the log; this adds an event pointing at it.
         </p>
@@ -407,7 +407,7 @@ export function MembershipStatsPanel({ clubId }: { clubId?: string }) {
 
       {data.byReason.length > 0 && (
         <div className="mt-4">
-          <h3 className="text-text-secondary mb-2 text-sm font-semibold">Why members left</h3>
+          <h3 className="text-text-secondary mb-2 text-table font-semibold">Why members left</h3>
           <ul className="flex flex-wrap gap-2">
             {data.byReason.map((reason) => (
               <li key={reason.reasonCode}>
@@ -421,7 +421,7 @@ export function MembershipStatsPanel({ clubId }: { clubId?: string }) {
       )}
 
       {data.transitionsToRotary > 0 && (
-        <p className="text-text-secondary mt-4 text-sm">
+        <p className="text-text-secondary mt-4 text-table">
           {data.transitionsToRotary} member{data.transitionsToRotary === 1 ? '' : 's'} moved on to
           Rotary.
         </p>
@@ -441,10 +441,10 @@ function Figure({
 }) {
   return (
     <div>
-      <dt className="text-text-muted text-xs">{label}</dt>
+      <dt className="text-text-muted text-meta">{label}</dt>
       <dd
         className={[
-          'text-xl font-semibold',
+          'text-section font-semibold',
           tone === 'success'
             ? 'text-success-text'
             : tone === 'danger'
@@ -483,7 +483,7 @@ export function TransitionsPage() {
       render: (row: Transition) => (
         <div>
           <p className="text-text-primary font-medium">{row.personName}</p>
-          <p className="text-text-muted text-xs">{row.clubName}</p>
+          <p className="text-text-muted text-meta">{row.clubName}</p>
         </div>
       ),
     },

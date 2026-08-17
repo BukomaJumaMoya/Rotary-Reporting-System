@@ -37,7 +37,15 @@ export interface NavGroup {
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Overview',
-    items: [{ to: '/', label: 'Dashboard', icon: 'dashboard', keywords: 'home start' }],
+    items: [
+      { to: '/', label: 'Dashboard', icon: 'dashboard', keywords: 'home start' },
+      {
+        to: '/settings',
+        label: 'Settings',
+        icon: 'settings',
+        keywords: 'theme dark mode appearance preferences sidebar',
+      },
+    ],
   },
   {
     label: 'My Club',

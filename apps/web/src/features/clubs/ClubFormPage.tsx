@@ -162,7 +162,7 @@ export function ClubFormPage({ mode }: { mode: 'create' | 'edit' }) {
   if (!mayEdit) {
     return (
       <Card>
-        <p className="text-text-secondary text-sm">
+        <p className="text-text-secondary text-table">
           You do not have permission to {mode === 'create' ? 'charter a club' : 'edit this club'}.
         </p>
       </Card>
@@ -320,7 +320,7 @@ function ClubForm({
               value={form.meetingVenue}
               onChange={(event) => set('meetingVenue', event.target.value)}
             />
-            <label className="flex min-h-11 items-center gap-3 text-sm">
+            <label className="flex min-h-11 items-center gap-3 text-table">
               <input
                 type="checkbox"
                 className="h-5 w-5"

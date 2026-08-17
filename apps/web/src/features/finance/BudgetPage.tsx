@@ -161,7 +161,7 @@ function BudgetDetail({ budgetId, canWrite }: { budgetId: string; canWrite: bool
             value={formatMoney(data.totalPlannedExpenditure, data.currencyCode)}
           />
           <div>
-            <dt className="text-text-muted text-xs">Status</dt>
+            <dt className="text-text-muted text-meta">Status</dt>
             <dd className="mt-0.5">
               <Badge tone={data.isApproved ? 'success' : 'warning'}>
                 {data.isApproved ? 'Approved' : 'Draft'}
@@ -179,7 +179,7 @@ function BudgetDetail({ budgetId, canWrite }: { budgetId: string; canWrite: bool
             >
               {data.isApproved ? 'Withdraw approval' : 'Approve'}
             </Button>
-            <p className="text-text-muted self-center text-xs">
+            <p className="text-text-muted self-center text-meta">
               {data.isApproved
                 ? 'Withdrawing approval unlocks the lines again. It is recorded.'
                 : 'Approving locks the lines. Record differences as transactions afterwards.'}
@@ -192,7 +192,7 @@ function BudgetDetail({ budgetId, canWrite }: { budgetId: string; canWrite: bool
         title="Lines"
         actions={
           data.isApproved ? (
-            <span className="text-text-muted text-xs">Frozen by approval</span>
+            <span className="text-text-muted text-meta">Frozen by approval</span>
           ) : undefined
         }
       >
@@ -204,7 +204,7 @@ function BudgetDetail({ budgetId, canWrite }: { budgetId: string; canWrite: bool
               render: (line: BudgetLine) => (
                 <div className="min-w-0">
                   <p className="text-text-primary font-medium">{line.categoryName}</p>
-                  <p className="text-text-muted truncate text-xs">{line.description}</p>
+                  <p className="text-text-muted truncate text-meta">{line.description}</p>
                 </div>
               ),
             },
@@ -334,7 +334,7 @@ function RemoveLine({ budgetId, line }: { budgetId: string; line: BudgetLine }) 
 function Figure({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-text-muted text-xs">{label}</dt>
+      <dt className="text-text-muted text-meta">{label}</dt>
       <dd className="text-text-primary mt-0.5 font-semibold tabular-nums">{value}</dd>
     </div>
   );

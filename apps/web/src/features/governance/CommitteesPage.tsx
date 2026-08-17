@@ -49,7 +49,7 @@ export function CommitteesPage() {
       <div className="border-border-subtle flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
         <div className="min-w-0">
           <p className="text-text-primary font-medium">{node.name}</p>
-          {node.mandate && <p className="text-text-muted text-xs">{node.mandate}</p>}
+          {node.mandate && <p className="text-text-muted text-meta">{node.mandate}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge>{node.memberCount} members</Badge>
@@ -164,7 +164,7 @@ function CreateCommitteeDialog({
           hint="What this committee is for, in a sentence."
         />
         {parent && parent.depth >= 2 && (
-          <p className="text-warning-text text-sm">
+          <p className="text-warning-text text-table">
             Committees nest at most three deep. This will be the last level.
           </p>
         )}
@@ -226,8 +226,8 @@ function MembersDialog({
                 className="border-border-subtle flex items-center justify-between gap-2 rounded-lg border p-2"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{member.personName}</p>
-                  <p className="text-text-muted truncate text-xs">
+                  <p className="truncate text-table font-medium">{member.personName}</p>
+                  <p className="text-text-muted truncate text-meta">
                     {member.positionName}
                     {member.roleLabel ? ` · ${member.roleLabel}` : ''}
                   </p>

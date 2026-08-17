@@ -165,7 +165,7 @@ export function ReportPage() {
   if (!permissions.has('activity:create:club')) {
     return (
       <Card>
-        <p className="text-text-secondary text-sm">
+        <p className="text-text-secondary text-table">
           You do not have permission to report an activity.
         </p>
       </Card>
@@ -260,7 +260,7 @@ export function ReportPage() {
         <Card title="What kind of activity?">
           {(types.data?.data ?? []).map((group) => (
             <div key={group.category} className="mb-4">
-              <h3 className="text-text-muted mb-2 text-xs font-semibold tracking-wide uppercase">
+              <h3 className="text-text-muted mb-2 text-meta font-semibold tracking-wide uppercase">
                 {group.category}
               </h3>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -276,7 +276,7 @@ export function ReportPage() {
                       }))
                     }
                     className={cx(
-                      'min-h-16 rounded-lg border p-3 text-left text-sm',
+                      'min-h-16 rounded-lg border p-3 text-left text-table',
                       draft.activityTypeId === candidate.id
                         ? 'border-accent bg-accent-subtle text-accent-text'
                         : 'border-border-subtle hover:bg-surface-sunken',
@@ -300,7 +300,7 @@ export function ReportPage() {
                * this states it rather than asking — one fewer decision on the screen that
                * matters most, and one fewer way to file a report against the wrong club.
                */
-              <p className="text-text-secondary text-sm">
+              <p className="text-text-secondary text-table">
                 Reporting for <span className="text-text-primary font-medium">{ownClub.name}</span>
               </p>
             ) : (
@@ -336,11 +336,11 @@ export function ReportPage() {
             />
 
             <label className="flex flex-col gap-1.5">
-              <span className="text-text-secondary text-sm font-medium">What happened</span>
+              <span className="text-text-secondary text-table font-medium">What happened</span>
               {/* No length limit. The predecessor's was a logged complaint. */}
               <textarea
                 rows={5}
-                className="border-border rounded-lg border px-3 py-2 text-base"
+                className="border-border rounded-lg border px-3 py-2 text-body"
                 value={draft.description}
                 onChange={(event) => set('description', event.target.value)}
               />
@@ -349,18 +349,20 @@ export function ReportPage() {
             {/* Everything below is rendered from the TYPE. No per-type branch exists here. */}
             {type.requiresReport && (
               <label className="flex flex-col gap-1.5">
-                <span className="text-text-secondary text-sm font-medium">Narrative report *</span>
+                <span className="text-text-secondary text-table font-medium">
+                  Narrative report *
+                </span>
                 <textarea
                   rows={5}
                   className={cx(
-                    'rounded-lg border px-3 py-2 text-base',
+                    'rounded-lg border px-3 py-2 text-body',
                     fieldErrors['narrativeReport'] ? 'border-danger' : 'border-border',
                   )}
                   value={draft.narrativeReport}
                   onChange={(event) => set('narrativeReport', event.target.value)}
                 />
                 {fieldErrors['narrativeReport'] && (
-                  <span role="alert" className="text-danger-text text-xs">
+                  <span role="alert" className="text-danger-text text-meta">
                     {fieldErrors['narrativeReport']}
                   </span>
                 )}
@@ -393,17 +395,17 @@ export function ReportPage() {
 
             {type.requiresAreaOfFocus && (
               <fieldset>
-                <legend className="text-text-secondary mb-1 text-sm font-medium">
+                <legend className="text-text-secondary mb-1 text-table font-medium">
                   Area of focus *
                 </legend>
                 {fieldErrors['areaOfFocusCodes'] && (
-                  <p role="alert" className="text-danger-text mb-1 text-xs">
+                  <p role="alert" className="text-danger-text mb-1 text-meta">
                     {fieldErrors['areaOfFocusCodes']}
                   </p>
                 )}
                 <div className="grid grid-cols-2 gap-1">
                   {AREAS.map((area) => (
-                    <label key={area.code} className="flex min-h-11 items-center gap-2 text-sm">
+                    <label key={area.code} className="flex min-h-11 items-center gap-2 text-table">
                       <input
                         type="checkbox"
                         className="h-5 w-5"
@@ -496,13 +498,13 @@ export function ReportPage() {
             gets corrected, and it costs one line.
           */}
           {savedBytes > 0 && (
-            <p className="text-success-text mt-3 text-xs">
+            <p className="text-success-text mt-3 text-meta">
               Photographs made smaller before sending: {formatBytes(originalBytes)} →{' '}
               {formatBytes(sendBytes)}, saving {formatBytes(savedBytes)} of your data.
             </p>
           )}
 
-          <p className="text-text-muted mt-3 text-xs">
+          <p className="text-text-muted mt-3 text-meta">
             Location data is removed from every photograph before it is stored.
           </p>
 
@@ -516,7 +518,7 @@ export function ReportPage() {
 
       {draft.step === 4 && type && (
         <Card title="Check and submit">
-          <dl className="grid gap-2 text-sm">
+          <dl className="grid gap-2 text-table">
             <Row label="Type" value={type.name} />
             <Row
               label="Club"
@@ -559,7 +561,7 @@ function Steps({ current }: { current: number }) {
         <li
           key={label}
           className={cx(
-            'flex-1 rounded-full py-1 text-center text-xs font-medium',
+            'flex-1 rounded-full py-1 text-center text-meta font-medium',
             index + 1 === current
               ? 'bg-accent text-white'
               : index + 1 < current
@@ -611,7 +613,7 @@ function DeclaredField({
 
   if (field.type === 'boolean') {
     return (
-      <label className="flex min-h-11 items-center gap-3 text-sm">
+      <label className="flex min-h-11 items-center gap-3 text-table">
         <input
           type="checkbox"
           className="h-5 w-5"

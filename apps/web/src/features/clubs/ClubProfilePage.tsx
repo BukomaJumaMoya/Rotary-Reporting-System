@@ -92,7 +92,7 @@ export function ClubProfilePage() {
             key={entry.key}
             onClick={() => setTab(entry.key)}
             className={cx(
-              'min-h-11 shrink-0 border-b-2 px-3 text-sm font-medium whitespace-nowrap',
+              'min-h-11 shrink-0 border-b-2 px-3 text-table font-medium whitespace-nowrap',
               tab === entry.key
                 ? 'border-accent text-accent'
                 : 'text-text-muted hover:text-text-secondary border-transparent',
@@ -107,7 +107,7 @@ export function ClubProfilePage() {
         <Overview club={club} rosterCount={rosterCount} activities={activities} />
       ) : tab === 'activities' ? (
         <Card>
-          <p className="text-text-secondary mb-3 text-sm">
+          <p className="text-text-secondary mb-3 text-table">
             {activities.total} activities reported this Rotary Year — {activities.verified}{' '}
             verified.
           </p>
@@ -122,7 +122,7 @@ export function ClubProfilePage() {
             predecessor showed one half and not the other, and the district logged it.
           */}
           <FinanceSummaryPanel ownerScopeType="CLUB" ownerScopeId={club.id} />
-          <p className="text-text-muted text-sm">
+          <p className="text-text-muted text-table">
             <Link className="text-accent underline" to="/finance/transactions">
               Open the transaction list
             </Link>
@@ -132,7 +132,7 @@ export function ClubProfilePage() {
         <div className="flex flex-col gap-4">
           <MembershipStatsPanel clubId={club.id} />
           <ClubRosterPanel clubId={club.id} />
-          <p className="text-text-muted text-sm">
+          <p className="text-text-muted text-table">
             <Link className="text-accent underline" to={`/clubs/${club.id}/membership`}>
               See the full membership history
             </Link>
@@ -199,7 +199,7 @@ function Overview({
         </dl>
         {/* The incumbent system published exactly this — venue, day and time — to the open
             internet alongside 4,000 members' phone numbers. Here it needs a session. */}
-        <p className="text-text-muted mt-4 text-xs">
+        <p className="text-text-muted mt-4 text-meta">
           Meeting details are visible to signed-in district members only.
         </p>
       </Card>
@@ -210,8 +210,8 @@ function Overview({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-border-subtle rounded-xl border bg-surface p-4">
-      <p className="text-text-muted text-xs">{label}</p>
-      <p className="text-text-primary mt-1 text-2xl font-semibold">{value}</p>
+      <p className="text-text-muted text-meta">{label}</p>
+      <p className="text-text-primary mt-1 text-title font-semibold">{value}</p>
     </div>
   );
 }
@@ -219,8 +219,10 @@ function Stat({ label, value }: { label: string; value: string }) {
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-text-muted text-xs">{label}</dt>
-      <dd className="text-text-primary text-sm">{value === null || value === '' ? '—' : value}</dd>
+      <dt className="text-text-muted text-meta">{label}</dt>
+      <dd className="text-text-primary text-table">
+        {value === null || value === '' ? '—' : value}
+      </dd>
     </div>
   );
 }

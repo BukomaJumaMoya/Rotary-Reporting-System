@@ -104,9 +104,9 @@ export function ActivityTypesPage() {
                     <div className="min-w-0">
                       <p className="text-text-primary font-medium">
                         {type.name}{' '}
-                        <span className="text-text-muted font-mono text-xs">{type.code}</span>
+                        <span className="text-text-muted font-mono text-meta">{type.code}</span>
                       </p>
-                      <p className="text-text-muted text-xs">
+                      <p className="text-text-muted text-meta">
                         {REQUIREMENTS.filter((requirement) => type[requirement.key])
                           .map((requirement) => requirement.label)
                           .join(' · ') || 'Nothing required'}
@@ -255,7 +255,7 @@ function TypeDialog({ type, onClose }: { type: ActivityType | null; onClose: () 
           />
 
           <fieldset>
-            <legend className="text-text-secondary mb-1 text-sm font-medium">
+            <legend className="text-text-secondary mb-1 text-table font-medium">
               Who may host it
             </legend>
             {SCOPES.map((scope) => (
@@ -276,7 +276,7 @@ function TypeDialog({ type, onClose }: { type: ActivityType | null; onClose: () 
           </fieldset>
 
           <fieldset>
-            <legend className="text-text-secondary mb-1 text-sm font-medium">
+            <legend className="text-text-secondary mb-1 text-table font-medium">
               What it requires
             </legend>
             {REQUIREMENTS.map((requirement) => (
@@ -307,7 +307,7 @@ function TypeDialog({ type, onClose }: { type: ActivityType | null; onClose: () 
         {/* The live preview. A declaration whose consequences you cannot see is one somebody
             gets wrong and only discovers when forty secretaries hit it. */}
         <div className="border-border-subtle rounded-lg border p-3">
-          <h3 className="text-text-secondary mb-3 text-sm font-semibold">
+          <h3 className="text-text-secondary mb-3 text-table font-semibold">
             What a secretary will see
           </h3>
           <FormPreview form={form} />
@@ -332,8 +332,8 @@ function FieldBuilder({
 
   return (
     <fieldset>
-      <legend className="text-text-secondary mb-1 text-sm font-medium">Extra fields</legend>
-      <p className="text-text-muted mb-2 text-xs">
+      <legend className="text-text-secondary mb-1 text-table font-medium">Extra fields</legend>
+      <p className="text-text-muted mb-2 text-meta">
         Stored on the activity under the key you choose. Renaming a key later orphans the data
         already recorded under the old one, so choose it once.
       </p>
@@ -429,16 +429,16 @@ function FormPreview({ form }: { form: FormState }) {
         <Input label="Narrative report" value="" readOnly onChange={() => undefined} />
       )}
       {form.requiresPhoto && (
-        <p className="text-text-secondary text-sm">📷 At least one photograph is required</p>
+        <p className="text-text-secondary text-table">📷 At least one photograph is required</p>
       )}
       {form.requiresAttendance && (
-        <p className="text-text-secondary text-sm">👥 An attendance list is required</p>
+        <p className="text-text-secondary text-table">👥 An attendance list is required</p>
       )}
       {form.requiresPartner && (
-        <p className="text-text-secondary text-sm">🤝 A partner organisation is required</p>
+        <p className="text-text-secondary text-table">🤝 A partner organisation is required</p>
       )}
       {form.requiresAreaOfFocus && (
-        <p className="text-text-secondary text-sm">🎯 An area of focus is required</p>
+        <p className="text-text-secondary text-table">🎯 An area of focus is required</p>
       )}
 
       {form.fields.map((field, index) => (
@@ -471,7 +471,7 @@ function FormPreview({ form }: { form: FormState }) {
       ))}
 
       {form.fields.length === 0 && (
-        <p className="text-text-muted text-xs">No extra fields — the form is the standard one.</p>
+        <p className="text-text-muted text-meta">No extra fields — the form is the standard one.</p>
       )}
     </div>
   );

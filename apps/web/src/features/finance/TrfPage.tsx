@@ -91,8 +91,8 @@ export function TrfPage() {
 
         {data.byFund.length > 0 && (
           <div className="border-border-subtle mt-4 border-t pt-3">
-            <p className="text-text-muted mb-2 text-xs">By fund</p>
-            <ul className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+            <p className="text-text-muted mb-2 text-meta">By fund</p>
+            <ul className="flex flex-wrap gap-x-6 gap-y-1 text-table">
               {data.byFund.map((fund) => (
                 <li key={fund.fundType}>
                   <span className="text-text-muted">
@@ -105,7 +105,7 @@ export function TrfPage() {
           </div>
         )}
 
-        <p className="text-text-muted mt-3 text-xs">
+        <p className="text-text-muted mt-3 text-meta">
           Only verified giving counts toward a club&rsquo;s score. These totals are what the
           district has recorded — they are not a reconciliation against Rotary&rsquo;s own figures.
         </p>
@@ -143,7 +143,7 @@ export function TrfPage() {
                 render: (row: TrfClubTotal) => (
                   <span>
                     {row.contributingMembers} of {row.rosterSize}
-                    <span className="text-text-muted ml-1 text-xs">
+                    <span className="text-text-muted ml-1 text-meta">
                       {Math.round(row.contributingMemberRate * 100)}%
                     </span>
                   </span>
@@ -153,7 +153,7 @@ export function TrfPage() {
             rows={data.byClub}
             rowKey={(row) => row.clubId}
           />
-          <p className="text-text-muted mt-3 text-xs">
+          <p className="text-text-muted mt-3 text-meta">
             A club-level gift counts toward the money but not toward &ldquo;members giving&rdquo; —
             one cheque is not every member contributing.
           </p>
@@ -176,7 +176,7 @@ export function TrfPage() {
                     <p className="text-text-primary font-medium">
                       {FUND_LABELS[row.fundType] ?? row.fundType}
                     </p>
-                    <p className="text-text-muted truncate text-xs">
+                    <p className="text-text-muted truncate text-meta">
                       {row.clubName} · {row.personName ?? 'club gift'}
                       {row.riReceiptRef ? ` · ${row.riReceiptRef}` : ''}
                     </p>
@@ -275,13 +275,13 @@ function RecordContribution({ onClose }: { onClose: () => void }) {
   return (
     <Dialog isOpen title="Record TRF giving" onClose={onClose}>
       <div className="flex flex-col gap-3">
-        <p className="text-text-muted text-sm">
+        <p className="text-text-muted text-table">
           Enter what My Rotary shows. The club and fund stay selected, so a whole club can be
           entered without reselecting.
         </p>
 
         {ownClub ? (
-          <p className="text-text-secondary text-sm">
+          <p className="text-text-secondary text-table">
             Recording for <span className="text-text-primary font-medium">{ownClub.name}</span>
           </p>
         ) : (
@@ -323,13 +323,13 @@ function RecordContribution({ onClose }: { onClose: () => void }) {
           onChange={(event) => setRiReceiptRef(event.target.value)}
         />
 
-        <p className="text-text-muted text-xs">
+        <p className="text-text-muted text-meta">
           This is recorded as a CLUB gift. A named member&rsquo;s contribution is entered from their
           own record, because only a named contribution counts toward the members-giving rate.
         </p>
 
         {saved > 0 && (
-          <p className="text-success-text text-sm">
+          <p className="text-success-text text-table">
             {saved} recorded in this sitting. They stay unverified until you verify them.
           </p>
         )}
@@ -380,14 +380,14 @@ function Figure({
 }) {
   return (
     <div>
-      <dt className="text-text-muted text-xs">{label}</dt>
+      <dt className="text-text-muted text-meta">{label}</dt>
       <dd
         className={
           tone === 'success'
-            ? 'text-success-text mt-0.5 text-lg font-semibold tabular-nums'
+            ? 'text-success-text mt-0.5 text-subsection font-semibold tabular-nums'
             : tone === 'warning'
-              ? 'text-warning-text mt-0.5 text-lg font-semibold tabular-nums'
-              : 'text-text-primary mt-0.5 text-lg font-semibold tabular-nums'
+              ? 'text-warning-text mt-0.5 text-subsection font-semibold tabular-nums'
+              : 'text-text-primary mt-0.5 text-subsection font-semibold tabular-nums'
         }
       >
         {value}

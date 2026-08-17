@@ -22,7 +22,14 @@ export const SIDEBAR_KEY = 'dis-sidebar';
 const THEME_ATTR = 'data-theme';
 const SIDEBAR_ATTR = 'data-sidebar';
 
+/** What is actually painted. */
 export type Theme = 'light' | 'dark';
+/**
+ * What the member CHOSE. `system` is a real preference, not the absence of one, and it is
+ * the difference between "follow this device" and "always light" — which diverge the moment
+ * the phone switches to dark at sunset.
+ */
+export type ThemePreference = 'light' | 'dark' | 'system';
 export type SidebarState = 'expanded' | 'rail';
 
 /**
@@ -53,6 +60,11 @@ function attributeStore<T extends string>(attribute: string, fallback: T) {
       }
       listeners.forEach((listener) => listener());
     },
+    /** Paints the attribute WITHOUT writing storage — for a preference of `system`. */
+    setResolvedOnly(value: T) {
+      document.documentElement.setAttribute(attribute, value);
+      listeners.forEach((listener) => listener());
+    },
     /** The server snapshot. There is no SSR here, but React asks for it. */
     getServer: () => fallback,
   };
@@ -61,22 +73,72 @@ function attributeStore<T extends string>(attribute: string, fallback: T) {
 const themeStore = attributeStore<Theme>(THEME_ATTR, 'light');
 const sidebarStore = attributeStore<SidebarState>(SIDEBAR_ATTR, 'expanded');
 
-export function useTheme(): { theme: Theme; toggle: () => void } {
+/** The resolved theme — what is on screen right now, whatever produced it. */
+export function useTheme(): { theme: Theme } {
   const theme = useSyncExternalStore(themeStore.subscribe, themeStore.get, themeStore.getServer);
+  return { theme };
+}
 
-  const toggle = useCallback(() => {
-    const next: Theme = themeStore.get() === 'dark' ? 'light' : 'dark';
-    themeStore.set(next, THEME_KEY);
+/** What the member chose. Read from storage, because `system` leaves no trace on the DOM. */
+function readPreference(): ThemePreference {
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    return stored === 'light' || stored === 'dark' ? stored : 'system';
+  } catch {
+    return 'system';
+  }
+}
 
-    // The browser chrome follows the page. Without this the address bar stays cranberry on a
-    // dark page, which looks like a rendering fault rather than a choice.
-    const meta = document.querySelector('meta[name="theme-color"]');
-    // Slate on dark, paper on light. NOT the brand colour: cranberry has retreated to the
-    // mark and the primary action, and the address bar is neither.
-    meta?.setAttribute('content', next === 'dark' ? '#232529' : '#faf9f7');
+function systemTheme(): Theme {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+/**
+ * The setting itself.
+ *
+ * This moved out of the header. A theme switch sitting permanently beside the Rotary Year
+ * badge gives a personal display preference the same visual weight as the dimension every
+ * figure on the screen is scoped by — which is the wrong hierarchy, and it reads as a toy on
+ * a screen somebody is about to put in front of a board.
+ *
+ * Choosing `system` deliberately CLEARS the stored value rather than storing the word. The
+ * pre-paint script in index.html treats "no stored preference" as "follow the device", so
+ * clearing is what makes the two agree; writing `system` and teaching the script a third
+ * case would be one more thing to keep in step across two files.
+ */
+export function useThemePreference(): {
+  preference: ThemePreference;
+  setPreference: (next: ThemePreference) => void;
+} {
+  const preference = useSyncExternalStore(
+    themeStore.subscribe,
+    readPreference,
+    () => 'system' as ThemePreference,
+  );
+
+  const setPreference = useCallback((next: ThemePreference) => {
+    const resolved: Theme = next === 'system' ? systemTheme() : next;
+
+    if (next === 'system') {
+      try {
+        localStorage.removeItem(THEME_KEY);
+      } catch {
+        // Private browsing. The resolved theme below still applies for this session.
+      }
+      themeStore.setResolvedOnly(resolved);
+    } else {
+      themeStore.set(resolved, THEME_KEY);
+    }
+
+    // The browser chrome follows the page. Slate on dark, paper on light — never the brand
+    // colour: cranberry has retreated to the mark and the primary action, and an address bar
+    // is neither.
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', resolved === 'dark' ? '#232529' : '#faf9f7');
   }, []);
 
-  return { theme, toggle };
+  return { preference, setPreference };
 }
 
 export function useSidebar(): {

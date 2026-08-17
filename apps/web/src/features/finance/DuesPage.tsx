@@ -125,7 +125,7 @@ function DistrictGrid() {
               render: (row: DuesStatusRow) => (
                 <span className={row.isOverdue ? 'text-danger-text font-medium' : ''}>
                   {formatAmount(row.amountOutstanding)}
-                  {row.isOverdue && <span className="ml-1 text-xs">overdue</span>}
+                  {row.isOverdue && <span className="ml-1 text-meta">overdue</span>}
                 </span>
               ),
             },
@@ -202,7 +202,7 @@ function BulkIssue({ onClose }: { onClose: () => void }) {
           onChange={(event) => setDueOn(event.target.value)}
         />
 
-        <p className="text-text-muted text-xs">
+        <p className="text-text-muted text-meta">
           Clubs that already have an invoice of this type are left untouched — including their
           amount. Safe to run again after a new club is chartered.
         </p>
@@ -264,7 +264,7 @@ function RecordPayment({
   return (
     <Dialog isOpen title={`Payment from ${clubName}`} onClose={onClose}>
       <div className="flex flex-col gap-3">
-        <p className="text-text-muted text-sm">
+        <p className="text-text-muted text-table">
           {formatMoney(outstanding)} still outstanding. An overpayment is accepted and flagged, not
           refused.
         </p>
@@ -295,7 +295,7 @@ function RecordPayment({
           onChange={(event) => setReference(event.target.value)}
         />
 
-        <label className="flex min-h-11 items-center gap-3 text-sm">
+        <label className="flex min-h-11 items-center gap-3 text-table">
           <input
             type="checkbox"
             className="h-5 w-5"
@@ -304,7 +304,7 @@ function RecordPayment({
           />
           <span>
             Confirm it has arrived
-            <span className="text-text-muted block text-xs">
+            <span className="text-text-muted block text-meta">
               Confirming issues the receipt number and tells the club. Leave it unticked to record a
               claim you have not yet checked against the bank — it will not count until you confirm.
             </span>
@@ -398,16 +398,16 @@ function InvoiceCard({ invoice }: { invoice: DuesInvoice }) {
       </dl>
 
       {invoice.isOverpaid && (
-        <p className="text-warning-text mb-3 text-sm">
+        <p className="text-warning-text mb-3 text-table">
           This invoice has been overpaid. The district has a record of it — ask the treasurer how it
           will be applied.
         </p>
       )}
       {invoice.waiverReason && (
-        <p className="text-text-secondary mb-3 text-sm">Waived: {invoice.waiverReason}</p>
+        <p className="text-text-secondary mb-3 text-table">Waived: {invoice.waiverReason}</p>
       )}
 
-      <p className="text-text-muted mb-2 text-xs">Due {invoice.dueOn}</p>
+      <p className="text-text-muted mb-2 text-meta">Due {invoice.dueOn}</p>
 
       {payments.length > 0 && (
         <Table
@@ -442,7 +442,7 @@ function Figure({
 }) {
   return (
     <div>
-      <dt className="text-text-muted text-xs">{label}</dt>
+      <dt className="text-text-muted text-meta">{label}</dt>
       <dd
         className={
           tone === 'success'

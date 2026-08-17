@@ -29,11 +29,11 @@ export function ForgotPasswordPage() {
   if (isSent) {
     return (
       <AuthShell title="Check your email">
-        <p className="text-text-secondary text-sm">
+        <p className="text-text-secondary text-table">
           If an account exists for {email}, a reset link is on its way. The link is valid for one
           hour and can be used once.
         </p>
-        <Link to="/login" className="text-info mt-4 block text-center text-sm underline">
+        <Link to="/login" className="text-info mt-4 block text-center text-table underline">
           Back to sign in
         </Link>
       </AuthShell>
@@ -54,7 +54,7 @@ export function ForgotPasswordPage() {
         <Button type="submit" isLoading={isSubmitting} fullWidth>
           Send the link
         </Button>
-        <Link to="/login" className="text-info text-center text-sm underline">
+        <Link to="/login" className="text-info text-center text-table underline">
           Back to sign in
         </Link>
       </form>
@@ -119,7 +119,7 @@ export function ResetPasswordPage() {
         />
 
         {error && (
-          <p role="alert" className="text-danger-text text-sm">
+          <p role="alert" className="text-danger-text text-table">
             {error.message}
           </p>
         )}
@@ -192,7 +192,7 @@ export function AcceptInvitePage() {
           error={form.mismatch ? 'The two passwords do not match' : undefined}
         />
 
-        <label className="flex min-h-11 items-start gap-3 text-sm">
+        <label className="flex min-h-11 items-start gap-3 text-table">
           <input
             type="checkbox"
             required
@@ -207,7 +207,7 @@ export function AcceptInvitePage() {
         </label>
 
         {error && (
-          <p role="alert" className="text-danger-text text-sm">
+          <p role="alert" className="text-danger-text text-table">
             {error.message}
           </p>
         )}

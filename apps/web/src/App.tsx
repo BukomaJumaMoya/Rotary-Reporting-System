@@ -86,6 +86,9 @@ const CommitteesPage = lazy(() =>
 );
 // Lazy: procurement and auditors look for this page by name, but no club secretary opens
 // it mid-report, so it has no business in the initial payload.
+const SettingsPage = lazy(() =>
+  import('./features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+);
 const AccessibilityPage = lazy(() =>
   import('./features/help/AccessibilityPage').then((m) => ({ default: m.AccessibilityPage })),
 );
@@ -240,6 +243,14 @@ export function App() {
           by somebody already signed in cannot be checked by the procurement officer deciding
           whether the system is usable in the first place.
         */}
+        <Route
+          path="/settings"
+          element={
+            <RequireAuth>
+              <SettingsPage />
+            </RequireAuth>
+          }
+        />
         <Route path="/accessibility" element={<AccessibilityPage />} />
         <Route
           path="/finance/transactions"

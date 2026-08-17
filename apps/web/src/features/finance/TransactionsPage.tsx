@@ -106,7 +106,7 @@ export function TransactionsPage() {
                   render: (row: Transaction) => (
                     <div className="min-w-0">
                       <p className="text-text-primary font-medium">{row.categoryName}</p>
-                      <p className="text-text-muted truncate text-xs">
+                      <p className="text-text-muted truncate text-meta">
                         {row.description ?? row.ownerName ?? '—'}
                       </p>
                     </div>
@@ -202,7 +202,7 @@ function RecordTransaction({ onClose }: { onClose: () => void }) {
     <Dialog isOpen title="Record a transaction" onClose={onClose}>
       <div className="flex flex-col gap-3">
         {ownClub ? (
-          <p className="text-text-secondary text-sm">
+          <p className="text-text-secondary text-table">
             Recording for <span className="text-text-primary font-medium">{ownClub.name}</span>
           </p>
         ) : (

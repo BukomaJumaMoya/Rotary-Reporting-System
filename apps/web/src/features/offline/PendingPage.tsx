@@ -61,7 +61,7 @@ export function PendingPage() {
           }
         >
           {!isOnline && (
-            <p className="text-text-muted mb-3 text-sm">
+            <p className="text-text-muted mb-3 text-table">
               No connection. These will go on their own as soon as there is one — you do not have to
               come back to this screen.
             </p>
@@ -76,7 +76,7 @@ export function PendingPage() {
 
       {failed.length > 0 && (
         <Card title={`${failed.length} could not be sent`}>
-          <p className="text-text-secondary mb-3 text-sm">
+          <p className="text-text-secondary mb-3 text-table">
             The district refused these. They are still on this device — correct the problem and try
             again, or discard them if they were a mistake.
           </p>
@@ -104,7 +104,7 @@ export function PendingPage() {
 function DataUsage({ waitingBytes }: { waitingBytes: number }) {
   return (
     <Card title="What this costs you" className="mt-4">
-      <dl className="grid gap-2 text-sm">
+      <dl className="grid gap-2 text-table">
         <div className="flex justify-between gap-4">
           <dt className="text-text-muted">Waiting to send, from this device</dt>
           <dd className="text-text-primary">{formatBytes(waitingBytes)}</dd>
@@ -118,7 +118,7 @@ function DataUsage({ waitingBytes }: { waitingBytes: number }) {
           <dd className="text-text-primary">almost nothing, once installed</dd>
         </div>
       </dl>
-      <p className="text-text-muted mt-3 text-xs">
+      <p className="text-text-muted mt-3 text-meta">
         Photographs are made smaller on this phone before they are sent — usually a tenth of what
         the camera produced. Nothing is uploaded until you tap Submit.
       </p>
@@ -148,14 +148,14 @@ function Row({ item }: { item: OutboxItem }) {
   return (
     <li className="flex flex-wrap items-start justify-between gap-3 py-3">
       <div className="min-w-0">
-        <p className="text-text-primary truncate text-sm font-medium">{item.label}</p>
-        <p className="text-text-muted text-xs">
+        <p className="text-text-primary truncate text-table font-medium">{item.label}</p>
+        <p className="text-text-muted text-meta">
           {item.kind} · saved {new Date(item.createdAt).toLocaleString()}
           {item.files.length > 0 &&
             ` · ${item.files.length} photograph${item.files.length === 1 ? '' : 's'}`}
         </p>
         {item.lastError && (
-          <p className={cx('mt-1 text-xs', isFailed ? 'text-danger-text' : 'text-text-muted')}>
+          <p className={cx('mt-1 text-meta', isFailed ? 'text-danger-text' : 'text-text-muted')}>
             {item.lastError}
             {!isFailed && item.attempts > 0 && ` · tried ${item.attempts} times`}
           </p>
