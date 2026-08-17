@@ -72,6 +72,14 @@ export const PERMISSIONS: { code: string; description: string }[] = [
   },
   { code: 'finance:write:club', description: 'Record club transactions' },
   { code: 'dues:manage:district', description: 'Raise and reconcile district dues' },
+  {
+    code: 'trf:verify:district',
+    // Separate from `activity:verify:district` because it is a different job done by a
+    // different officer. TRF figures are reconciled against My Rotary by the District
+    // Foundation Chair, who has no reason to be verifying activity reports — and the
+    // officers who verify activity reports have no reason to be reading My Rotary.
+    description: 'Reconcile TRF giving against My Rotary and verify it',
+  },
 
   // Assessment
   { code: 'assessment:read:club', description: 'View your own scorecard' },
@@ -181,6 +189,29 @@ export const POSITIONS: PositionSeed[] = [
       'finance:read:club',
       'finance:write:club',
       'dues:manage:district',
+      'year:read:historical',
+      'export:data:scope',
+    ],
+  },
+  {
+    code: 'DISTRICT_FOUNDATION_CHAIR',
+    name: 'District Rotary Foundation Chair',
+    scope: 'DISTRICT',
+    sequence: 35,
+    isUniquePerScope: true,
+    /**
+     * The officer who actually holds the TRF numbers.
+     *
+     * Club giving is read BY HAND from My Rotary and the Rotary Foundation reports — there
+     * is no feed — so this person is both the transcriber and the verifier: they enter what
+     * the source says for a club and a fund, and they are the one who can confirm it. Hence
+     * `finance:write:club` at district scope as well as `trf:verify:district`.
+     */
+    permissions: [
+      'club:read:district',
+      'finance:read:club',
+      'finance:write:club',
+      'trf:verify:district',
       'year:read:historical',
       'export:data:scope',
     ],

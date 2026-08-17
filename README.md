@@ -95,7 +95,7 @@ npm run test        # includes the 37 ADR-012 invariant checks
 - Rotary Years 2026-27 and 2027-28, with 2027-28 current and 2026-27 locked
 - District 9218 · 3 regions · 6 clusters · 20 clubs affiliated for 2027-28
 - **300 synthetic members** with `JOIN` events, and the derived roster refreshed
-- 35 permissions and 10 positions, with 114 `position_permissions` wired from the authorisation matrix
+- 36 permissions and 11 positions, with 120 `position_permissions` wired from the authorisation matrix
 - 69 officer accounts — a president, secretary and treasurer per club, plus the DRR,
   DES, District Treasurer, PIME Chair, two assessors and three ADRRs
 

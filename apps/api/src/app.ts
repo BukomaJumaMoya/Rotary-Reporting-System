@@ -5,6 +5,7 @@ import { adminRouter } from './modules/admin/routes.js';
 import { authRouter } from './modules/auth/routes.js';
 import { duesRouter } from './modules/finance/dues.routes.js';
 import { financeRouter } from './modules/finance/routes.js';
+import { trfRouter } from './modules/finance/trf.routes.js';
 import { governanceRouter } from './modules/governance/routes.js';
 import { membershipRouter } from './modules/membership/routes.js';
 import { orgRouter } from './modules/org/routes.js';
@@ -112,6 +113,7 @@ export function createApp(mountExtra?: (mount: MountFn) => void): Express {
   mount('/api/v1', activityRouter);
   mount('/api/v1', financeRouter);
   mount('/api/v1', duesRouter);
+  mount('/api/v1', trfRouter);
 
   mountExtra?.(mount);
 

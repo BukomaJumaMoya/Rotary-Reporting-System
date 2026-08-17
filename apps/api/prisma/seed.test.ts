@@ -132,11 +132,11 @@ describe('the seeded dataset', () => {
     ]);
 
     expect(permissions).toBeGreaterThanOrEqual(25);
-    expect(positions).toBe(10);
+    expect(positions).toBe(11);
     expect(wired).toBeGreaterThan(100);
-    // Three officers per club, plus six district officers and three ADRRs. From the club
+    // Three officers per club, plus seven district officers and three ADRRs. From the club
     // count rather than a literal, so the number follows the dataset.
-    expect(appointments).toBe(TOTAL_CLUBS * 3 + 6 + 3);
+    expect(appointments).toBe(TOTAL_CLUBS * 3 + 7 + 3);
   });
 
   it('populates the lookup tables that were empty and block every insert', async () => {
@@ -195,6 +195,24 @@ describe('the seeded dataset', () => {
     expect(approvedWithNoLines).toBe(0);
   });
 
+  it('leaves some TRF giving unverified, because a backlog is the real working state', async () => {
+    const [total, verified, clubLevel] = await Promise.all([
+      unscopedPrisma.trfContribution.count(),
+      unscopedPrisma.trfContribution.count({ where: { verification: 'VERIFIED' } }),
+      unscopedPrisma.trfContribution.count({ where: { personId: null } }),
+    ]);
+
+    expect(total).toBeGreaterThan(0);
+    // Only VERIFIED contributions count toward `trf.contribution_usd`. A dataset where
+    // everything is verified would let M5 be calibrated against a district with no
+    // reconciliation backlog — and the backlog is the Foundation Chair's actual job.
+    expect(verified).toBeLessThan(total);
+    expect(verified).toBeGreaterThan(0);
+    // Club-level gifts have no person, which is what makes the contributing-member rate
+    // worth testing: one cheque is not every member giving.
+    expect(clubLevel).toBeGreaterThan(0);
+  });
+
   it('does not duplicate the notification templates a migration already inserted', async () => {
     const auth = await unscopedPrisma.notificationTemplate.count({
       where: { code: { in: ['AUTH_PASSWORD_RESET', 'AUTH_INVITE'] } },
@@ -210,7 +228,7 @@ describe('the seeded dataset', () => {
     ]);
 
     // issueInvite() is the real onboarding path, not a second one invented for the seed.
-    const officers = TOTAL_CLUBS * 3 + 6 + 3;
+    const officers = TOTAL_CLUBS * 3 + 7 + 3;
     expect(users).toBe(officers);
     expect(invites).toBe(officers);
   });
@@ -297,6 +315,6 @@ describe('rerunning', () => {
     // be the confusing one.
     expect(clubs).toBe(TOTAL_CLUBS);
     expect(people).toBe(TOTAL_MEMBERS);
-    expect(appointments).toBe(TOTAL_CLUBS * 3 + 6 + 3);
+    expect(appointments).toBe(TOTAL_CLUBS * 3 + 7 + 3);
   }, 120_000);
 });

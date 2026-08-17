@@ -4,10 +4,10 @@
 describe what the system *should* be; this one records what has actually been built, what
 was decided along the way, and what is deliberately unfinished.
 
-Last updated: 17 August 2026, after M4 session 2. **M0, M1 and M2 are complete; M3 is
+Last updated: 17 August 2026, after M4 session 3. **M0, M1 and M2 are complete; M3 is
 code-complete but NOT closed — its device pass has not been run; M4 is under way.**
 
-<!-- dis:state milestone=M2 schema=v2.1 tests=487 -->
+<!-- dis:state milestone=M2 schema=v2.1 tests=501 -->
 
 ---
 
@@ -147,7 +147,7 @@ full history is in §4.
 |---|---|---|
 | 1 — Budgets and transactions | **done** | this commit |
 | 2 — Dues invoicing and reconciliation | **done** | this commit |
-| 3 — TRF contributions | not started | |
+| 3 — TRF contributions | **done** | this commit |
 | 4 — Finance UI | not started | |
 | 5 — Finance hardening | not started | |
 
@@ -216,6 +216,8 @@ the vitest global setup refuses to run otherwise, because it truncates every tab
 packages/contracts/src/
   auth.ts        login, password reset, invite, MFA, /auth/me, error envelope
   context.ts     RequestContext, RequestScopes, the ?year= param, org scopes
+  dues.ts        invoices, payments, the district grid, member dues
+  trf.ts         contributions, verification, the summary — USD, as reported
   common.ts      pagination, the list envelope, shared primitives
   finance.ts     budgets, lines, transactions, variance — money as a STRING
   governance.ts  positions, permissions, appointments, committees, persons
@@ -256,6 +258,8 @@ apps/api/src/
     finance/     routes · service — budgets, lines, transactions, the summary
                  dues.routes · dues.service — invoices, payments, the district
                  grid, member dues and prepayment. NO stored status: read the view.
+                 trf.routes · trf.service — contributions in USD, verification,
+                 and the summary. VERIFIED only ever counts.
                  money.ts  Decimal in, decimal STRING out. Never a JS number.
     membership/  routes · service — the event log, the roster, the statistics
                  analytics.ts  THE one raw-SQL file outside the assessment resolvers
@@ -329,7 +333,7 @@ apps/web/src/
 Dockerfile · fly.toml · .github/workflows/deploy-staging.yml · README.md
 ```
 
-**487 tests** — 471 in the API, integration-style against real PostgreSQL, and 16 in the web
+**501 tests** — 485 in the API, integration-style against real PostgreSQL, and 16 in the web
 workspace against `fake-indexeddb`. The suites that are load bearing rather than incidental:
 `no-pii.test.ts` (walks every route unauthenticated), `invariants.test.ts` (49 ADR-012
 guards), `scope*.test.ts` (the data access layer), `audit.test.ts`, `rollover.test.ts` (dry
@@ -588,7 +592,7 @@ seen on another.
 
 **The dataset:** two Rotary Years with 2027-28 current and 2026-27 locked · district 9218
 · 3 regions · 6 clusters · 20 clubs affiliated for the year · 300 synthetic members with
-`JOIN` events and the roster refreshed · 35 permissions · 10 positions with 114
+`JOIN` events and the roster refreshed · 36 permissions · 11 positions with 120
 `position_permissions` wired from the §10 matrix · 69 officer accounts. About six seconds.
 
 **Appointment terms are clamped to today.** The seeded year is 2027-28, the launch year,
@@ -1542,6 +1546,67 @@ cannot express those.
 takes a couple of minutes at 3,000 members. `migrate deploy` or `migrate status` is the
 faster way to check.
 
+#### Session 3 — TRF
+
+**USD, stored as reported, never converted.** Club finances are UGX; TRF reports in dollars
+and the rubric's bands are in dollars. Converting at a rate this system chose would make a
+club's scoring band depend on the day somebody ran an import — not a number anyone could
+defend when a club misses a threshold by twenty dollars.
+
+**THE AUTHORITATIVE FIGURES ARE READ BY HAND FROM MY ROTARY.** Confirmed by the district
+during this session, and it is the fact the whole surface has to fit. There is no feed and
+there will not be one: somebody opens the club recognition summary on `my.rotary.org` and the
+Rotary Foundation reports, reads what each club has given and to which fund, and reconciles
+that against what the clubs recorded here. Everything below follows from it.
+
+**Nothing a club sends arrives VERIFIED.** The create path cannot set the state at all.
+
+**Verification is `trf:verify:district`, a permission of its own** — the 36th, added in this
+session at the district's request. It is deliberately NOT `activity:verify:district`.
+Reconciling against My Rotary and verifying a fellowship report are different jobs done by
+different officers: the Foundation Chair is the only person with the source in front of them,
+and an assessor who verifies activity reports has no way to check a dollar figure. Held by
+the **District Rotary Foundation Chair** (a new position, the 11th) and the DRR.
+
+The Chair also holds `finance:write:club` at district scope, because they are as often the
+TRANSCRIBER as the verifier: a contribution My Rotary shows and the club never reported still
+has to be entered, and the person entering it is the person reading the report.
+
+**Two consequences for the UI (M4 s4) and beyond.** The TRF screen is a transcription
+surface, not a data-entry form — the Chair works club by club, fund by fund, from a page open
+in another tab, so it wants that shape rather than a one-record-at-a-time modal. And a bulk
+paste or import is not a nicety: 68 clubs × several funds, typed one at a time, is how the
+reconciliation stops happening. §5 records it.
+
+**What the system does NOT hold, by decision.** A snapshot of what My Rotary said — club,
+fund, amount, as-at — was offered and the district declined it: the reconciliation stays on
+paper and the system records the district's own figure only. So the TRF totals here answer
+"what has this district recorded and verified", never "does that agree with RI". Worth
+knowing before somebody quotes one at RI.
+
+**Verification runs BOTH ways.** A contribution that was counted and is then queried stops
+counting, and `markStale` fires on either decision. A correction that left the score where
+the mistake put it would be worse than no correction.
+
+**The contributing-member rate excludes club-level gifts**, and counts a member once however
+many times they gave. `person_id IS NULL` means the club wrote one cheque; counting it toward
+"members who contributed ÷ roster" would report every member as a giver on the strength of a
+single signature. Both halves are tested against a four-member fixture that gets 0.5 and
+would get 0.75 or 1.0 if either rule were dropped.
+
+**Verified and pending are reported separately, never netted.** The verified figure is what a
+scorecard uses; the pending figure is the District Foundation Chair's work queue. One total
+would answer neither question. `REJECTED` is in neither: it is not in anybody's queue.
+
+**`verificationStates` is imported from `activity.ts`, not re-declared.** Verification is one
+idea, and two copies of the list is one that eventually gains a fifth state on only one side.
+The contracts build caught the duplicate export immediately, which is the barrel file earning
+its keep.
+
+**Only clubs that have contributed appear in `byClub`.** A district of 68 clubs mostly at zero
+is a table nobody reads; showing who has done NOTHING is the dues grid's job, and that grid is
+built from the club list outward for exactly that reason.
+
 ---
 
 ## 4a. Axiom conformance
@@ -1615,7 +1680,10 @@ re-checked whenever a new write path is added.
 | A dead-lettered job is recorded but not retryable from the UI | `JOB_FAILED` in `audit_log` carries the queue, the error and the payload, which is enough to re-run it by hand; a button needs a screen that does not exist | M7, with the admin surface |
 | `recordAction(EXPORT, …)` exists and is unused | there is no export module yet | M7 |
 | The M2 exit test has not been run | a real club secretary filing a report on a phone in under three minutes, WATCHED. Every part of the path is built and tested; whether it takes three minutes for somebody who has never seen it is not a thing the suite can answer | before M3 |
-| A verification comment is logged, not stored | there is no `activity_comments` table, and adding one for a single string belongs with M5's dispute surface, where comments already have a home | M5 |
+| A verification comment is logged, not stored — for activities AND now for TRF contributions | there is no `activity_comments` table, and adding one for a single string belongs with M5's dispute surface, where comments already have a home. The contract still REQUIRES one for anything but VERIFIED, so the officer has to articulate the objection even while it only reaches the audit log | M5 |
+| A dues payment cannot be corrected or reversed | `dues_payments` has no update or delete path. The honest fix is a compensating negative row, which the `amount >= 0` CHECK forbids, or a `voided_at` column and a view that skips it — a schema change, and one worth designing rather than bolting on at the end of a session | **M4 session 5** |
+| TRF contributions have no bulk entry, and the figures are transcribed BY HAND from My Rotary | there is no feed. The District Foundation Chair reads club × fund giving off `my.rotary.org` and the Foundation reports; 68 clubs times several funds, typed one row at a time, is how the reconciliation stops happening. The M4 s4 screen should be a club × fund grid rather than a form, and a paste-a-table import belongs with M7's export/import surface | **M4 session 4** for the grid; M7 for import |
+| Nothing records WHAT My Rotary said, only what the district entered | **Asked and DECLINED, 17 August 2026.** A `trf_source_readings` snapshot was proposed so the gap between RI's figure and the district's could be queried rather than remembered. The district does not want the table: the reconciliation stays on paper, and the system records the district's own figure only. **Do not re-raise it** — the answer is not "not yet", it is no | not planned |
 | A dead-lettered job cannot be re-run from the UI | `JOB_FAILED` in `audit_log` carries the queue, the error and the payload, which is enough to re-run by hand | M7 |
 | No list endpoint accepts `?format=xlsx` yet | the export module queues a job and returns a signed URL; every list is written to take the parameter | M7 |
 | Media is never re-processed if the worker was down at upload | the row keeps its original key and reports `isProcessed: false`, so the state is visible rather than silent; a sweep would be a second scheduler for one case | M3, with the offline queue |

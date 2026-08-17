@@ -400,13 +400,29 @@ year, written through `systemContext` with a mandatory reason, and marked `isPre
 next year's collection rate counts the member and this year's is not flattered by money that
 is not for it. Backdating is refused with `YEAR_LOCKED`.
 
-**Still to build (M4 session 3):**
+**Built in M4 session 3:** TRF contributions and their verification.
 
-| Method | Path |
-|---|---|
-| `GET` `POST` | `/trf/contributions` |
-| `POST` | `/trf/contributions/:id/verify` |
-| `GET` | `/trf/summary` — by club, by fund type, cumulative |
+| Method | Path | Permission |
+|---|---|---|
+| `GET` | `/trf/contributions`, `/trf/contributions/:id` | `finance:read:club` |
+| `POST` | `/trf/contributions` | `finance:write:club` |
+| `POST` | `/trf/contributions/:id/verify` | `trf:verify:district` |
+| `GET` | `/trf/summary` — by club, by fund type, cumulative | `finance:read:club` |
+
+**Amounts are USD, stored as reported, never converted.** Club finances are UGX; TRF reports
+in dollars and the rubric's bands are in dollars. Converting at a rate this system chose
+would make a club's scoring band depend on the day somebody ran an import.
+
+**Only VERIFIED contributions count**, and nothing a club sends arrives verified. M5's
+`trf.contribution_usd` resolver reads verified rows and nothing else. Verification reuses
+`activity:verify:district` rather than inventing a permission — it is the same act by the
+same people, a district officer confirming a club's claim against evidence. It calls
+`assessment.markStale()`, and it runs BOTH ways: a contribution that is later queried stops
+counting, or a correction would leave the score where the mistake put it.
+
+The **contributing-member rate** counts distinct persons with a verified contribution over
+the roster. A club-level gift has no person and is excluded from the numerator: one cheque is
+not every member giving.
 
 ---
 
@@ -458,23 +474,28 @@ Every list endpoint accepts `?format=xlsx`, which queues an export job for large
 
 ## 10. Authorisation matrix (abbreviated)
 
-| Permission | Club Sec | Club Treas | President | ADRR | Assessor | PIME | DES | DRR |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| `activity:create:club` | ✓ | ✓ | ✓ | — | — | — | — | — |
-| `activity:verify:district` | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `membership:write:club` | ✓ | — | ✓ | — | — | — | — | — |
-| `finance:write:club` | — | ✓ | — | — | — | — | — | — |
-| `finance:read:club` | ✓ | ✓ | ✓ | — | — | — | ✓ | ✓ |
-| `dues:manage:district` | — | — | — | — | — | — | — | ✓ |
-| `assessment:score:assigned` | — | — | — | ✓ | ✓ | ✓ | — | — |
-| `assessment:finalise:district` | — | — | — | — | — | ✓ | — | ✓ |
-| `framework:manage:district` | — | — | — | — | — | ✓ | — | — |
-| `appointment:manage:district` | — | — | — | — | — | — | ✓ | ✓ |
-| `year:rollover:district` | — | — | — | — | — | — | ✓ | — |
-| `export:data:scope` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `audit:read:district` | — | — | — | — | — | ✓ | ✓ | ✓ |
+Treas = District Treasurer · TRF = District Rotary Foundation Chair.
+
+| Permission | Club Sec | Club Treas | President | ADRR | Assessor | PIME | Treas | TRF | DES | DRR |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `activity:create:club` | ✓ | ✓ | ✓ | — | — | — | — | — | — | — |
+| `activity:verify:district` | — | — | — | ✓ | ✓ | ✓ | — | — | ✓ | ✓ |
+| `membership:write:club` | ✓ | — | ✓ | — | — | — | — | — | — | — |
+| `finance:write:club` | — | ✓ | — | — | — | — | ✓ | ✓ | — | — |
+| `finance:read:club` | ✓ | ✓ | ✓ | — | — | — | ✓ | ✓ | ✓ | ✓ |
+| `dues:manage:district` | — | — | — | — | — | — | ✓ | — | — | ✓ |
+| `trf:verify:district` | — | — | — | — | — | — | — | ✓ | — | ✓ |
+| `assessment:score:assigned` | — | — | — | ✓ | ✓ | ✓ | — | — | — | — |
+| `assessment:finalise:district` | — | — | — | — | — | ✓ | — | — | — | ✓ |
+| `framework:manage:district` | — | — | — | — | — | ✓ | — | — | — | — |
+| `appointment:manage:district` | — | — | — | — | — | — | — | — | ✓ | ✓ |
+| `year:rollover:district` | — | — | — | — | — | — | — | — | ✓ | — |
+| `export:data:scope` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `audit:read:district` | — | — | — | — | — | ✓ | — | — | ✓ | ✓ |
 
 `finance:read:club` for the secretary is deliberate — it fixes the district's logged complaint that secretaries could see collections but not expenditure.
+
+`trf:verify:district` is separate from `activity:verify:district` because they are different jobs. TRF figures are read by hand from My Rotary; the Foundation Chair is the only officer with the source in front of them, and an assessor verifying fellowship reports has no way to check a dollar amount. The Chair also holds `finance:write:club` at district scope, because transcribing from My Rotary and verifying it are the same sitting.
 
 **Permissions added in M1**, all seeded and wired onto the slate:
 

@@ -574,6 +574,86 @@ async function seedFinance(org: OrgIds): Promise<number> {
   return budgetRows.length;
 }
 
+/**
+ * TRF giving, mostly verified and deliberately not entirely.
+ *
+ * The unverified rows are the point. Only VERIFIED contributions count toward
+ * `trf.contribution_usd`, so a dataset where everything is verified would let M5 be
+ * calibrated against a district with no reconciliation backlog — and the backlog is the
+ * District Foundation Chair's actual working state.
+ *
+ * A few CLUB-LEVEL gifts too (`personId: null`), because they are what makes the
+ * contributing-member rate interesting: one cheque is not every member giving.
+ */
+async function seedTrf(org: OrgIds, members: SeededMember[]): Promise<number> {
+  const rng = random(1917);
+  const membersByClub = new Map<string, SeededMember[]>();
+  for (const member of members) {
+    const list = membersByClub.get(member.clubId) ?? [];
+    list.push(member);
+    membersByClub.set(member.clubId, list);
+  }
+
+  const rows: {
+    districtId: string;
+    rotaryYearId: string;
+    clubId: string;
+    personId: string | null;
+    fundType: 'ANNUAL_FUND' | 'POLIO_PLUS' | 'ENDOWMENT';
+    amountUsd: string;
+    contributedOn: Date;
+    riReceiptRef: string;
+    verification: 'VERIFIED' | 'UNVERIFIED';
+  }[] = [];
+
+  for (const [clubId, clubMembers] of membersByClub) {
+    // Half the clubs give nothing at all, which is the realistic shape and is what makes
+    // the district's contribution rate a number worth reporting.
+    if (rng.chance(0.5)) continue;
+
+    const givers = rng.shuffle(clubMembers).slice(0, rng.int(1, 6));
+    for (const giver of givers) {
+      rows.push({
+        districtId: org.districtId,
+        rotaryYearId: org.currentYearId,
+        clubId,
+        personId: giver.personId,
+        fundType: rng.pick(['ANNUAL_FUND', 'ANNUAL_FUND', 'POLIO_PLUS', 'ENDOWMENT'] as const),
+        amountUsd: String(rng.int(25, 400)),
+        contributedOn: new Date(Date.UTC(2027, rng.int(6, 11), rng.int(1, 27))),
+        riReceiptRef: `RI-${rng.int(10000, 99999)}`,
+        // A fifth still awaiting reconciliation against the RI report.
+        verification: rng.chance(0.2) ? 'UNVERIFIED' : 'VERIFIED',
+      });
+    }
+
+    if (rng.chance(0.3)) {
+      rows.push({
+        districtId: org.districtId,
+        rotaryYearId: org.currentYearId,
+        clubId,
+        // A club-level gift: no person, and therefore no contributing member.
+        personId: null,
+        fundType: 'ANNUAL_FUND',
+        amountUsd: String(rng.int(200, 1500)),
+        contributedOn: new Date(Date.UTC(2027, rng.int(6, 11), rng.int(1, 27))),
+        riReceiptRef: `RI-${rng.int(10000, 99999)}`,
+        verification: 'VERIFIED',
+      });
+    }
+  }
+
+  await unscopedPrisma.trfContribution.createMany({ data: rows });
+
+  const verified = rows.filter((row) => row.verification === 'VERIFIED');
+  const usd = verified.reduce((total, row) => total + Number(row.amountUsd), 0);
+  log(
+    `  TRF: ${rows.length} contributions, ${verified.length} verified ` +
+      `(USD ${usd.toLocaleString('en-US')}), ${rows.length - verified.length} awaiting reconciliation`,
+  );
+  return rows.length;
+}
+
 async function seedMembers(org: OrgIds): Promise<SeededMember[]> {
   const rng = random(9218);
   const members: SeededMember[] = [];
@@ -782,7 +862,16 @@ async function seedOfficers(
   }
 
   // District officers. Drawn from the largest clubs, which is where they come from.
-  const districtRoles = ['DRR', 'DES', 'DISTRICT_TREASURER', 'PIME_CHAIR', 'ASSESSOR', 'ASSESSOR'];
+  const districtRoles = [
+    'DRR',
+    'DES',
+    'DISTRICT_TREASURER',
+    // The officer who reads TRF giving off My Rotary by hand and reconciles it (M4 s3).
+    'DISTRICT_FOUNDATION_CHAIR',
+    'PIME_CHAIR',
+    'ASSESSOR',
+    'ASSESSOR',
+  ];
   const districtHomes = [
     'rc-kampala',
     'rc-kololo',
@@ -790,6 +879,7 @@ async function seedOfficers(
     'rc-jinja',
     'rc-mbarara',
     'rc-mbale',
+    'rc-muyenga',
   ];
 
   for (const [index, positionCode] of districtRoles.entries()) {
@@ -888,11 +978,12 @@ export async function seedDatabase(): Promise<SeedSummary> {
   const members = await seedMembers(org);
   await seedActivities(org, members);
   await seedFinance(org);
+  await seedTrf(org, members);
   const signIns = await seedOfficers(members, positionIds, org);
 
   return {
     members: members.length,
-    officers: CLUBS.length * 3 + 6 + 3,
+    officers: CLUBS.length * 3 + 7 + 3,
     clubs: CLUBS.length,
     password: SEED_PASSWORD,
     signIns,
