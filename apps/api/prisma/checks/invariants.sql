@@ -135,8 +135,11 @@ BEGIN
   ELSE RAISE NOTICE 'FAIL 7a got %', s; END IF;
 END $$;
 
-INSERT INTO dues_payments (invoice_id, amount, paid_on)
-VALUES ('77777777-7777-7777-7777-777777777777', 40000.00, '2027-08-10');
+-- v2.1: CONFIRMED payments only. Recording one is a club's claim; the status
+-- follows the district agreeing the money arrived. These payments are therefore
+-- inserted already confirmed — check 35 covers the unconfirmed case.
+INSERT INTO dues_payments (invoice_id, amount, paid_on, confirmed_at)
+VALUES ('77777777-7777-7777-7777-777777777777', 40000.00, '2027-08-10', now());
 DO $$
 DECLARE s invoice_status; o NUMERIC;
 BEGIN
@@ -146,8 +149,8 @@ BEGIN
   ELSE RAISE NOTICE 'FAIL 7b status=% outstanding=%', s, o; END IF;
 END $$;
 
-INSERT INTO dues_payments (invoice_id, amount, paid_on)
-VALUES ('77777777-7777-7777-7777-777777777777', 60000.00, '2027-09-01');
+INSERT INTO dues_payments (invoice_id, amount, paid_on, confirmed_at)
+VALUES ('77777777-7777-7777-7777-777777777777', 60000.00, '2027-09-01', now());
 DO $$
 DECLARE s invoice_status; o NUMERIC;
 BEGIN
@@ -171,9 +174,10 @@ INSERT INTO member_dues (id, district_id, rotary_year_id, club_id, person_id, am
 VALUES ('88888888-8888-8888-8888-888888888888', '11111111-1111-1111-1111-111111111111',
         '22222222-2222-2222-2222-222222222222', '33333333-3333-3333-3333-333333333333',
         '44444444-4444-4444-4444-444444444444', 50000.00);
-INSERT INTO member_dues_payments (member_dues_id, amount, paid_on)
-VALUES ('88888888-8888-8888-8888-888888888888', 20000.00, '2027-08-05'),
-       ('88888888-8888-8888-8888-888888888888', 5000.00, '2027-08-20');
+-- v2.1: confirmed only, as above.
+INSERT INTO member_dues_payments (member_dues_id, amount, paid_on, confirmed_at)
+VALUES ('88888888-8888-8888-8888-888888888888', 20000.00, '2027-08-05', now()),
+       ('88888888-8888-8888-8888-888888888888', 5000.00, '2027-08-20', now());
 DO $$
 DECLARE p NUMERIC; o NUMERIC;
 BEGIN
@@ -558,6 +562,114 @@ BEGIN
    WHERE id = '88888888-8888-8888-8888-888888888888';
   RAISE NOTICE 'PASS 33 un-approving restores the lines';
 EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'FAIL 33 line still frozen after un-approval: %', SQLERRM;
+END $$;
+
+-- ---------------------------------------------------------------------
+-- Dues (M4 session 2)
+-- ---------------------------------------------------------------------
+
+-- A DIFFERENT club from check 7's, which already holds the only DISTRICT invoice
+-- for `3333…3333` — and the unique on (club, year, type) is what check 34 is
+-- about. Entebbe already exists, inserted at check 15.
+INSERT INTO dues_invoices (id, district_id, rotary_year_id, club_id, amount_due, due_on)
+VALUES ('99999999-9999-9999-9999-999999999999', '11111111-1111-1111-1111-111111111111',
+        '22222222-2222-2222-2222-222222222222', '3333333a-3333-3333-3333-333333333333',
+        1000000.00, '2027-09-30');
+
+-- 34. one invoice per club, year and type
+DO $$
+BEGIN
+  INSERT INTO dues_invoices (district_id, rotary_year_id, club_id, amount_due, due_on)
+  VALUES ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222',
+          '3333333a-3333-3333-3333-333333333333', 500000.00, '2027-09-30');
+  RAISE NOTICE 'FAIL 34 a second DISTRICT invoice for the same club and year was accepted';
+EXCEPTION WHEN unique_violation THEN RAISE NOTICE 'PASS 34 one invoice per club, year and type';
+END $$;
+
+-- 35. an UNCONFIRMED payment does not count toward the derived status
+INSERT INTO dues_payments (id, invoice_id, amount, paid_on)
+VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '99999999-9999-9999-9999-999999999999',
+        1000000.00, '2027-08-01');
+DO $$
+DECLARE s invoice_status; paid NUMERIC; receipt TEXT;
+BEGIN
+  SELECT status, amount_paid INTO s, paid
+    FROM dues_invoice_states WHERE invoice_id = '99999999-9999-9999-9999-999999999999';
+  SELECT receipt_no INTO receipt FROM dues_payments
+   WHERE id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  IF s <> 'UNPAID' OR paid <> 0 THEN
+    RAISE NOTICE 'FAIL 35a an unconfirmed payment counted: status=%, paid=%', s, paid;
+  ELSIF receipt IS NOT NULL THEN
+    RAISE NOTICE 'FAIL 35b a receipt number was issued before confirmation: %', receipt;
+  ELSE
+    RAISE NOTICE 'PASS 35 an unconfirmed payment neither counts nor earns a receipt';
+  END IF;
+END $$;
+
+-- 36. confirming counts it AND allocates a receipt number
+DO $$
+DECLARE s invoice_status; receipt TEXT;
+BEGIN
+  UPDATE dues_payments SET confirmed_at = now()
+   WHERE id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  SELECT status INTO s FROM dues_invoice_states
+   WHERE invoice_id = '99999999-9999-9999-9999-999999999999';
+  SELECT receipt_no INTO receipt FROM dues_payments
+   WHERE id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  IF s <> 'PAID' THEN
+    RAISE NOTICE 'FAIL 36a confirmation did not reach PAID: %', s;
+  ELSIF receipt !~ '^RCT-\d{6}$' THEN
+    RAISE NOTICE 'FAIL 36b receipt number has the wrong shape: %', receipt;
+  ELSE
+    RAISE NOTICE 'PASS 36 confirmation counts the payment and allocates a receipt';
+  END IF;
+END $$;
+
+-- 37. a receipt number is never reused, and never reallocated
+DO $$
+DECLARE first_receipt TEXT; second_receipt TEXT; again TEXT;
+BEGIN
+  SELECT receipt_no INTO first_receipt FROM dues_payments
+   WHERE id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  INSERT INTO dues_payments (invoice_id, amount, paid_on, confirmed_at)
+  VALUES ('99999999-9999-9999-9999-999999999999', 1.00, '2027-08-02', now())
+  RETURNING receipt_no INTO second_receipt;
+
+  -- Re-touching a confirmed row must NOT hand it a fresh number: the receipt may
+  -- already be in somebody's hand.
+  UPDATE dues_payments SET method = 'Bank transfer'
+   WHERE id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  RETURNING receipt_no INTO again;
+
+  IF second_receipt = first_receipt THEN
+    RAISE NOTICE 'FAIL 37a two payments share receipt %', first_receipt;
+  ELSIF again <> first_receipt THEN
+    RAISE NOTICE 'FAIL 37b an update reallocated the receipt: % -> %', first_receipt, again;
+  ELSE
+    RAISE NOTICE 'PASS 37 receipt numbers are unique and never reallocated';
+  END IF;
+END $$;
+
+-- 38. a waiver reads WAIVED with no payment at all
+INSERT INTO dues_invoices (id, district_id, rotary_year_id, club_id, dues_type, amount_due,
+                           due_on, waived_at, waiver_reason)
+VALUES ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '11111111-1111-1111-1111-111111111111',
+        '22222222-2222-2222-2222-222222222222', '3333333a-3333-3333-3333-333333333333',
+        'RI', 400000.00, '2027-09-30', now(), 'Chartered in May; pro-rata exemption agreed');
+DO $$
+DECLARE s invoice_status;
+BEGIN
+  SELECT status INTO s FROM dues_invoice_states
+   WHERE invoice_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  IF s = 'WAIVED' THEN
+    RAISE NOTICE 'PASS 38 a waived invoice reads WAIVED';
+  ELSE
+    RAISE NOTICE 'FAIL 38 a waived invoice reads %', s;
+  END IF;
 END $$;
 
 ROLLBACK;

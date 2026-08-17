@@ -1,7 +1,7 @@
 # Rotaract District Information System (DIS)
 ### Technical documentation package — District 9218, RY 2027–2028
 
-**Status:** Design baseline v1.0 · schema at v2.0 · **in build — M0, M1, M2 complete; M3 code-complete; M4 in progress**
+**Status:** Design baseline v1.0 · schema at v2.1 · **in build — M0, M1, M2 complete; M3 code-complete; M4 in progress**
 **Prepared:** August 2026
 **Target launch:** 1 July 2027 (district charter date)
 **Ownership:** District property. Repository to be held under a district-controlled GitHub organisation from first commit.

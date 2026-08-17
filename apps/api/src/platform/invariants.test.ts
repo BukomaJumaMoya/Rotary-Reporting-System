@@ -26,7 +26,7 @@ const SQL = readFileSync(new URL('../../prisma/checks/invariants.sql', import.me
  * requires a conformance check for every guard; this is what makes "requires" mean
  * something.
  */
-const EXPECTED_CHECKS = 44;
+const EXPECTED_CHECKS = 49;
 
 let client: pg.Client;
 let notices: string[] = [];

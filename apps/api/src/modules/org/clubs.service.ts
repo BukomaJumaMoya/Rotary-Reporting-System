@@ -322,3 +322,18 @@ export async function affiliate(
     throw error;
   }
 }
+
+/**
+ * The ids of every club affiliated to this district for the context's year.
+ *
+ * Exported because two things outside `org` need it and neither should learn the join:
+ * dues bulk-issue has to reach every club, and the District Treasurer's status grid is
+ * built from the CLUB list outward so that a club with no invoice still appears — which is
+ * the row that matters most on that screen and the one a list of invoices cannot show.
+ *
+ * Read from the AFFILIATION side (axiom 2). A club has no `district_id`, so "the clubs of
+ * this district this year" is a join, and it is written once in the repository.
+ */
+export async function affiliatedClubIds(ctx: RequestContext): Promise<string[]> {
+  return repository.affiliatedClubIds(ctx);
+}

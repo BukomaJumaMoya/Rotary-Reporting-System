@@ -284,3 +284,15 @@ export function isAffiliationConflict(error: unknown): boolean {
     (field) => typeof field === 'string' && (field.includes('club_id') || field.includes('clubId')),
   );
 }
+
+/** Every club affiliated for the context's district and year. Ids only. */
+export async function affiliatedClubIds(ctx: RequestContext): Promise<string[]> {
+  const rows = await db(ctx).clubDistrictAffiliation.findMany({
+    // The affiliation carries the district and the year; the layer injects both. The soft
+    // delete on `clubs` is filtered by hand, because the extension does not rewrite a
+    // nested `where`.
+    where: { club: { deletedAt: null } },
+    select: { clubId: true },
+  });
+  return rows.map((row) => row.clubId);
+}

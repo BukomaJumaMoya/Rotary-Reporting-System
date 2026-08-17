@@ -1,6 +1,15 @@
 -- =====================================================================
 -- Rotaract District Information System (DIS)
--- Authoritative PostgreSQL 16 schema — design baseline v2.0
+-- Authoritative PostgreSQL 16 schema — design baseline v2.1
+--
+-- v2.1 (dues, M4 s2): the dues state views counted UNCONFIRMED payments, which
+-- made confirmation decorative — it issued a receipt number and changed nothing
+-- else. dues.status is a SCORED CRITERION, so once clubs submit their own claims
+-- an unverified payment would award points for money nobody has seen. Both views
+-- now sum confirmed rows only. Receipt numbers come from a SEQUENCE, allocated by
+-- a trigger at the moment confirmed_at becomes non-null, so two concurrent
+-- confirmations cannot collide. Migrations 20260817000000_receipt_numbers and
+-- 20260817010000_dues_states_confirmed_only.
 --
 -- v2.0 (finance, M4 s1): approval freezes a budget's lines — DIS03, the third
 -- ADR-012 guard. A budget line changed after approval alters what the district
@@ -843,10 +852,16 @@ CREATE TABLE dues_payments (
   confirmed_at TIMESTAMPTZ
 );
 CREATE INDEX dues_payments_invoice ON dues_payments (invoice_id);
+CREATE INDEX dues_invoices_district_year ON dues_invoices (district_id, rotary_year_id, club_id);
 
 -- Dues status is DERIVED (ADR-012). No trigger, no stored column, nothing to
 -- drift. The as_of parameter that scoring needs is a WHERE clause on paid_on
 -- against this same shape — a stored status could only ever answer "now".
+-- v2.1: CONFIRMED payments only. Recording a payment is a claim; confirming
+-- it is the district agreeing the money arrived, and the status follows the
+-- second of those. Counting unconfirmed rows made confirmation decorative —
+-- and `dues.status` is a scored criterion (06-Assessment-Engine §168), so a
+-- self-reported payment would award points for money nobody has seen.
 CREATE VIEW dues_invoice_states AS
 SELECT i.id            AS invoice_id,
        i.district_id,
@@ -864,8 +879,15 @@ SELECT i.id            AS invoice_id,
        END AS status
 FROM dues_invoices i
 LEFT JOIN LATERAL (
-  SELECT SUM(amount) AS paid FROM dues_payments WHERE invoice_id = i.id
+  SELECT SUM(amount) AS paid
+    FROM dues_payments
+   WHERE invoice_id = i.id
+     AND confirmed_at IS NOT NULL
 ) p ON TRUE;
+
+CREATE INDEX dues_payments_confirmed
+  ON dues_payments (invoice_id)
+  WHERE confirmed_at IS NOT NULL;
 
 CREATE TABLE member_dues (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -896,8 +918,10 @@ CREATE TABLE member_dues_payments (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX mdp_member_dues ON member_dues_payments (member_dues_id);
+CREATE INDEX member_dues_district_year ON member_dues (district_id, rotary_year_id, club_id);
 
 -- Derived, not stored (ADR-012).
+-- v2.1: confirmed payments only, for the same reason as dues_invoice_states.
 CREATE VIEW member_dues_states AS
 SELECT m.id AS member_dues_id,
        m.district_id,
@@ -910,8 +934,15 @@ SELECT m.id AS member_dues_id,
        GREATEST(m.amount_due - COALESCE(p.paid, 0), 0) AS amount_outstanding
 FROM member_dues m
 LEFT JOIN LATERAL (
-  SELECT SUM(amount) AS paid FROM member_dues_payments WHERE member_dues_id = m.id
+  SELECT SUM(amount) AS paid
+    FROM member_dues_payments
+   WHERE member_dues_id = m.id
+     AND confirmed_at IS NOT NULL
 ) p ON TRUE;
+
+CREATE INDEX member_dues_payments_confirmed
+  ON member_dues_payments (member_dues_id)
+  WHERE confirmed_at IS NOT NULL;
 
 CREATE TABLE trf_contributions (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),

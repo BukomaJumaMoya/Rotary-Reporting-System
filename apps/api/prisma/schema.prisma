@@ -1077,6 +1077,8 @@ model DuesInvoice {
   payments   DuesPayment[]
 
   @@unique([clubId, rotaryYearId, duesType])
+  /// The District Treasurer's status grid reads every club for one district-year.
+  @@index([districtId, rotaryYearId, clubId], map: "dues_invoices_district_year")
   @@map("dues_invoices")
 }
 
@@ -1133,6 +1135,10 @@ model MemberDues {
   payments   MemberDuesPayment[]
 
   @@unique([personId, clubId, rotaryYearId])
+  /// A club treasurer's collection sheet, and the district's member collection rate.
+  /// Declared HERE rather than in raw SQL: Prisma can express a plain composite index, so
+  /// one it does not know about is proposed for dropping on the next `migrate dev`.
+  @@index([districtId, rotaryYearId, clubId], map: "member_dues_district_year")
   @@map("member_dues")
 }
 

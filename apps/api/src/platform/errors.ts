@@ -103,6 +103,15 @@ export const ErrorCode = {
 
   /** The category's own direction disagrees with what the line or transaction is doing. */
   CATEGORY_DIRECTION_MISMATCH: 'CATEGORY_DIRECTION_MISMATCH',
+
+  /**
+   * One invoice per `(club, rotary_year, dues_type)`. Two would be two answers to what the
+   * club owes, and the second is the one somebody pays.
+   */
+  DUES_INVOICE_EXISTS: 'DUES_INVOICE_EXISTS',
+
+  /** One dues row per `(person, club, rotary_year)`. */
+  MEMBER_DUES_EXISTS: 'MEMBER_DUES_EXISTS',
 } as const;
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];

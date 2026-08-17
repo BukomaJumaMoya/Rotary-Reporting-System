@@ -9,6 +9,14 @@ export const NotificationTemplate = {
   AUTH_MFA_RESET: 'AUTH_MFA_RESET',
   /** Sent to the RECEIVING club when a transfer naming them is recorded (M2 s6). */
   MEMBERSHIP_TRANSFER_RECORDED: 'MEMBERSHIP_TRANSFER_RECORDED',
+  /**
+   * Sent to a club's officers when a dues payment is CONFIRMED (M4 s2).
+   *
+   * The confirmation, not the recording. A club that has sent money wants to know the
+   * district agrees it arrived, and "we never received it" eighteen months later is the
+   * dispute this message exists to prevent.
+   */
+  DUES_PAYMENT_CONFIRMED: 'DUES_PAYMENT_CONFIRMED',
 } as const;
 
 export type NotificationTemplateCode =

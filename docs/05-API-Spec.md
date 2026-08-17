@@ -73,7 +73,8 @@ Declared in `apps/api/src/platform/errors.ts`, which is the list that is actuall
 `PERIOD_CLOSED` ·
 `MEMBERSHIP_IMMUTABLE` ·
 `AUDIT_IMMUTABLE` ·
-`BUDGET_EXISTS` · `BUDGET_APPROVED` · `CATEGORY_DIRECTION_MISMATCH` · the auth codes in §2.
+`BUDGET_EXISTS` · `BUDGET_APPROVED` · `CATEGORY_DIRECTION_MISMATCH` ·
+`DUES_INVOICE_EXISTS` · `MEMBER_DUES_EXISTS` · the auth codes in §2.
 
 **Designed, not yet built:** `FRAMEWORK_LOCKED` · `TIER_NOT_APPLICABLE` ·
 `ASSESSMENT_FINALISED` · `DISPUTE_WINDOW_CLOSED`.
@@ -358,14 +359,51 @@ There is no `budget:approve` permission and there should not be one. Approval re
 that permission scoped to their own club — cannot approve their own budget. Un-approval is
 deliberately available, and leaves an audit row.
 
-**Still to build (M4 sessions 2–3):**
+**Built in M4 session 2:** dues invoicing, payments, the district grid, member dues.
+
+| Method | Path | Permission |
+|---|---|---|
+| `GET` | `/dues/invoices`, `/dues/invoices/:id` | `finance:read:club` |
+| `POST` | `/dues/invoices` | `dues:manage:district` |
+| `POST` | `/dues/invoices/bulk` — every affiliated club at once, idempotent | `dues:manage:district` |
+| `POST` | `/dues/invoices/:id/waive` — reason required and stored | `dues:manage:district` |
+| `POST` | `/dues/invoices/:id/payments` | `dues:manage:district` |
+| `POST` | `/dues/invoices/:id/payments/:paymentId/confirm` | `dues:manage:district` |
+| `GET` | `/dues/status` — district-wide grid, one row per CLUB | `finance:read:club` |
+| `GET` | `/member-dues` | `finance:read:club` |
+| `POST` | `/member-dues`, `/member-dues/:id/payments` | `finance:write:club` |
+
+**No status is stored anywhere.** `dues_invoices.status` and `member_dues.amount_paid` are
+views (ADR-012). Recording a payment inserts a row; the state follows.
+
+**A payment counts when it is CONFIRMED.** Recording one is a club's claim; confirming it is
+the district agreeing the money arrived. Confirmation is what issues the receipt number and
+what marks the scorecard stale — schema v2.1 fixed views that had been counting unconfirmed
+rows, which would have let a self-reported payment award points for `dues.status`.
+
+**Receipt numbers come from a database SEQUENCE**, allocated by a trigger at the moment
+`confirmed_at` becomes non-null. `RCT-000001`. Two concurrent confirmations get two numbers;
+a rolled-back one burns its number rather than handing it on. A gap in a receipt book invites
+one question, a number issued twice invites an audit.
+
+**Overpayment is allowed and flagged, never refused.** A club that has overpaid has a fact
+about it; rejecting the row would leave the money unrecorded while the bank statement says
+otherwise. The view clamps `amountOutstanding` at zero, so `isOverpaid` is what surfaces it.
+
+`/dues/status` returns one row per CLUB, not per invoice — a club with no invoice at all is
+the row that matters most on that screen and a list of invoices cannot show it. Its `status`
+is `null` rather than `UNPAID`: "nobody invoiced this club" and "this club has not paid" are
+different problems with different people to chase.
+
+Member dues support **prepayment against a future year**. The row is scoped to the target
+year, written through `systemContext` with a mandatory reason, and marked `isPrepaid` — so
+next year's collection rate counts the member and this year's is not flattered by money that
+is not for it. Backdating is refused with `YEAR_LOCKED`.
+
+**Still to build (M4 session 3):**
 
 | Method | Path |
 |---|---|
-| `GET` `POST` | `/dues/invoices` |
-| `POST` | `/dues/invoices/:id/payments` |
-| `GET` | `/dues/status` — district-wide: unpaid / partial / paid by club |
-| `GET` `POST` | `/member-dues` — includes prepayment |
 | `GET` `POST` | `/trf/contributions` |
 | `POST` | `/trf/contributions/:id/verify` |
 | `GET` | `/trf/summary` — by club, by fund type, cumulative |

@@ -668,6 +668,12 @@ export const NOTIFICATION_TEMPLATES: {
     body: 'Hello {{firstName}},\n\n{{clubName}} has {{amountOutstanding}} outstanding on its district dues for {{yearLabel}}.\n\nRotaract District 9218',
   },
   {
+    code: 'DUES_PAYMENT_CONFIRMED',
+    channel: 'EMAIL',
+    subject: 'Dues payment received from {{clubName}}',
+    body: 'Hello {{firstName}},\n\nThe district has confirmed a dues payment from {{clubName}}.\n\nStatus: {{status}}\nStill outstanding: {{amountOutstanding}}\n\nKeep your receipt number — it is the reference if this is ever queried.\n\nRotaract District 9218',
+  },
+  {
     code: 'PERIOD_CLOSING',
     channel: 'EMAIL',
     subject: 'Reporting for {{periodLabel}} closes {{deadline}}',

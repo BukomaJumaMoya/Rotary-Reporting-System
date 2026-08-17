@@ -4,10 +4,10 @@
 describe what the system *should* be; this one records what has actually been built, what
 was decided along the way, and what is deliberately unfinished.
 
-Last updated: 17 August 2026, after M4 session 1. **M0, M1 and M2 are complete; M3 is
+Last updated: 17 August 2026, after M4 session 2. **M0, M1 and M2 are complete; M3 is
 code-complete but NOT closed — its device pass has not been run; M4 is under way.**
 
-<!-- dis:state milestone=M2 schema=v2.0 tests=460 -->
+<!-- dis:state milestone=M2 schema=v2.1 tests=487 -->
 
 ---
 
@@ -146,7 +146,7 @@ full history is in §4.
 | M4 session | State | Commit |
 |---|---|---|
 | 1 — Budgets and transactions | **done** | this commit |
-| 2 — Dues invoicing and reconciliation | not started | |
+| 2 — Dues invoicing and reconciliation | **done** | this commit |
 | 3 — TRF contributions | not started | |
 | 4 — Finance UI | not started | |
 | 5 — Finance hardening | not started | |
@@ -254,6 +254,8 @@ apps/api/src/
                  one model, configurable types, and the photographs on them
     assessment/  service — markStale(), a deliberate no-op until M5
     finance/     routes · service — budgets, lines, transactions, the summary
+                 dues.routes · dues.service — invoices, payments, the district
+                 grid, member dues and prepayment. NO stored status: read the view.
                  money.ts  Decimal in, decimal STRING out. Never a JS number.
     membership/  routes · service — the event log, the roster, the statistics
                  analytics.ts  THE one raw-SQL file outside the assessment resolvers
@@ -327,9 +329,9 @@ apps/web/src/
 Dockerfile · fly.toml · .github/workflows/deploy-staging.yml · README.md
 ```
 
-**460 tests** — 444 in the API, integration-style against real PostgreSQL, and 16 in the web
+**487 tests** — 471 in the API, integration-style against real PostgreSQL, and 16 in the web
 workspace against `fake-indexeddb`. The suites that are load bearing rather than incidental:
-`no-pii.test.ts` (walks every route unauthenticated), `invariants.test.ts` (44 ADR-012
+`no-pii.test.ts` (walks every route unauthenticated), `invariants.test.ts` (49 ADR-012
 guards), `scope*.test.ts` (the data access layer), `audit.test.ts`, `rollover.test.ts` (dry
 run and committed), `prisma/seed.test.ts`, which runs the real seed and signs in as the
 seeded PIME Chair, and `lib/offline/outbox.test.ts`, where a bug means a club's report is
@@ -353,7 +355,7 @@ only as guards, each with a stable SQLSTATE and a conformance test. This removed
 
 **ADR-013 — secret encryption and key management** (`02-Architecture.md`).
 
-**`docs/schema.sql` is now v2.0** — v1.7 through M1, M2 sessions 5 and 6, then M4 session 1. The translation surfaced real defects in the v1.0
+**`docs/schema.sql` is now v2.1** — v1.7 through M1, M2 sessions 5 and 6, then M4 sessions 1 and 2. The translation surfaced real defects in the v1.0
 baseline; every amendment is logged in the file's own header. The substantive one:
 `club_rosters` filtered on `supersedes_event_id IS NULL`, which discarded every correction
 while continuing to count the row it corrected.
@@ -1472,6 +1474,73 @@ the activity seed, where some clubs report nothing.
 It also has to insert the lines BEFORE setting `approved_at`, and does the approvals in a
 second pass. Seeding them the other way round is refused by the DIS03 guard — which is the
 guard working, and a small demonstration that it holds for a writer that is not the API.
+
+#### Session 2 — dues
+
+**THE DUES STATE VIEWS COUNTED UNCONFIRMED PAYMENTS.** Found by a test that expected an
+unconfirmed payment to leave an invoice PARTIAL and got PAID. Both views summed every row in
+the payments table regardless of `confirmed_at`, which made the confirmation step decorative
+— it issued a receipt number and changed nothing else.
+
+Three things were wrong with that, in increasing order of seriousness. `confirmed_at`
+recorded nothing that mattered. It contradicted this session's own design, since confirming
+is what calls `assessment.markStale()` and marking a scorecard stale only makes sense if the
+status CHANGES at confirmation. And **`dues.status` is a scored criterion**
+(`06-Assessment-Engine.md` §168) — so the moment clubs get their own submission endpoint,
+which the design anticipates, an unconfirmed self-reported payment would award points for
+money nobody has seen. Schema v2.1 fixes both views to sum confirmed rows only. Checks 7 and
+8 in `invariants.sql` were asserting the old behaviour and now confirm their payments.
+
+**Receipt numbers come from a SEQUENCE, allocated by a TRIGGER at confirmation.**
+`SELECT max(receipt_no) + 1` is correct exactly until two treasurers confirm in the same
+second. A sequence is atomic and non-transactional by design, so a rolled-back confirmation
+burns its number rather than handing it to somebody else — a gap in a receipt book invites
+one question, a number issued twice invites an audit.
+
+A trigger rather than application code, and this does NOT contradict ADR-012. What that rule
+forbids is derived STATE maintained by a trigger — a status or a running total that can drift
+from the rows it summarises. A receipt number is not derived from anything; it is an
+allocation made once, at a moment, and it has to be atomic with the write that earns it.
+Doing it in TypeScript would be a SELECT and an UPDATE with a gap in between. It also keeps
+raw SQL out of `modules/finance`, which the conventions reserve for the assessment resolvers
+and membership analytics.
+
+**Recording and confirming are separate, and the split is the design.** A club treasurer may
+enter a payment they have MADE; the District Treasurer confirms it ARRIVED. Collapsing them
+would issue a receipt for money nobody has seen.
+
+**Overpayment is allowed and flagged, never refused.** The view clamps `amount_outstanding`
+at zero, so overpayment is invisible there — `isOverpaid` is computed in the serialiser
+against `amountDue`. Refusing the row would leave the money unrecorded while the bank
+statement says otherwise.
+
+**`/dues/status` is built from the CLUB list outward, not from the invoice table inward.** A
+club with no invoice at all is the row that matters most on the District Treasurer's screen
+and a list of invoices cannot show it. Its status is `null` rather than `UNPAID`: "nobody
+invoiced this club" and "this club has not paid" are different problems with different people
+to chase.
+
+**Prepayment writes through `systemContext`, not `unscopedPrisma`.** A prepayment belongs to
+a different year than the caller's context and the layer stamps the context's year by design
+— that is axiom 1 working, not an obstacle. `systemContext` is the sanctioned mechanism: one
+district, one year, the locked-year check honoured, and a mandatory reason naming the user
+that reaches `audit_log`. Backdating is refused with `YEAR_LOCKED`, because `?year=` is a
+read door and this must not become the way around it.
+
+**The scope layer caught the first attempt.** `prisma.memberDues` does not compile — scoped
+models are absent from the plain export's TYPE — so the cross-year write had to be done
+properly rather than quietly. Worth knowing: that is the guard rail doing exactly what it was
+built for.
+
+**Two plain composite indexes had to move from raw SQL into `schema.prisma`.** Prisma can
+express `@@index([districtId, rotaryYearId, clubId])`, so one it does not know about is
+proposed for dropping on the next `migrate dev` — `migrate diff` caught it. The partial ones
+(`WHERE confirmed_at IS NOT NULL`, `WHERE deleted_at IS NULL`) stay in raw SQL, because Prisma
+cannot express those.
+
+**`migrate dev` appeared to hang and had not.** It runs the seed after applying, and the seed
+takes a couple of minutes at 3,000 members. `migrate deploy` or `migrate status` is the
+faster way to check.
 
 ---
 
