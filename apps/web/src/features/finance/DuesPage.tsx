@@ -12,6 +12,7 @@ import {
   SkeletonList,
   Table,
 } from '../../components/ui';
+import { StatGrid } from '../../components/ui/page';
 import { api } from '../../lib/api';
 import { formatAmount, formatMoney } from '../../lib/money';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
@@ -66,22 +67,26 @@ function DistrictGrid() {
         action={<Button onClick={() => setIsIssuing(true)}>Issue to every club</Button>}
       />
 
-      <Card className="mb-4">
-        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Figure label="Invoiced" value={formatMoney(data.totalDue)} />
-          <Figure label="Collected" value={formatMoney(data.totalPaid)} />
-          <Figure label="Outstanding" value={formatMoney(data.totalOutstanding)} />
-          {/*
-            The number that actually needs acting on. A club nobody invoiced does not
-            appear in an invoice list at all, which is how it stays uninvoiced until March.
-          */}
-          <Figure
-            label="Not yet invoiced"
-            value={String(data.clubsWithNoInvoice)}
-            tone={data.clubsWithNoInvoice > 0 ? 'danger' : 'neutral'}
-          />
-        </dl>
-      </Card>
+      <div className="mb-6">
+        <StatGrid
+          stats={[
+            { label: 'Invoiced', value: formatMoney(data.totalDue) },
+            { label: 'Collected', value: formatMoney(data.totalPaid), tone: 'success' },
+            { label: 'Outstanding', value: formatMoney(data.totalOutstanding) },
+            {
+              /*
+               * The number that actually needs acting on. A club nobody invoiced does not
+               * appear in an invoice list at all, which is how it stays uninvoiced until
+               * March — so it is the one figure here drawn in a status colour.
+               */
+              label: 'Not yet invoiced',
+              value: data.clubsWithNoInvoice,
+              detail: 'clubs',
+              tone: data.clubsWithNoInvoice > 0 ? 'danger' : 'default',
+            },
+          ]}
+        />
+      </div>
 
       <Card>
         <Table

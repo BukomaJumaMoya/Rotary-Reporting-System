@@ -514,17 +514,33 @@ export function AuthShell({
 }) {
   return (
     <div className="bg-background relative flex min-h-dvh flex-col items-center justify-center px-4 py-12">
-      {/* Geometric pattern at 3%, on a showcase surface only — never behind working
-          content. Inline, a few hundred bytes, no request. */}
+      {/*
+        The geometric pattern, at 3%.
+
+        An inline SVG on `currentColor` rather than a data-URI background, which is what this
+        was: a data URI cannot carry a CSS variable, so the pattern was the ONE literal hex
+        left in the application and the one thing that could not follow the theme. On a dark
+        ground it was painting cranberry over slate at full saturation.
+      */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage:
-            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cpath d='M30 0l30 17.32v34.64L30 69.28 0 51.96V17.32z' fill='none' stroke='%23d41367' stroke-width='1.5'/%3E%3C/svg%3E\")",
-          backgroundSize: '60px 52px',
-        }}
-      />
+        className="text-accent pointer-events-none absolute inset-0 opacity-[0.04]"
+      >
+        <svg width="100%" height="100%">
+          <defs>
+            <pattern id="dis-hex" width="60" height="52" patternUnits="userSpaceOnUse">
+              <path
+                d="M30 0l30 17.32v34.64L30 69.28 0 51.96V17.32z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#dis-hex)" />
+        </svg>
+      </div>
+
       <div className="relative w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <Wordmark />
@@ -534,6 +550,15 @@ export function AuthShell({
         <div className="border-border-subtle bg-surface hairline-top rounded-lg border p-6 shadow-[var(--shadow-md)]">
           {children}
         </div>
+
+        <p className="text-text-muted text-meta mt-6 text-center">
+          <Link
+            to="/accessibility"
+            className="hover:text-text-primary underline underline-offset-2"
+          >
+            Accessibility statement
+          </Link>
+        </p>
       </div>
     </div>
   );

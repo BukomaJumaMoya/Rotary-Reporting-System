@@ -17,10 +17,18 @@ import {
   Input,
   PageHeader,
   Pagination,
-  Select,
   SkeletonList,
   Table,
 } from '../../components/ui';
+import {
+  FilterBar,
+  FilterTabs,
+  ListGroup,
+  ListRow,
+  PageLayout,
+  SectionHeading,
+  StatGrid,
+} from '../../components/ui/page';
 import { api } from '../../lib/api';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
 import { useToast } from '../../lib/toast';
@@ -138,52 +146,50 @@ export function InvitationsPage() {
           )}
         </Card>
 
-        <Card title="Outstanding">
-          <Table
-            columns={[
-              { key: 'person', header: 'Person', render: (row) => row.personName },
-              { key: 'email', header: 'Sent to', render: (row) => row.email ?? '—' },
-              {
-                key: 'issued',
-                header: 'Issued',
-                render: (row) => <span className="text-meta">{row.issuedAt.slice(0, 10)}</span>,
-              },
-              {
-                key: 'expires',
-                header: 'Expires',
-                render: (row) =>
-                  row.isExpired ? (
-                    <Badge tone="danger">Expired</Badge>
-                  ) : (
-                    <span className="text-meta">{row.expiresAt.slice(0, 10)}</span>
-                  ),
-              },
-              {
-                key: 'actions',
-                header: '',
-                render: (row) => (
-                  <Button variant="ghost" onClick={() => resend.mutate(row.id)}>
-                    Resend
-                  </Button>
-                ),
-              },
-            ]}
-            rows={invitations.data.data}
-            rowKey={(row) => row.id}
-            emptyState={
-              <EmptyState
-                title="Nothing outstanding"
-                description="Everybody invited has accepted, or nobody has been invited yet."
-              />
-            }
-          />
+        <section>
+          <SectionHeading title="Outstanding" count={invitations.data.meta.total} />
+
+          {invitations.data.data.length === 0 ? (
+            <EmptyState
+              title="Nothing outstanding"
+              description="Everybody invited has accepted, or nobody has been invited yet."
+            />
+          ) : (
+            <ListGroup>
+              {invitations.data.data.map((row) => (
+                <ListRow
+                  key={row.id}
+                  title={row.personName}
+                  meta={[
+                    row.email,
+                    `Issued ${row.issuedAt.slice(0, 10)}`,
+                    // An unexpired date is worth stating; an expired one is a badge, because
+                    // it is the only fact on the row anybody needs to act on.
+                    !row.isExpired && `Expires ${row.expiresAt.slice(0, 10)}`,
+                  ]}
+                  badges={row.isExpired ? <Badge tone="danger">expired</Badge> : null}
+                  trailing={
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      isLoading={resend.isPending && resend.variables === row.id}
+                      onClick={() => resend.mutate(row.id)}
+                    >
+                      Resend
+                    </Button>
+                  }
+                />
+              ))}
+            </ListGroup>
+          )}
+
           <Pagination
             page={invitations.data.meta.page}
             pageSize={invitations.data.meta.pageSize}
             total={invitations.data.meta.total}
             onPageChange={setPage}
           />
-        </Card>
+        </section>
       </div>
     </>
   );
@@ -218,118 +224,129 @@ export function AuditPage() {
   if (audit.isError) return <ErrorState error={audit.error} onRetry={() => void audit.refetch()} />;
 
   return (
-    <>
+    <PageLayout>
       <PageHeader
         title="Audit log"
         description="Append-only, retained indefinitely. This is what makes a contested award reconstructable."
       />
 
-      <Card>
-        <div className="mb-4 grid gap-3 sm:grid-cols-3">
-          <Select
-            label="Action"
-            value={action}
-            placeholder="Every action"
-            options={ACTIONS.map((value) => ({ value, label: value }))}
-            onChange={(event) => {
-              setAction(event.target.value);
-              setPage(1);
-            }}
-          />
-          <Input
-            label="Entity type"
-            value={entityType}
-            placeholder="e.g. clubs"
-            onChange={(event) => {
-              setEntityType(event.target.value);
-              setPage(1);
-            }}
-          />
-          <Input
-            label="From"
+      {/*
+        Action is the facet somebody actually reaches for — "show me the deletions" — so it is
+        a visible control. Entity type and date are typed rarely and stay fields.
+      */}
+      <FilterBar>
+        <FilterTabs
+          value={action}
+          onChange={(next) => {
+            setAction(next);
+            setPage(1);
+          }}
+          options={[
+            { value: '', label: 'All' },
+            ...ACTIONS.map((value) => ({ value, label: value.toLowerCase() })),
+          ]}
+        />
+        <input
+          type="search"
+          value={entityType}
+          onChange={(event) => {
+            setEntityType(event.target.value);
+            setPage(1);
+          }}
+          placeholder="Entity type, e.g. clubs"
+          aria-label="Filter by entity type"
+          className="border-border bg-surface text-text-primary placeholder:text-text-muted min-h-10 rounded-md border px-3"
+        />
+        <label className="text-text-muted text-label flex items-center gap-2">
+          <span className="shrink-0">From</span>
+          <input
             type="date"
             value={from}
             onChange={(event) => {
               setFrom(event.target.value);
               setPage(1);
             }}
+            className="border-border bg-surface text-text-primary min-h-10 rounded-md border px-3"
           />
-        </div>
+        </label>
+      </FilterBar>
 
-        {audit.data.data.length === 0 ? (
-          <EmptyState title="Nothing recorded for this filter" />
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {audit.data.data.map((entry) => (
-              <li key={entry.id} className="border-border-subtle rounded-lg border p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Badge tone={entry.action === 'DELETE' ? 'danger' : 'info'}>
-                      {entry.action}
-                    </Badge>
-                    <span className="text-table font-medium">{entry.entityType}</span>
-                  </div>
-                  <span className="text-text-muted text-meta">
-                    {entry.actorName ?? 'system'} ·{' '}
-                    {entry.occurredAt.replace('T', ' ').slice(0, 16)}
-                  </span>
-                </div>
-
-                {entry.changes.length > 0 && (
-                  <table className="mt-2 w-full text-left text-meta">
-                    <thead className="text-text-muted">
-                      <tr>
-                        <th className="py-1 font-medium">Field</th>
-                        <th className="py-1 font-medium">Before</th>
-                        <th className="py-1 font-medium">After</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {entry.changes.map((change) => (
-                        <tr key={change.field} className="border-border-subtle border-t">
-                          <td className="py-1 font-mono">{change.field}</td>
-                          {change.isRedacted ? (
-                            // The field name survives so the log still says WHAT changed;
-                            // saying "redacted" beats an empty cell that reads as a bug.
-                            <td colSpan={2} className="text-text-muted py-1 italic">
-                              redacted — contact detail
-                            </td>
-                          ) : (
-                            <>
-                              <td className="text-text-muted py-1">{change.before ?? '—'}</td>
-                              <td className="py-1">{change.after ?? '—'}</td>
-                            </>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <Pagination
-          page={audit.data.meta.page}
-          pageSize={audit.data.meta.pageSize}
-          total={audit.data.meta.total}
-          onPageChange={setPage}
+      {audit.data.data.length === 0 ? (
+        <EmptyState
+          filtered={Boolean(action || entityType || from)}
+          onClearFilters={() => {
+            setAction('');
+            setEntityType('');
+            setFrom('');
+            setPage(1);
+          }}
+          title="Nothing recorded yet"
+          description="Every change to a governed entity is captured automatically. An empty log means nothing has been changed, not that nothing was watched."
         />
-      </Card>
-    </>
+      ) : (
+        <ul className="divide-border-subtle border-border-subtle bg-surface divide-y overflow-hidden rounded-lg border shadow-[var(--shadow-sm)]">
+          {audit.data.data.map((entry) => (
+            <li key={entry.id} className="p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Badge tone={entry.action === 'DELETE' ? 'danger' : 'info'}>
+                    {entry.action.toLowerCase()}
+                  </Badge>
+                  <span className="text-body font-medium">{entry.entityType}</span>
+                </div>
+                <span className="text-text-muted text-meta">
+                  {entry.actorName ?? 'system'} · {entry.occurredAt.replace('T', ' ').slice(0, 16)}
+                </span>
+              </div>
+
+              {entry.changes.length > 0 && (
+                <table className="text-meta mt-3 w-full text-left">
+                  <thead className="text-text-muted">
+                    <tr className="border-border-strong border-b">
+                      <th className="py-1 pr-4 font-medium">Field</th>
+                      <th className="py-1 pr-4 font-medium">Before</th>
+                      <th className="py-1 font-medium">After</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entry.changes.map((change) => (
+                      <tr
+                        key={change.field}
+                        className="border-border-subtle border-b last:border-0"
+                      >
+                        <td className="py-1.5 pr-4 font-mono">{change.field}</td>
+                        {change.isRedacted ? (
+                          // The field name survives so the log still says WHAT changed;
+                          // saying "redacted" beats an empty cell that reads as a bug.
+                          <td colSpan={2} className="text-text-muted py-1.5 italic">
+                            redacted — contact detail
+                          </td>
+                        ) : (
+                          <>
+                            <td className="text-text-muted py-1.5 pr-4">{change.before ?? '—'}</td>
+                            <td className="py-1.5">{change.after ?? '—'}</td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Pagination
+        page={audit.data.meta.page}
+        pageSize={audit.data.meta.pageSize}
+        total={audit.data.meta.total}
+        onPageChange={setPage}
+      />
+    </PageLayout>
   );
 }
 
-// ─── Rollover ────────────────────────────────────────────────────────────────
-
-/**
- * Year rollover: dry run, read the diff, then type the year to commit.
- *
- * The riskiest operation in the system, once a year, so the screen is deliberately slow.
- * Typing the target year is not theatre — it is the difference between clicking a button
- * and meaning it.
- */
 export function RolloverPage() {
   const [targetYearLabel, setTargetYearLabel] = useState('');
   const [report, setReport] = useState<RolloverReport | null>(null);
@@ -348,7 +365,7 @@ export function RolloverPage() {
   );
 
   return (
-    <>
+    <PageLayout>
       <PageHeader
         title="Rotary Year rollover"
         description="Runs once a year and touches every club and every appointment. Dry run first, always."
@@ -398,19 +415,22 @@ export function RolloverPage() {
         {report && (
           <>
             <Card title="2 — The diff">
-              <dl className="mb-4 grid gap-3 sm:grid-cols-4">
-                {[
-                  ['Clubs carried forward', report.clubsCarriedForward],
-                  ['Appointments expiring', report.appointmentsExpired],
-                  ['Tier changes', report.tierChanges.length],
-                  ['Clubs flagged', report.flaggedClubs.length],
-                ].map(([label, value]) => (
-                  <div key={String(label)} className="border-border-subtle rounded-lg border p-3">
-                    <dt className="text-text-muted text-meta">{label}</dt>
-                    <dd className="text-text-primary text-section font-semibold">{value}</dd>
-                  </div>
-                ))}
-              </dl>
+              <div className="mb-4">
+                <StatGrid
+                  stats={[
+                    { label: 'Clubs carried forward', value: report.clubsCarriedForward },
+                    { label: 'Appointments expiring', value: report.appointmentsExpired },
+                    { label: 'Tier changes', value: report.tierChanges.length },
+                    {
+                      label: 'Clubs flagged',
+                      value: report.flaggedClubs.length,
+                      // The only figure here that is a PROBLEM rather than a fact. A flagged
+                      // club is one the rollover could not carry forward cleanly.
+                      tone: report.flaggedClubs.length > 0 ? 'warning' : 'default',
+                    },
+                  ]}
+                />
+              </div>
 
               {report.tierChanges.length > 0 && (
                 <div className="mb-4">
@@ -521,6 +541,6 @@ export function RolloverPage() {
           </>
         )}
       </div>
-    </>
+    </PageLayout>
   );
 }

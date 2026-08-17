@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, Card, EmptyState, PageHeader } from '../../components/ui';
 import { cx } from '../../lib/cx';
 import { formatBytes } from '../../lib/images';
+import { PageLayout, StatGrid } from '../../components/ui/page';
 import { useConnectivity } from '../../lib/offline/connectivity';
 import { discard, requeue, type OutboxItem } from '../../lib/offline/outbox';
 import { drain, useOutbox } from '../../lib/offline/submit';
@@ -33,11 +34,33 @@ export function PendingPage() {
   };
 
   return (
-    <>
+    <PageLayout width="form">
       <PageHeader
         title="Waiting to send"
         description="Everything you save is stored on this device first, then sent. Nothing here is lost."
       />
+
+      {/*
+        The reassurance, as figures, before any of the detail.
+        Somebody opens this screen worried that their work has gone. The first thing on it
+        should be the count that says it has not.
+      */}
+      {items.length > 0 && (
+        <div className="mb-6">
+          <StatGrid
+            columns={3}
+            stats={[
+              { label: 'Waiting', value: queued.length, icon: 'pending' },
+              {
+                label: 'Could not be sent',
+                value: failed.length,
+                tone: failed.length > 0 ? 'warning' : 'default',
+              },
+              { label: 'To upload', value: formatBytes(waitingBytes) },
+            ]}
+          />
+        </div>
+      )}
 
       {items.length === 0 && (
         <EmptyState
@@ -89,7 +112,7 @@ export function PendingPage() {
       )}
 
       <DataUsage waitingBytes={waitingBytes} />
-    </>
+    </PageLayout>
   );
 }
 

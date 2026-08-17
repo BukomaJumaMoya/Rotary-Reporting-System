@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Badge,
   Button,
@@ -10,6 +9,7 @@ import {
   SkeletonList,
 } from '../../components/ui';
 import { cx } from '../../lib/cx';
+import { PageLayout, StatGrid } from '../../components/ui/page';
 import { queryKeys, useList } from '../../lib/queries';
 import { ClubRosterPanel, MembershipStatsPanel } from '../membership/MembershipPages';
 import { useAuth, useScope } from '../auth/useAuth';
@@ -48,7 +48,21 @@ export function ClubProfilePage() {
   const navigate = useNavigate();
   const { permissions } = useAuth();
   const scope = useScope();
-  const [tab, setTab] = useState<TabKey>('overview');
+  /*
+   * THE TAB IS IN THE URL, not in component state.
+   *
+   * A tab somebody cannot link to is a tab they cannot share, and the sentence this screen
+   * exists to support is "look at the finance tab for Kampala North" — which should be a
+   * link, not an instruction. It also means the back button steps between tabs, which is
+   * what everybody expects it to do and what local state silently breaks.
+   */
+  const [params, setParams] = useSearchParams();
+  const requested = params.get('tab');
+  const tab: TabKey = (TABS.find((entry) => entry.key === requested)?.key ?? 'overview') as TabKey;
+  const setTab = (next: TabKey) => {
+    // `replace` so six tab taps do not leave six entries to back out through.
+    setParams(next === 'overview' ? {} : { tab: next }, { replace: true });
+  };
 
   const summary = useList<ClubSummaryResponse>(
     [...queryKeys.clubs, id, 'summary'],
@@ -71,18 +85,53 @@ export function ClubProfilePage() {
   const active = TABS.find((entry) => entry.key === tab);
 
   return (
-    <>
+    <PageLayout>
       <PageHeader
         title={club.name}
-        description={
+        breadcrumb={
+          <Link to="/clubs" className="hover:text-text-primary underline underline-offset-2">
+            Clubs
+          </Link>
+        }
+        meta={
           club.affiliation
-            ? `Tier ${club.affiliation.tier}${club.affiliation.clusterName ? ` · ${club.affiliation.clusterName}` : ''}${club.affiliation.isConfirmed ? '' : ' · affiliation not yet confirmed'}`
+            ? [
+                `Tier ${club.affiliation.tier}`,
+                club.affiliation.clusterName,
+                club.baseType,
+                club.riClubId ? `RI ${club.riClubId}` : null,
+                club.affiliation.isConfirmed ? null : 'affiliation not yet confirmed',
+              ]
+                .filter(Boolean)
+                .join(' · ')
             : 'Not affiliated to this district for the current year'
         }
         action={
           mayEdit ? <Button onClick={() => navigate(`/clubs/${club.id}/edit`)}>Edit</Button> : null
         }
       />
+
+      {/*
+        The summary strip. Three figures, above the tabs, so the answer to "how is this club
+        doing" is on screen before anybody chooses where to look — which is the question
+        somebody opening a club profile is nearly always actually asking.
+      */}
+      <div className="mb-6">
+        <StatGrid
+          columns={3}
+          stats={[
+            { label: 'Members', value: rosterCount, icon: 'members' },
+            { label: 'Activities reported', value: activities.total, icon: 'activities' },
+            {
+              label: 'Verified',
+              value: activities.verified,
+              detail: `of ${activities.total}`,
+              icon: 'activities',
+              tone: activities.verified === activities.total ? 'success' : 'default',
+            },
+          ]}
+        />
+      </div>
 
       {/* Scrollable rather than wrapped: six tabs wrap to three lines at 360px, and a
           wrapped tab strip stops looking like one. */}
@@ -146,7 +195,7 @@ export function ClubProfilePage() {
           />
         </Card>
       )}
-    </>
+    </PageLayout>
   );
 }
 

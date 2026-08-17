@@ -1906,9 +1906,30 @@ reported "0 replacements" for this reason before it was spotted. A heredoc will 
 `\b` to `` — a backspace character, not a word boundary — so transform scripts belong in
 files, not in shell heredocs.
 
+**Every screen was rebuilt in the end**, not only the high-traffic ones. Beyond the seven
+lists above: Invitations, Audit, Rollover, the Committees tree, the Club profile, Pending, the
+finance summaries and the sign-in shell.
+
+Three of those turned up defects rather than merely dated layouts:
+
+* **Club profile tabs were component state**, so no tab could be linked to or shared, and the
+  back button skipped the whole screen. They are a URL parameter now — `?tab=finance` — with
+  `replace` so six tab taps do not leave six history entries.
+* **The sign-in pattern was the one literal hex left in the application.** It lived inside an
+  SVG data URI, which cannot carry a CSS variable, so on a dark ground it painted cranberry
+  over slate at full saturation. It is an inline SVG on `currentColor` now, and a grep for
+  literal hex in components returns nothing.
+* **The activity-type builder used emoji as iconography.** They render differently on every
+  Android skin, carry no colour control, and sat on the screen a district officer configures
+  scoring from.
+
+The Committees tree stopped nesting cards inside cards — at depth three that reads as three
+unrelated things rather than as a hierarchy, which is the only thing the screen exists to
+show. It is an indent and a rule now.
+
 #### Cost
 
-Initial JS went 93 KB → **103.8 KB of the 250 KB budget** across all three rounds, and none
+Initial JS went 93 KB → **104.2 KB of the 250 KB budget** across all three rounds, and none
 of the increase is a dependency. Fonts are 108 KB total, 94 KB of it on the critical path.
 
 #### What is deliberately not built

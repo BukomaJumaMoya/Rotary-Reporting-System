@@ -6,9 +6,7 @@ import type {
   CommitteeTreeResponse,
 } from './types';
 import {
-  Badge,
   Button,
-  Card,
   Dialog,
   EmptyState,
   ErrorState,
@@ -17,6 +15,7 @@ import {
   Select,
   SkeletonList,
 } from '../../components/ui';
+import { PageLayout } from '../../components/ui/page';
 import { api } from '../../lib/api';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
 import { useAuth, useScope } from '../auth/useAuth';
@@ -44,27 +43,37 @@ export function CommitteesPage() {
   if (tree.isPending) return <SkeletonList rows={4} />;
   if (tree.isError) return <ErrorState error={tree.error} onRetry={() => void tree.refetch()} />;
 
+  /**
+   * One node, and its subtree.
+   *
+   * The nesting is carried by an INDENT AND A RULE rather than by nested cards. A card inside
+   * a card inside a card — which is what the previous treatment produced at depth three —
+   * reads as three unrelated things rather than as a hierarchy, and the hierarchy is the only
+   * thing this screen exists to show.
+   */
   const renderNode = (node: CommitteeNode) => (
     <li key={node.id}>
-      <div className="border-border-subtle flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 py-3">
         <div className="min-w-0">
-          <p className="text-text-primary font-medium">{node.name}</p>
-          {node.mandate && <p className="text-text-muted text-meta">{node.mandate}</p>}
+          <p className="text-text-primary text-body font-medium">{node.name}</p>
+          <p className="text-text-muted text-label">
+            {node.memberCount} member{node.memberCount === 1 ? '' : 's'}
+            {node.mandate ? ` · ${node.mandate}` : ''}
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge>{node.memberCount} members</Badge>
-          <Button variant="ghost" onClick={() => setMembersOf(node)}>
+        <div className="flex shrink-0 flex-wrap items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={() => setMembersOf(node)}>
             Members
           </Button>
           {mayManage(node.id) && node.depth < 3 && (
-            <Button variant="ghost" onClick={() => setAddingUnder(node)}>
+            <Button variant="secondary" size="sm" onClick={() => setAddingUnder(node)}>
               Add sub-committee
             </Button>
           )}
         </div>
       </div>
       {node.children.length > 0 && (
-        <ul className="mt-2 ml-4 flex flex-col gap-2 border-l pl-4">
+        <ul className="border-border-subtle divide-border-subtle ml-3 divide-y border-l pl-4">
           {node.children.map(renderNode)}
         </ul>
       )}
@@ -72,7 +81,7 @@ export function CommitteesPage() {
   );
 
   return (
-    <>
+    <PageLayout>
       <PageHeader
         title="Committees"
         description="A chair may create sub-committees under their own and appoint members, without district-wide permission."
@@ -83,16 +92,21 @@ export function CommitteesPage() {
         }
       />
 
-      <Card>
-        {tree.data.data.length === 0 ? (
-          <EmptyState
-            title="No committees yet"
-            description="District committees are created by the DES; chairs then build their own subtrees."
-          />
-        ) : (
-          <ul className="flex flex-col gap-2">{tree.data.data.map(renderNode)}</ul>
-        )}
-      </Card>
+      {tree.data.data.length === 0 ? (
+        <EmptyState
+          title="No committees yet"
+          description="District committees are created by the DES; chairs then build their own subtrees."
+          action={
+            permissions.has('committee:manage:district') ? (
+              <Button onClick={() => setCreatingRoot(true)}>New committee</Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <ul className="divide-border-subtle border-border-subtle bg-surface divide-y overflow-hidden rounded-lg border px-4 shadow-[var(--shadow-sm)]">
+          {tree.data.data.map(renderNode)}
+        </ul>
+      )}
 
       {(creatingRoot || addingUnder) && (
         <CreateCommitteeDialog
@@ -111,7 +125,7 @@ export function CommitteesPage() {
           onClose={() => setMembersOf(null)}
         />
       )}
-    </>
+    </PageLayout>
   );
 }
 

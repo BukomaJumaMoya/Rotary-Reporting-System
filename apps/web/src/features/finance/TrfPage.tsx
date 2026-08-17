@@ -12,6 +12,7 @@ import {
   SkeletonList,
   Table,
 } from '../../components/ui';
+import { StatGrid } from '../../components/ui/page';
 import { api } from '../../lib/api';
 import { formatAmount, formatMoney } from '../../lib/money';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
@@ -79,15 +80,18 @@ export function TrfPage() {
       />
 
       <Card className="mb-4">
-        <dl className="grid grid-cols-2 gap-4">
-          {/* USD, always. The rubric's bands are in dollars and so is TRF's own reporting. */}
-          <Figure label="Verified" value={formatMoney(data.verifiedUsd, 'USD')} tone="success" />
-          <Figure
-            label="Awaiting reconciliation"
-            value={formatMoney(data.pendingUsd, 'USD')}
-            tone={data.pendingUsd === '0.00' ? 'neutral' : 'warning'}
-          />
-        </dl>
+        {/* USD, always. The rubric's bands are in dollars and so is TRF's own reporting. */}
+        <StatGrid
+          columns={2}
+          stats={[
+            { label: 'Verified', value: formatMoney(data.verifiedUsd, 'USD'), tone: 'success' },
+            {
+              label: 'Awaiting reconciliation',
+              value: formatMoney(data.pendingUsd, 'USD'),
+              tone: data.pendingUsd === '0.00' ? 'default' : 'warning',
+            },
+          ]}
+        />
 
         {data.byFund.length > 0 && (
           <div className="border-border-subtle mt-4 border-t pt-3">
@@ -367,32 +371,5 @@ function RecordContribution({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </Dialog>
-  );
-}
-
-function Figure({
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  label: string;
-  value: string;
-  tone?: 'success' | 'warning' | 'neutral';
-}) {
-  return (
-    <div>
-      <dt className="text-text-muted text-meta">{label}</dt>
-      <dd
-        className={
-          tone === 'success'
-            ? 'text-success-text mt-0.5 text-subsection font-semibold tabular-nums'
-            : tone === 'warning'
-              ? 'text-warning-text mt-0.5 text-subsection font-semibold tabular-nums'
-              : 'text-text-primary mt-0.5 text-subsection font-semibold tabular-nums'
-        }
-      >
-        {value}
-      </dd>
-    </div>
   );
 }
