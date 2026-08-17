@@ -557,6 +557,55 @@ function checkAxioms() {
   // Money and time, in the schema Prisma owns.
   if (/@db\.(DoublePrecision|Real)\b/.test(prismaSchema))
     problems.push('CONVENTION: schema.prisma uses a float type. Money is NUMERIC.');
+
+  /**
+   * NO FLOAT IN THE FINANCE PATH — the M4 audit, made permanent.
+   *
+   * The schema check above proves the COLUMNS are NUMERIC. It says nothing about what the
+   * code does with them, and the way money goes wrong is not a column type: it is somebody
+   * reaching for `Number(amount)` to compare two figures, and the next person copying that
+   * into a sum. `0.1 + 0.2` is `0.30000000000000004`, and a club that misses an award
+   * threshold by a hundredth has a grievance nobody can answer.
+   *
+   * So: no `Number(`, `parseFloat` or `parseInt` in the finance modules or in the web's
+   * money helpers, unless the line carries a `money-safe:` comment saying why. Two do
+   * today — the contributing-member RATE, which is a ratio of two integer counts, and
+   * `lib/money.ts`, where the conversion exists solely to hand a value to
+   * `Intl.NumberFormat` and is confined to that file on purpose.
+   */
+  const MONEY_SAFE = /money-safe:/;
+  const financePaths = [
+    ...walk('apps/api/src/modules/finance'),
+    ...walk('apps/web/src/features/finance'),
+    'apps/web/src/lib/money.ts',
+  ];
+  for (const file of financePaths) {
+    if (!/\.tsx?$/.test(file) || file.includes('.test.')) continue;
+    const src = readIf(file);
+    if (!src) continue;
+    // A file-level marker exempts the whole file; `lib/money.ts` is the one that needs it,
+    // because confining the conversion there is the entire design.
+    if (MONEY_SAFE.test(src.slice(0, 2000))) continue;
+
+    const lines = src.split('\n');
+    lines.forEach((line, index) => {
+      if (!/\b(parseFloat|parseInt|Number)\s*\(/.test(line)) return;
+      // A comment ABOUT `Number(` is not a call to it — including the comments explaining
+      // why one is not used, which is exactly the prose this rule wants to encourage.
+      const code = line.trim();
+      if (code.startsWith('//') || code.startsWith('*') || code.startsWith('/*')) return;
+      // The marker may sit on the line or in the comment block immediately above it, which
+      // is where an explanation worth reading actually belongs.
+      if (lines.slice(Math.max(0, index - 8), index + 1).some((near) => MONEY_SAFE.test(near))) {
+        return;
+      }
+      problems.push(
+        `CONVENTION: ${file}:${index + 1} parses a value into a float in the finance path. ` +
+          'Money is a Decimal on the server and a string on the wire. If this genuinely is ' +
+          'not money, say so with a `money-safe:` comment.',
+      );
+    });
+  }
   for (const m of prismaSchema.matchAll(/@db\.Timestamp\((\d+)\)/g))
     problems.push(
       `CONVENTION: schema.prisma has @db.Timestamp(${m[1]}) — timestamps are TIMESTAMPTZ.`,

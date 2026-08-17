@@ -303,8 +303,14 @@ export async function summary(ctx: RequestContext): Promise<TrfSummary> {
       ),
       contributingMembers: contributors.size,
       rosterSize,
-      // A rate, not a percentage, and zero rather than a division by zero for a club with
-      // an empty roster.
+      /**
+       * A rate, and zero rather than a division by zero for a club with an empty roster.
+       *
+       * money-safe: the ONE float in this module, and it is not money. Both operands are
+       * integer COUNTS, and a ratio of two counts is a real number by definition — there is
+       * nothing to round wrong. The numerator and denominator travel alongside it so a
+       * client can show "2 of 4" rather than trusting the decimal.
+       */
       contributingMemberRate:
         rosterSize === 0 ? 0 : Number((contributors.size / rosterSize).toFixed(4)),
     });

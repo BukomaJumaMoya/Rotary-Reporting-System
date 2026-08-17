@@ -195,6 +195,59 @@ describe('the seeded dataset', () => {
     expect(approvedWithNoLines).toBe(0);
   });
 
+  it('invoices every club and spreads the payment states across them', async () => {
+    const [invoices, payments, confirmed] = await Promise.all([
+      unscopedPrisma.duesInvoice.count(),
+      unscopedPrisma.duesPayment.count(),
+      unscopedPrisma.duesPayment.count({ where: { confirmedAt: { not: null } } }),
+    ]);
+
+    // The district invoices EVERY club — unlike budgets, which clubs file for themselves.
+    expect(invoices).toBe(TOTAL_CLUBS);
+    expect(payments).toBeGreaterThan(0);
+
+    /**
+     * The spread is the point. `dues.status` is a scored criterion and M5 is calibrated
+     * against this dataset, so a district where everybody has paid would produce a rubric
+     * nobody has tested against the case it exists to distinguish.
+     */
+    const states = await unscopedPrisma.duesInvoiceState.groupBy({
+      by: ['status'],
+      _count: { status: true },
+    });
+    const byStatus = new Map(states.map((row) => [row.status, row._count.status]));
+
+    expect(byStatus.get('PAID') ?? 0).toBeGreaterThan(0);
+    expect(byStatus.get('PARTIAL') ?? 0).toBeGreaterThan(0);
+    expect(byStatus.get('UNPAID') ?? 0).toBeGreaterThan(0);
+    expect(byStatus.get('WAIVED') ?? 0).toBeGreaterThan(0);
+
+    // Some payments are recorded but not confirmed — the treasurer's reconciliation queue.
+    // Their invoices read UNPAID, which is the whole reason confirmation exists.
+    expect(confirmed).toBeLessThan(payments);
+
+    // Every confirmed payment carries a receipt number, allocated by the trigger rather
+    // than by the seed. Unconfirmed ones carry none.
+    const missingReceipt = await unscopedPrisma.duesPayment.count({
+      where: { confirmedAt: { not: null }, receiptNo: null },
+    });
+    expect(missingReceipt).toBe(0);
+    const earlyReceipt = await unscopedPrisma.duesPayment.count({
+      where: { confirmedAt: null, receiptNo: { not: null } },
+    });
+    expect(earlyReceipt).toBe(0);
+  });
+
+  it('gives EVERY club transactions, even the ones that never filed a budget', async () => {
+    // Transactions are what a club does; a budget is what it planned. Separating them is
+    // what makes the treasurer's chase-list worth building.
+    const clubsWithMoney = await unscopedPrisma.financialTransaction.findMany({
+      distinct: ['ownerScopeId'],
+      select: { ownerScopeId: true },
+    });
+    expect(clubsWithMoney).toHaveLength(TOTAL_CLUBS);
+  });
+
   it('leaves some TRF giving unverified, because a backlog is the real working state', async () => {
     const [total, verified, clubLevel] = await Promise.all([
       unscopedPrisma.trfContribution.count(),

@@ -593,9 +593,24 @@ export async function listMemberDues(
   );
 
   return {
-    data: query.outstandingOnly ? data.filter((row) => Number(row.amountOutstanding) > 0) : data,
+    // `owesSomething`, not `Number(...) > 0`. The comparison would be correct for any
+    // figure a UGX club will ever see, but parsing money into a double anywhere in this
+    // module is the habit the next person copies — and the next place they copy it to may
+    // be a sum. There is no float in the finance path, and this is how that stays true.
+    data: query.outstandingOnly ? data.filter((row) => owesSomething(row.amountOutstanding)) : data,
     total,
   };
+}
+
+/**
+ * Whether a serialised amount is greater than zero, decided on the STRING.
+ *
+ * `fromMoney` always produces a fixed two-place decimal with no sign for a non-negative
+ * value, so "owes something" is exactly "is not zero" — no parsing required, and correct for
+ * figures beyond what a double holds exactly.
+ */
+function owesSomething(amount: string): boolean {
+  return !/^-?0(\.0+)?$/.test(amount.trim());
 }
 
 /**

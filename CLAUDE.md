@@ -211,9 +211,10 @@ permission, an error code or a table.
 ## Current phase
 
 **M0 — Foundations, M1 — Governance core and M2 — the reporting spine are all complete**
-(August 2026). **M3 — offline and mobile — is code-complete**: sessions 1, 2 and 3 are done.
-Session 4 is the manual device pass and has NOT been run, so M3 is not closed.
-`docs/schema.sql` is at v2.1; 501 tests.
+(August 2026). **M3 — offline and mobile — and M4 — finance — are both CODE-COMPLETE.**
+M4 closed all eight of its exit criteria. M3 has not: session 4 is the manual device pass and
+has NOT been run, so neither milestone is closed until it has been.
+`docs/schema.sql` is at v2.1; 509 tests.
 
 M0: monorepo and CI, schema translated and migrated, session authentication with lockout,
 mail delivery, TOTP with encrypted secrets and recovery codes, the request context and
@@ -252,16 +253,27 @@ what a client-generated id is for. Do not add a second submission path: `submit(
 only way a club officer's write reaches the API.
 
 **The payload budget is enforced, not aspirational.** `npm run bundle:check` fails the build
-over 250 KB gzipped of initial JS (currently 90.6 KB) and runs in CI. Routes are split by
+over 250 KB gzipped of initial JS (currently 91.6 KB) and runs in CI. Routes are split by
 AUDIENCE: **a screen a club secretary uses on a phone is eager, everything else is lazy.**
 Photographs are compressed on the device before they are queued — `lib/images.ts`.
 
+**MONEY IS NEVER A JAVASCRIPT NUMBER.** `NUMERIC` in Postgres, `Decimal` in Prisma, a decimal
+STRING on the wire, converted only in `apps/web/src/lib/money.ts` and only to hand to
+`Intl.NumberFormat`. `npm run docs:check` FAILS on `Number(`, `parseFloat` or `parseInt`
+anywhere in the finance path without a `money-safe:` comment saying why. There is no
+client-side sum in this application: every total, including a budget's running total while
+somebody types, comes from the server.
+
+**No stored status.** `dues_invoices.status` and `member_dues.amount_paid` are VIEWS
+(ADR-012), and since schema v2.1 they count CONFIRMED payments only — a recorded payment is a
+claim, and `dues.status` is a scored criterion.
+
 **Next: M3 session 4 — the device pass.** Not a coding session: `docs/17-Device-Pass.md`,
 on a mid-range Android over real mobile data. It has **not been run**, and two of the seven
-M3 exit criteria cannot be closed without it. Do not run `/close-milestone` for M3 until it
-has. After that, M4 — finance — in `docs/14-ClaudeCode-M3-M4-Sessions.md`. Read its preamble
-first: ADR-012 made `dues_invoices.status` and `member_dues.amount_paid` into VIEWS, and the
-earlier M4 document tells you to maintain them as columns.
+M3 exit criteria cannot be closed without it — nor can either milestone be closed. A service
+worker needs a SECURE CONTEXT, so a LAN address tests none of it: use Chrome's port
+forwarding to `localhost` over USB, or staging. After that, **M5 — the assessment engine**,
+`docs/15-ClaudeCode-M5-Sessions.md`.
 
 See `docs/09-ClaudeCode-M0-Sessions.md`, `docs/12-ClaudeCode-M1-Sessions.md` and
 `docs/13-ClaudeCode-M2-Sessions.md` for the session prompts already used,

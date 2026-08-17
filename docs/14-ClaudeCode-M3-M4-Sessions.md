@@ -337,13 +337,30 @@ Consolidation. No new features.
 
 ## M4 exit checklist
 
-- [ ] No stored `status` or `amount_paid` — both read from views
-- [ ] All money `NUMERIC`; no float anywhere in the path
-- [ ] Partial payments reach exactly `PAID` with no drift
-- [ ] Receipt numbers unique under concurrency
-- [ ] Secretaries see expenditure as well as collections
-- [ ] Only verified TRF counts toward scoring
-- [ ] Cross-club finance access impossible, including through child tables
-- [ ] Seed contains a realistic financial year across 68 clubs
+Status at session 5. **Ticked means proven by something that runs, not written.**
+
+- [x] No stored `status` or `amount_paid` — both read from views. Schema v2.1 also fixed
+      those views to count CONFIRMED payments only; they had been counting claims, which
+      would have let a self-reported payment score.
+- [x] All money `NUMERIC`; no float anywhere in the path — and `doc-check.mjs` now FAILS on
+      `Number(`/`parseFloat`/`parseInt` in the finance path without a `money-safe:` marker.
+      Verified by introducing a violation and watching it fail.
+- [x] Partial payments reach exactly `PAID` with no drift — three uneven instalments to
+      1,500,000.33 in `dues.test.ts`.
+- [x] Receipt numbers unique under concurrency — a database SEQUENCE, allocated by a
+      trigger; eight concurrent confirmations, eight distinct numbers.
+- [x] Secretaries see expenditure as well as collections — one permission covers both
+      halves, and there is a test so nobody tidies it back.
+- [x] Only verified TRF counts toward scoring — and verification runs both ways: a
+      contribution later queried stops counting.
+- [x] Cross-club finance access impossible, including through child tables —
+      `finance-scope.test.ts`, six cases, every endpoint, including sideways through
+      `budget_lines`, `dues_payments` and `member_dues_payments`.
+- [x] Seed contains a realistic financial year across 68 clubs — 520 transactions across all
+      68, 48 budgets, 68 dues invoices spread across paid/partial/unpaid/waived, 116 TRF
+      contributions with a reconciliation backlog.
+
+**All eight closed.** M4 is code-complete. What remains before the milestone can be called
+done is M3's device pass, which is not an M4 item but does gate the release.
 
 **Next:** M5 — the assessment engine.

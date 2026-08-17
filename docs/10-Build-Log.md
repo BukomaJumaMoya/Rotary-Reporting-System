@@ -4,10 +4,10 @@
 describe what the system *should* be; this one records what has actually been built, what
 was decided along the way, and what is deliberately unfinished.
 
-Last updated: 17 August 2026, after M4 session 4. **M0, M1 and M2 are complete; M3 is
+Last updated: 17 August 2026, after M4 session 5. **M4 is code-complete.** **M0, M1 and M2 are complete; M3 is
 code-complete but NOT closed — its device pass has not been run; M4 is under way.**
 
-<!-- dis:state milestone=M2 schema=v2.1 tests=501 -->
+<!-- dis:state milestone=M2 schema=v2.1 tests=509 -->
 
 ---
 
@@ -18,18 +18,26 @@ can reach for; these two are what you need before writing anything. `npm run doc
 verifies most of what follows against the code, so if it is green the claims here are not
 merely assertions.
 
-**Where the build is.** M0 (foundations), M1 (governance core) and M2 (the reporting
-spine) are complete. **M3 — offline and mobile — is CODE-COMPLETE but not closed.** Sessions
-1 (the PWA shell), 2 (the offline submission queue) and 3 (the payload budget) are done.
-Session 4 is a manual device pass, it has **not been run**, and two of the seven M3 exit
-criteria cannot be closed without it. Do not run `/close-milestone` for M3 until somebody has
-worked through `docs/17-Device-Pass.md` on a real phone. Prompts are in
-`docs/14-ClaudeCode-M3-M4-Sessions.md`.
+**Where the build is.** M0 (foundations), M1 (governance core) and M2 (the reporting spine)
+are complete. **M3 and M4 are both CODE-COMPLETE. Neither is closed.**
+
+M3 — offline and mobile — has sessions 1 (the PWA shell), 2 (the offline submission queue)
+and 3 (the payload budget) done. **Session 4 is a manual device pass and it has NOT been
+run**; two of the seven M3 exit criteria cannot be closed without it. Do not run
+`/close-milestone` for M3 until somebody has worked through `docs/17-Device-Pass.md` on a
+real phone.
+
+M4 — finance — is done across all five sessions and **all eight of its exit criteria are
+closed**. It is not "closed" only because M3 sits in front of it.
+
+Prompts are in `docs/14-ClaudeCode-M3-M4-Sessions.md`.
 
 A real club could use the system now: clubs, members, the membership event log and its
 derived roster, configurable activity types, activity reporting with photographs, and
 verification. Since M3 it also works without a signal — a report saved with no connection is
-written to the device and sent on its own when one returns — and it costs 90 KB to open.
+written to the device and sent on its own when one returns — and it costs 92 KB to open.
+Since M4 it also keeps the books: budgets, transactions, dues and TRF giving, with money as
+`NUMERIC` end to end and a build-time check that keeps it that way.
 
 **Read in this order.** `CLAUDE.md` for the axioms and the non-negotiable rules → this
 section → §0a for what the last milestone changed about how you must write code → the
@@ -149,7 +157,7 @@ full history is in §4.
 | 2 — Dues invoicing and reconciliation | **done** | this commit |
 | 3 — TRF contributions | **done** | this commit |
 | 4 — Finance UI | **done** | this commit |
-| 5 — Finance hardening | not started | |
+| 5 — Finance hardening | **done** | this commit |
 
 CI runs typecheck → lint → format:check → test → build → `npm audit` against a
 `postgres:17` service container, and is green on `main`.
@@ -256,6 +264,8 @@ apps/api/src/
                  one model, configurable types, and the photographs on them
     assessment/  service — markStale(), a deliberate no-op until M5
     finance/     routes · service — budgets, lines, transactions, the summary
+                 finance-scope.test.ts — THE cross-club sweep: every endpoint,
+                 including sideways through the via-scoped child tables
                  dues.routes · dues.service — invoices, payments, the district
                  grid, member dues and prepayment. NO stored status: read the view.
                  trf.routes · trf.service — contributions in USD, verification,
@@ -338,7 +348,7 @@ apps/web/src/
 Dockerfile · fly.toml · .github/workflows/deploy-staging.yml · README.md
 ```
 
-**501 tests** — 485 in the API, integration-style against real PostgreSQL, and 16 in the web
+**509 tests** — 493 in the API, integration-style against real PostgreSQL, and 16 in the web
 workspace against `fake-indexeddb`. The suites that are load bearing rather than incidental:
 `no-pii.test.ts` (walks every route unauthenticated), `invariants.test.ts` (49 ADR-012
 guards), `scope*.test.ts` (the data access layer), `audit.test.ts`, `rollover.test.ts` (dry
@@ -1656,6 +1666,60 @@ admin screen — but it is not on the path a member opens at eleven at night to 
 either, and that path is what the eager bundle is for. Initial JS went 90.6 → **91.6 KB**
 gzipped for five screens; thirteen lazy chunks now.
 
+#### Session 5 — hardening
+
+**The float audit is now a CHECK, not a one-off read.** `doc-check.mjs` refuses
+`Number(`, `parseFloat` or `parseInt` anywhere in `modules/finance`, `features/finance` or
+`lib/money.ts` unless the line — or the comment block above it — carries a `money-safe:`
+marker explaining why. Verified by deliberately introducing a violation and watching it fail.
+
+The audit found ONE real contamination: `Number(row.amountOutstanding) > 0` in the member
+dues filter. Correct for any figure a UGX club will see, and replaced anyway, because parsing
+money into a double in that module is the habit the next person copies — and the next place
+they copy it to may be a sum. Two conversions survive with markers: the contributing-member
+RATE, which is a ratio of two integer counts and therefore genuinely a real number, and
+`lib/money.ts`, where confining the conversion to one file is the entire design.
+
+**`finance-scope.test.ts` walks every finance endpoint as a treasurer of one club pointing at
+another's records.** Six cases, all passing on the first run — nothing leaks, including
+sideways through `budget_lines`, `dues_payments` and `member_dues_payments`, which carry no
+`district_id` of their own and inherit scope through a `via` rule. A `via` rule that is wrong
+does not fail loudly; it returns somebody else's data with a 200, which is why this deserved
+its own file rather than a case appended to each feature's tests.
+
+It also asserts the 404/403 SPLIT rather than just "refused": a named record answers 404 so a
+probe learns nothing, while a district-only action answers 403 because that describes the
+caller's own authority and reveals nothing. Both are checked, in both directions.
+
+The list assertions check for the other club's NAME as well as its id — a filter that got the
+ids right while leaking a name through a join would still be a leak.
+
+**Transactions now cover every club; budgets still do not.** 520 transactions across all 68
+clubs, 48 budgets, 68 dues invoices. The separation is deliberate: transactions are what a
+club DOES, a budget is what it PLANNED, and a third of clubs never write one. A dataset where
+everybody files hides the chase-list screen the District Treasurer actually needs.
+
+**Dues are seeded at a spread of states** — 22 paid, 24 partial, 21 unpaid, 1 waived, with 5
+payments deliberately left unconfirmed. `dues.status` is a scored criterion and M5 is
+calibrated against this dataset, so a district where everybody has paid would produce a
+rubric nobody has tested against the case it exists to distinguish. The unconfirmed ones read
+UNPAID, which is correct and is the behaviour worth having in the data.
+
+**EXPLAIN ANALYZE, at year three rather than at week one.** 520 rows proves nothing about a
+sequential scan — Postgres will scan a small table faster than it can use an index. Projected
+to **10,720 transactions** inside a rolled-back transaction:
+
+| Query | Plan | Time |
+|---|---|---|
+| finance summary, one club | Index Scan on `financial_transactions_owner_period` | 0.24 ms |
+| `dues_invoice_states`, whole district | Seq Scan on `dues_invoices` + `dues_payments` | 1.28 ms |
+
+**The summary index is load-bearing and proven. The dues indexes are precautionary and
+Postgres correctly ignores them — leave that alone.** `dues_invoices` grows at 68 clubs × 2
+types × N years: about 1,360 rows after a decade, and a sequential scan over that is genuinely
+the right plan. Somebody will one day see "Seq Scan" in a plan and try to fix it. There is
+nothing to fix.
+
 ---
 
 ## 4a. Axiom conformance
@@ -1673,6 +1737,33 @@ naive timestamps. The rest is judgement and belongs here.
 
 **A row may legitimately say an axiom was bent.** Recording that is the point; an axiom
 nobody may ever qualify becomes an axiom people route around silently.
+
+### As at M4 code-complete (M3 and M4 both awaiting the device pass)
+
+Written when M4's code landed rather than at a close, because the close is blocked on a
+manual pass and the review should not wait for it and be done from memory.
+
+| # | Axiom | Holds? | What M3 and M4 did to it |
+|---|---|---|---|
+| 1 | The Rotary Year is a dimension, not a filter | **holds, and was tested by a hard case** | Prepayment wanted to write into a year the caller was not in. The layer refused it — `prisma.memberDues` does not compile — so it goes through `systemContext` with a mandatory reason that reaches `audit_log`, rather than around the layer. Backdating is still refused with `YEAR_LOCKED`. The offline queue never sends a year: it replays a body the server re-scopes on arrival. |
+| 2 | District affiliation is temporal | **holds** | `clubs` still has no `district_id`. Dues bulk-issue and the status grid both reach every club through `affiliatedClubIds`, which is the affiliation join written once in `clubs.repository.ts` and exported as a service function rather than copied. |
+| 3 | Membership is an event log | **holds, untouched** | M3 and M4 added no membership write path. The offline queue posts membership events through the same endpoint with a client id, so idempotency does the work rather than a new mutation. |
+| 4 | One activity model | **holds** | The offline queue is generic over `{ endpoint, body, files }` and knows nothing about activity types; the reporting form still renders from the type's own row. Finance added no activity-shaped table. |
+| 5 | The assessment rubric is data | **not yet exercised, but two dependencies now exist** | `markStale()` is called from dues confirmation, dues waiver and TRF verification, still against a no-op body. Two scored inputs — `dues.status` and `trf.contribution_usd` — are now real, and BOTH were shaped by the fact that they are scored: the dues views were fixed to count confirmed payments only, and TRF verification got a permission of its own. |
+| 6 | Personal data is private by default | **holds** | The service worker's API cache is network-first, one hour, sixty entries, and `clearDeviceState()` empties every cache on sign-out — while deliberately keeping the outbox, which is the member's own unsent work. Finance touches persons only for a NAME on a collection sheet, which is not a contact field; the PII harness walks all 30 new routes and passes. |
+
+**Bent, deliberately, and why.** Nothing this milestone. The one thing worth flagging is not a
+bend but a limit: the offline outbox stores a member's own submissions in IndexedDB on the
+device, unencrypted, and survives sign-out on purpose. On a shared handset the next person
+could in principle read a queued report through developer tools. That is a considered trade —
+losing three filed reports is the worse failure, and the queue holds a club's activity rather
+than anybody's contact details — but it is the sentence to re-read if the threat model ever
+changes.
+
+Two things to re-check at M5 close. `markStale()` stops being a no-op, and every one of those
+call sites becomes load-bearing at once. And the dues and TRF figures become scores, at which
+point the confirmed-only rule in schema v2.1 is the thing standing between a self-reported
+payment and an award.
 
 ### As at M2 close
 

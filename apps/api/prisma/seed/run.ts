@@ -489,8 +489,33 @@ async function seedFinance(org: OrgIds): Promise<number> {
   const ugx = (low: number, high: number): string => String(rng.int(low, high) * 1000);
 
   for (const clubId of clubIds) {
-    // A third of clubs have filed nothing. That is the realistic shape, and it is what
-    // makes the treasurer's chase-list screen worth building.
+    /**
+     * EVERY club has money moving. Not every club has filed a budget.
+     *
+     * The two are separate on purpose. Transactions are what a club does; a budget is what
+     * it planned, and a third of clubs never get round to writing one — which is what makes
+     * the treasurer's chase-list worth building, and what stops M5 being calibrated against
+     * a district where everybody files.
+     */
+    const months = rng.int(4, 11);
+    for (let index = 0; index < months; index += 1) {
+      const isIncome = rng.chance(0.45);
+      const pool = isIncome ? income : expenditure;
+      const category = rng.pick(pool);
+
+      txnRows.push({
+        districtId: org.districtId,
+        rotaryYearId: org.currentYearId,
+        ownerScopeType: 'CLUB',
+        ownerScopeId: clubId,
+        categoryId: category.id,
+        direction: isIncome ? 'INCOME' : 'EXPENDITURE',
+        amount: ugx(50, 1200),
+        occurredOn: new Date(Date.UTC(2027, 6 + (index % 12), rng.int(1, 27))),
+        description: isIncome ? 'Collection' : 'Payment',
+      });
+    }
+
     if (rng.chance(0.33)) continue;
 
     const budgetId = randomUUID();
@@ -525,26 +550,6 @@ async function seedFinance(org: OrgIds): Promise<number> {
       });
     }
 
-    // A year of movement, so the variance table has something to disagree about.
-    const months = rng.int(4, 11);
-    for (let index = 0; index < months; index += 1) {
-      const isIncome = rng.chance(0.45);
-      const pool = isIncome ? income : expenditure;
-      const category = rng.pick(pool);
-
-      txnRows.push({
-        districtId: org.districtId,
-        rotaryYearId: org.currentYearId,
-        ownerScopeType: 'CLUB',
-        ownerScopeId: clubId,
-        categoryId: category.id,
-        direction: isIncome ? 'INCOME' : 'EXPENDITURE',
-        amount: ugx(50, 1200),
-        occurredOn: new Date(Date.UTC(2027, 6 + (index % 12), rng.int(1, 27))),
-        description: isIncome ? 'Collection' : 'Payment',
-      });
-    }
-
     if (isApproved) {
       budgetRows[budgetRows.length - 1]!.approvedAt = new Date(Date.UTC(2027, 7, 15));
     }
@@ -572,6 +577,128 @@ async function seedFinance(org: OrgIds): Promise<number> {
       `${lineRows.length} lines, ${txnRows.length} transactions`,
   );
   return budgetRows.length;
+}
+
+/**
+ * District dues, issued to every club and paid to varying degrees.
+ *
+ * **The spread is the point.** `dues.status` is a scored criterion, and M5 will be
+ * calibrated against this dataset — so a district where everybody has paid would produce a
+ * rubric nobody has tested against the case it exists to distinguish. Roughly: a third paid
+ * in full, a third part-paid, a quarter untouched, and a couple waived.
+ *
+ * Payments are inserted CONFIRMED, because the state view counts confirmed rows only
+ * (schema v2.1) and an unconfirmed one would leave the invoice reading UNPAID. A handful are
+ * deliberately left unconfirmed to seed the District Treasurer's reconciliation queue — and
+ * those clubs read UNPAID, which is correct and is the behaviour worth having in the data.
+ *
+ * Receipt numbers are NOT set here: the database trigger allocates them from a sequence
+ * whenever `confirmed_at` is non-null, so the seed gets real ones for free and never
+ * collides.
+ */
+async function seedDues(org: OrgIds): Promise<number> {
+  const rng = random(9218 + 4);
+  const clubIds = [...org.clubIdsBySlug.values()];
+
+  const AMOUNT_DUE = '450000.00';
+  const invoices: {
+    id: string;
+    districtId: string;
+    rotaryYearId: string;
+    clubId: string;
+    duesType: 'DISTRICT';
+    amountDue: string;
+    dueOn: Date;
+    waivedAt: Date | null;
+    waiverReason: string | null;
+  }[] = [];
+  const payments: {
+    invoiceId: string;
+    amount: string;
+    paidOn: Date;
+    method: string;
+    confirmedAt: Date | null;
+  }[] = [];
+
+  let paid = 0;
+  let partial = 0;
+  let unpaid = 0;
+  let waived = 0;
+  let unconfirmed = 0;
+
+  for (const clubId of clubIds) {
+    const invoiceId = randomUUID();
+    // A waiver is rare and always has a reason — it is the one part of dues state a human
+    // decides, and "why does this club owe nothing" gets asked at an AGM.
+    const isWaived = rng.chance(0.03);
+
+    invoices.push({
+      id: invoiceId,
+      districtId: org.districtId,
+      rotaryYearId: org.currentYearId,
+      clubId,
+      duesType: 'DISTRICT',
+      amountDue: AMOUNT_DUE,
+      dueOn: new Date(Date.UTC(2027, 8, 30)),
+      waivedAt: isWaived ? new Date(Date.UTC(2027, 9, 1)) : null,
+      waiverReason: isWaived ? 'Chartered mid-year; district agreed a pro-rata exemption.' : null,
+    });
+
+    if (isWaived) {
+      waived += 1;
+      continue;
+    }
+
+    const roll = rng.next();
+    if (roll < 0.35) {
+      // Settled, in two instalments — which is how it actually happens, and it exercises
+      // the sum rather than a single matching figure.
+      payments.push(
+        {
+          invoiceId,
+          amount: '200000.00',
+          paidOn: new Date(Date.UTC(2027, 7, rng.int(1, 27))),
+          method: 'Mobile money',
+          confirmedAt: new Date(Date.UTC(2027, 7, 28)),
+        },
+        {
+          invoiceId,
+          amount: '250000.00',
+          paidOn: new Date(Date.UTC(2027, 8, rng.int(1, 27))),
+          method: 'Bank transfer',
+          confirmedAt: new Date(Date.UTC(2027, 8, 28)),
+        },
+      );
+      paid += 1;
+    } else if (roll < 0.7) {
+      const isConfirmed = !rng.chance(0.15);
+      payments.push({
+        invoiceId,
+        amount: String(rng.int(50, 350) * 1000) + '.00',
+        paidOn: new Date(Date.UTC(2027, 8, rng.int(1, 27))),
+        method: rng.pick(['Mobile money', 'Bank transfer', 'Cash']),
+        // Unconfirmed: recorded but not reconciled against the bank. The invoice still
+        // reads UNPAID, which is the whole reason confirmation exists.
+        confirmedAt: isConfirmed ? new Date(Date.UTC(2027, 9, 5)) : null,
+      });
+      if (isConfirmed) partial += 1;
+      else {
+        unpaid += 1;
+        unconfirmed += 1;
+      }
+    } else {
+      unpaid += 1;
+    }
+  }
+
+  await unscopedPrisma.duesInvoice.createMany({ data: invoices });
+  await unscopedPrisma.duesPayment.createMany({ data: payments });
+
+  log(
+    `  dues: ${invoices.length} invoices — ${paid} paid, ${partial} partial, ` +
+      `${unpaid} unpaid (${unconfirmed} awaiting confirmation), ${waived} waived`,
+  );
+  return invoices.length;
 }
 
 /**
@@ -978,6 +1105,7 @@ export async function seedDatabase(): Promise<SeedSummary> {
   const members = await seedMembers(org);
   await seedActivities(org, members);
   await seedFinance(org);
+  await seedDues(org);
   await seedTrf(org, members);
   const signIns = await seedOfficers(members, positionIds, org);
 

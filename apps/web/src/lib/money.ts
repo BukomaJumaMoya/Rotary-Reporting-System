@@ -1,4 +1,9 @@
 /**
+ * money-safe: THIS FILE is the one permitted place a money string becomes a number, and it
+ * does so only to hand the value to `Intl.NumberFormat`. `doc-check.mjs` forbids the
+ * conversion everywhere else in the finance path; confining it here is the entire design,
+ * and the marker above is what tells the check this file is the exception.
+ *
  * Formatting money that arrives as a STRING.
  *
  * Every amount the API sends is a decimal string — `"1500000.50"` — because `NUMERIC(14,2)`
