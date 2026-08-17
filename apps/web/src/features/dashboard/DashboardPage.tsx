@@ -16,10 +16,10 @@ export function DashboardPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-ink-900 text-xl font-semibold">
+        <h1 className="text-text-primary text-xl font-semibold">
           Hello, {person?.firstName ?? 'there'}
         </h1>
-        <p className="text-ink-500 text-sm">
+        <p className="text-text-muted text-sm">
           {context?.districtName ?? 'No district'}
           {context?.rotaryYearLabel ? ` · Rotary Year ${context.rotaryYearLabel}` : ''}
         </p>
@@ -28,7 +28,7 @@ export function DashboardPage() {
       {context && !context.isYearWritable && context.rotaryYearId && (
         // A locked year, or one reached through ?year=. Saying so once at the top beats
         // a member discovering it when a form is refused.
-        <div className="border-warning-700/20 bg-warning-100 text-warning-700 rounded-lg border px-4 py-3 text-sm">
+        <div className="border-warning/20 bg-warning-subtle text-warning-text rounded-lg border px-4 py-3 text-sm">
           This Rotary Year is read-only. You can view everything and change nothing.
         </div>
       )}
@@ -44,19 +44,19 @@ export function DashboardPage() {
             {appointments.map((appointment) => (
               <li
                 key={appointment.id}
-                className="border-ink-200 flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+                className="border-border-subtle flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
               >
                 <div className="min-w-0">
-                  <p className="text-ink-900 truncate text-sm font-medium">
+                  <p className="text-text-primary truncate text-sm font-medium">
                     {appointment.positionName}
                   </p>
-                  <p className="text-ink-500 truncate text-xs">
+                  <p className="text-text-muted truncate text-xs">
                     {appointment.scopeName ?? appointment.scopeType}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge tone="info">{appointment.scopeType}</Badge>
-                  <span className="text-ink-400 text-xs">
+                  <span className="text-text-muted text-xs">
                     from {appointment.startsOn}
                     {appointment.endsOn ? ` to ${appointment.endsOn}` : ''}
                   </span>

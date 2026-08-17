@@ -112,7 +112,7 @@ export function LoginPage() {
             />
             <button
               type="button"
-              className="text-azure-600 self-start text-sm underline"
+              className="text-info self-start text-sm underline"
               onClick={() => {
                 setUseRecoveryCode((current) => !current);
                 setSecondFactor('');
@@ -124,7 +124,7 @@ export function LoginPage() {
         )}
 
         {error && (
-          <p role="alert" className="text-danger-700 text-sm">
+          <p role="alert" className="text-danger-text text-sm">
             {error.message}
           </p>
         )}
@@ -133,7 +133,7 @@ export function LoginPage() {
           {needsSecondFactor ? 'Verify and sign in' : 'Sign in'}
         </Button>
 
-        <Link to="/forgot" className="text-azure-600 text-center text-sm underline">
+        <Link to="/forgot" className="text-info text-center text-sm underline">
           Forgotten your password?
         </Link>
       </form>

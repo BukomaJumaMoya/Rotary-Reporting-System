@@ -84,7 +84,7 @@ export function PositionsPage() {
               render: (row) => (
                 <div>
                   <p className="font-medium">{row.name}</p>
-                  <p className="text-ink-500 font-mono text-xs">{row.code}</p>
+                  <p className="text-text-muted font-mono text-xs">{row.code}</p>
                 </div>
               ),
             },
@@ -121,7 +121,7 @@ export function PositionsPage() {
                   {row.isTemplate ? (
                     // Readable by every district, editable by none — saying so beats a
                     // button that always fails.
-                    <span className="text-ink-400 text-xs">Shared</span>
+                    <span className="text-text-muted text-xs">Shared</span>
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       <Button variant="ghost" onClick={() => setEditing(row)}>
@@ -352,7 +352,7 @@ function PermissionMatrixDialog({
         <div className="flex flex-col gap-4">
           {[...grouped.entries()].map(([resource, items]) => (
             <section key={resource}>
-              <h3 className="text-ink-500 mb-1 text-xs font-semibold tracking-wide uppercase">
+              <h3 className="text-text-muted mb-1 text-xs font-semibold tracking-wide uppercase">
                 {resource}
               </h3>
               {items.map((permission) => (

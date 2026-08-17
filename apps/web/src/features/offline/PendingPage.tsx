@@ -61,12 +61,12 @@ export function PendingPage() {
           }
         >
           {!isOnline && (
-            <p className="text-ink-500 mb-3 text-sm">
+            <p className="text-text-muted mb-3 text-sm">
               No connection. These will go on their own as soon as there is one — you do not have to
               come back to this screen.
             </p>
           )}
-          <ul className="divide-ink-100 divide-y">
+          <ul className="divide-border-subtle divide-y">
             {queued.map((item) => (
               <Row key={item.id} item={item} />
             ))}
@@ -76,11 +76,11 @@ export function PendingPage() {
 
       {failed.length > 0 && (
         <Card title={`${failed.length} could not be sent`}>
-          <p className="text-ink-600 mb-3 text-sm">
+          <p className="text-text-secondary mb-3 text-sm">
             The district refused these. They are still on this device — correct the problem and try
             again, or discard them if they were a mistake.
           </p>
-          <ul className="divide-ink-100 divide-y">
+          <ul className="divide-border-subtle divide-y">
             {failed.map((item) => (
               <Row key={item.id} item={item} />
             ))}
@@ -106,19 +106,19 @@ function DataUsage({ waitingBytes }: { waitingBytes: number }) {
     <Card title="What this costs you" className="mt-4">
       <dl className="grid gap-2 text-sm">
         <div className="flex justify-between gap-4">
-          <dt className="text-ink-500">Waiting to send, from this device</dt>
-          <dd className="text-ink-900">{formatBytes(waitingBytes)}</dd>
+          <dt className="text-text-muted">Waiting to send, from this device</dt>
+          <dd className="text-text-primary">{formatBytes(waitingBytes)}</dd>
         </div>
         <div className="flex justify-between gap-4">
-          <dt className="text-ink-500">A report with one photograph</dt>
-          <dd className="text-ink-900">about 150–400 KB</dd>
+          <dt className="text-text-muted">A report with one photograph</dt>
+          <dd className="text-text-primary">about 150–400 KB</dd>
         </div>
         <div className="flex justify-between gap-4">
-          <dt className="text-ink-500">Opening the app again</dt>
-          <dd className="text-ink-900">almost nothing, once installed</dd>
+          <dt className="text-text-muted">Opening the app again</dt>
+          <dd className="text-text-primary">almost nothing, once installed</dd>
         </div>
       </dl>
-      <p className="text-ink-500 mt-3 text-xs">
+      <p className="text-text-muted mt-3 text-xs">
         Photographs are made smaller on this phone before they are sent — usually a tenth of what
         the camera produced. Nothing is uploaded until you tap Submit.
       </p>
@@ -148,14 +148,14 @@ function Row({ item }: { item: OutboxItem }) {
   return (
     <li className="flex flex-wrap items-start justify-between gap-3 py-3">
       <div className="min-w-0">
-        <p className="text-ink-900 truncate text-sm font-medium">{item.label}</p>
-        <p className="text-ink-500 text-xs">
+        <p className="text-text-primary truncate text-sm font-medium">{item.label}</p>
+        <p className="text-text-muted text-xs">
           {item.kind} · saved {new Date(item.createdAt).toLocaleString()}
           {item.files.length > 0 &&
             ` · ${item.files.length} photograph${item.files.length === 1 ? '' : 's'}`}
         </p>
         {item.lastError && (
-          <p className={cx('mt-1 text-xs', isFailed ? 'text-danger-700' : 'text-ink-500')}>
+          <p className={cx('mt-1 text-xs', isFailed ? 'text-danger-text' : 'text-text-muted')}>
             {item.lastError}
             {!isFailed && item.attempts > 0 && ` · tried ${item.attempts} times`}
           </p>

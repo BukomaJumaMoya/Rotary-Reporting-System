@@ -7,7 +7,7 @@ import { submit as queueSubmission } from '../../lib/offline/submit';
 import { queryKeys, useList } from '../../lib/queries';
 import { useToast } from '../../lib/toast';
 import { uuid } from '../../lib/uuid';
-import { useAuth } from '../auth/useAuth';
+import { useAuth, useOwnClub } from '../auth/useAuth';
 import type { ClubListResponse } from '../clubs/types';
 import type { PersonListResponse } from './types';
 
@@ -68,8 +68,11 @@ export function RecordEventPage() {
   const queryClient = useQueryClient();
   const [params] = useSearchParams();
   const { permissions } = useAuth();
+  // One club, already known. See ReportPage — same reasoning, and this screen is the one a
+  // secretary uses most.
+  const ownClub = useOwnClub();
 
-  const [clubId, setClubId] = useState(params.get('clubId') ?? '');
+  const [chosenClubId, setChosenClubId] = useState(params.get('clubId') ?? '');
   const [eventType, setEventType] = useState<EventType | ''>('');
   const [personId, setPersonId] = useState('');
   const [personSearch, setPersonSearch] = useState('');
@@ -83,9 +86,18 @@ export function RecordEventPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
 
-  const clubs = useList<ClubListResponse>([...queryKeys.clubs, 'picker'], '/clubs', {
-    pageSize: 100,
-  });
+  // Derived, never stored: a member with one club cannot pick the wrong one, and cannot
+  // be left holding a stale one after a rollover.
+  const clubId = ownClub?.id ?? chosenClubId;
+
+  const clubs = useList<ClubListResponse>(
+    [...queryKeys.clubs, 'picker'],
+    '/clubs',
+    { pageSize: 100 },
+    // The counterparty picker for a transfer still needs the list, so this is only skipped
+    // when the member has one club AND the event is not a transfer.
+    { enabled: ownClub === null || NEEDS_COUNTERPARTY.has(eventType as EventType) },
+  );
   const persons = useList<PersonListResponse>(
     [...queryKeys.persons, 'picker'],
     '/persons',
@@ -96,7 +108,7 @@ export function RecordEventPage() {
   if (!permissions.has('membership:write:club')) {
     return (
       <Card>
-        <p className="text-ink-600 text-sm">
+        <p className="text-text-secondary text-sm">
           You do not have permission to record membership events.
         </p>
       </Card>
@@ -215,12 +227,12 @@ export function RecordEventPage() {
                 className={cx(
                   'min-h-16 rounded-lg border p-3 text-left',
                   eventType === option.value
-                    ? 'border-cranberry-500 bg-cranberry-50 text-cranberry-700'
-                    : 'border-ink-200 hover:bg-ink-50',
+                    ? 'border-accent bg-accent-subtle text-accent-text'
+                    : 'border-border-subtle hover:bg-surface-sunken',
                 )}
               >
                 <span className="block text-sm font-medium">{option.label}</span>
-                <span className="text-ink-500 block text-xs">{option.hint}</span>
+                <span className="text-text-muted block text-xs">{option.hint}</span>
               </button>
             ))}
           </div>
@@ -230,16 +242,24 @@ export function RecordEventPage() {
           <>
             <Card title="Who, and where?">
               <div className="flex flex-col gap-3">
-                <Select
-                  label="Club"
-                  value={clubId}
-                  placeholder="Choose a club"
-                  options={(clubs.data?.data ?? []).map((club) => ({
-                    value: club.id,
-                    label: club.name,
-                  }))}
-                  onChange={(changed) => setClubId(changed.target.value)}
-                />
+                {ownClub ? (
+                  <p className="text-text-secondary text-sm">
+                    Recording for{' '}
+                    <span className="text-text-primary font-medium">{ownClub.name}</span>
+                  </p>
+                ) : (
+                  <Select
+                    label="Club"
+                    value={clubId}
+                    placeholder="Choose a club"
+                    hint="You cover more than one club, so this one is yours to choose."
+                    options={(clubs.data?.data ?? []).map((club) => ({
+                      value: club.id,
+                      label: club.name,
+                    }))}
+                    onChange={(changed) => setChosenClubId(changed.target.value)}
+                  />
+                )}
 
                 <PersonPicker
                   search={personSearch}
@@ -390,36 +410,36 @@ function PersonPicker({
       />
 
       {selected && (
-        <p className="text-success-700 text-sm">
+        <p className="text-success-text text-sm">
           Selected: {selected.firstName} {selected.lastName}
         </p>
       )}
       {newPerson && (
-        <p className="text-success-700 text-sm">
+        <p className="text-success-text text-sm">
           Will add: {newPerson.firstName} {newPerson.lastName}
         </p>
       )}
 
       {search.length >= 2 && !selectedId && !newPerson && (
-        <div className="border-ink-200 max-h-56 overflow-y-auto rounded-lg border">
+        <div className="border-border-subtle max-h-56 overflow-y-auto rounded-lg border">
           {isSearching && <SkeletonList rows={2} />}
           {results.map((person) => (
             <button
               key={person.id}
               type="button"
               onClick={() => onSelect(person.id)}
-              className="hover:bg-ink-50 flex min-h-11 w-full flex-col items-start px-3 py-2 text-left"
+              className="hover:bg-surface-sunken flex min-h-11 w-full flex-col items-start px-3 py-2 text-left"
             >
               <span className="text-sm">
                 {person.firstName} {person.lastName}
               </span>
               {person.clubs?.[0] && (
-                <span className="text-ink-500 text-xs">{person.clubs[0].name}</span>
+                <span className="text-text-muted text-xs">{person.clubs[0].name}</span>
               )}
             </button>
           ))}
           {!isSearching && results.length === 0 && (
-            <p className="text-ink-500 px-3 py-2 text-sm">Nobody found.</p>
+            <p className="text-text-muted px-3 py-2 text-sm">Nobody found.</p>
           )}
           {canCreate && (
             <button
@@ -427,7 +447,7 @@ function PersonPicker({
               onClick={() =>
                 onCreate({ firstName: words[0] ?? '', lastName: words.slice(1).join(' ') })
               }
-              className="text-cranberry-600 hover:bg-ink-50 border-ink-200 min-h-11 w-full border-t px-3 py-2 text-left text-sm font-medium"
+              className="text-accent hover:bg-surface-sunken border-border-subtle min-h-11 w-full border-t px-3 py-2 text-left text-sm font-medium"
             >
               Add “{search.trim()}” as a new member
             </button>

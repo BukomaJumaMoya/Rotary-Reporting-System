@@ -86,7 +86,7 @@ export function ClubProfilePage() {
 
       {/* Scrollable rather than wrapped: six tabs wrap to three lines at 360px, and a
           wrapped tab strip stops looking like one. */}
-      <div className="border-ink-200 mb-4 -mx-1 flex gap-1 overflow-x-auto border-b px-1">
+      <div className="border-border-subtle mb-4 -mx-1 flex gap-1 overflow-x-auto border-b px-1">
         {TABS.map((entry) => (
           <button
             key={entry.key}
@@ -94,8 +94,8 @@ export function ClubProfilePage() {
             className={cx(
               'min-h-11 shrink-0 border-b-2 px-3 text-sm font-medium whitespace-nowrap',
               tab === entry.key
-                ? 'border-cranberry-500 text-cranberry-600'
-                : 'text-ink-500 hover:text-ink-700 border-transparent',
+                ? 'border-accent text-accent'
+                : 'text-text-muted hover:text-text-secondary border-transparent',
             )}
           >
             {entry.label}
@@ -107,11 +107,11 @@ export function ClubProfilePage() {
         <Overview club={club} rosterCount={rosterCount} activities={activities} />
       ) : tab === 'activities' ? (
         <Card>
-          <p className="text-ink-600 mb-3 text-sm">
+          <p className="text-text-secondary mb-3 text-sm">
             {activities.total} activities reported this Rotary Year — {activities.verified}{' '}
             verified.
           </p>
-          <Link className="text-cranberry-600 underline" to={`/activities?hostScopeId=${club.id}`}>
+          <Link className="text-accent underline" to={`/activities?hostScopeId=${club.id}`}>
             Open the activity list for this club
           </Link>
         </Card>
@@ -122,8 +122,8 @@ export function ClubProfilePage() {
             predecessor showed one half and not the other, and the district logged it.
           */}
           <FinanceSummaryPanel ownerScopeType="CLUB" ownerScopeId={club.id} />
-          <p className="text-ink-500 text-sm">
-            <Link className="text-cranberry-600 underline" to="/finance/transactions">
+          <p className="text-text-muted text-sm">
+            <Link className="text-accent underline" to="/finance/transactions">
               Open the transaction list
             </Link>
           </p>
@@ -132,8 +132,8 @@ export function ClubProfilePage() {
         <div className="flex flex-col gap-4">
           <MembershipStatsPanel clubId={club.id} />
           <ClubRosterPanel clubId={club.id} />
-          <p className="text-ink-500 text-sm">
-            <Link className="text-cranberry-600 underline" to={`/clubs/${club.id}/membership`}>
+          <p className="text-text-muted text-sm">
+            <Link className="text-accent underline" to={`/clubs/${club.id}/membership`}>
               See the full membership history
             </Link>
           </p>
@@ -199,7 +199,7 @@ function Overview({
         </dl>
         {/* The incumbent system published exactly this — venue, day and time — to the open
             internet alongside 4,000 members' phone numbers. Here it needs a session. */}
-        <p className="text-ink-400 mt-4 text-xs">
+        <p className="text-text-muted mt-4 text-xs">
           Meeting details are visible to signed-in district members only.
         </p>
       </Card>
@@ -209,9 +209,9 @@ function Overview({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-ink-200 rounded-xl border bg-white p-4">
-      <p className="text-ink-500 text-xs">{label}</p>
-      <p className="text-ink-900 mt-1 text-2xl font-semibold">{value}</p>
+    <div className="border-border-subtle rounded-xl border bg-surface p-4">
+      <p className="text-text-muted text-xs">{label}</p>
+      <p className="text-text-primary mt-1 text-2xl font-semibold">{value}</p>
     </div>
   );
 }
@@ -219,8 +219,8 @@ function Stat({ label, value }: { label: string; value: string }) {
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-ink-500 text-xs">{label}</dt>
-      <dd className="text-ink-900 text-sm">{value === null || value === '' ? '—' : value}</dd>
+      <dt className="text-text-muted text-xs">{label}</dt>
+      <dd className="text-text-primary text-sm">{value === null || value === '' ? '—' : value}</dd>
     </div>
   );
 }

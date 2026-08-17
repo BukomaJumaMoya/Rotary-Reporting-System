@@ -99,14 +99,14 @@ export function ActivityTypesPage() {
                 {group.types.map((type) => (
                   <li
                     key={type.id}
-                    className="border-ink-200 flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+                    className="border-border-subtle flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
                   >
                     <div className="min-w-0">
-                      <p className="text-ink-900 font-medium">
+                      <p className="text-text-primary font-medium">
                         {type.name}{' '}
-                        <span className="text-ink-400 font-mono text-xs">{type.code}</span>
+                        <span className="text-text-muted font-mono text-xs">{type.code}</span>
                       </p>
-                      <p className="text-ink-500 text-xs">
+                      <p className="text-text-muted text-xs">
                         {REQUIREMENTS.filter((requirement) => type[requirement.key])
                           .map((requirement) => requirement.label)
                           .join(' · ') || 'Nothing required'}
@@ -255,7 +255,9 @@ function TypeDialog({ type, onClose }: { type: ActivityType | null; onClose: () 
           />
 
           <fieldset>
-            <legend className="text-ink-700 mb-1 text-sm font-medium">Who may host it</legend>
+            <legend className="text-text-secondary mb-1 text-sm font-medium">
+              Who may host it
+            </legend>
             {SCOPES.map((scope) => (
               <Checkbox
                 key={scope}
@@ -274,7 +276,9 @@ function TypeDialog({ type, onClose }: { type: ActivityType | null; onClose: () 
           </fieldset>
 
           <fieldset>
-            <legend className="text-ink-700 mb-1 text-sm font-medium">What it requires</legend>
+            <legend className="text-text-secondary mb-1 text-sm font-medium">
+              What it requires
+            </legend>
             {REQUIREMENTS.map((requirement) => (
               <Checkbox
                 key={requirement.key}
@@ -302,8 +306,10 @@ function TypeDialog({ type, onClose }: { type: ActivityType | null; onClose: () 
 
         {/* The live preview. A declaration whose consequences you cannot see is one somebody
             gets wrong and only discovers when forty secretaries hit it. */}
-        <div className="border-ink-200 rounded-lg border p-3">
-          <h3 className="text-ink-700 mb-3 text-sm font-semibold">What a secretary will see</h3>
+        <div className="border-border-subtle rounded-lg border p-3">
+          <h3 className="text-text-secondary mb-3 text-sm font-semibold">
+            What a secretary will see
+          </h3>
           <FormPreview form={form} />
         </div>
       </div>
@@ -326,15 +332,18 @@ function FieldBuilder({
 
   return (
     <fieldset>
-      <legend className="text-ink-700 mb-1 text-sm font-medium">Extra fields</legend>
-      <p className="text-ink-500 mb-2 text-xs">
+      <legend className="text-text-secondary mb-1 text-sm font-medium">Extra fields</legend>
+      <p className="text-text-muted mb-2 text-xs">
         Stored on the activity under the key you choose. Renaming a key later orphans the data
         already recorded under the old one, so choose it once.
       </p>
 
       <div className="flex flex-col gap-3">
         {fields.map((field, index) => (
-          <div key={index} className="border-ink-200 flex flex-col gap-2 rounded-lg border p-2">
+          <div
+            key={index}
+            className="border-border-subtle flex flex-col gap-2 rounded-lg border p-2"
+          >
             <div className="grid gap-2 sm:grid-cols-2">
               <Input
                 label="Key"
@@ -420,16 +429,16 @@ function FormPreview({ form }: { form: FormState }) {
         <Input label="Narrative report" value="" readOnly onChange={() => undefined} />
       )}
       {form.requiresPhoto && (
-        <p className="text-ink-600 text-sm">📷 At least one photograph is required</p>
+        <p className="text-text-secondary text-sm">📷 At least one photograph is required</p>
       )}
       {form.requiresAttendance && (
-        <p className="text-ink-600 text-sm">👥 An attendance list is required</p>
+        <p className="text-text-secondary text-sm">👥 An attendance list is required</p>
       )}
       {form.requiresPartner && (
-        <p className="text-ink-600 text-sm">🤝 A partner organisation is required</p>
+        <p className="text-text-secondary text-sm">🤝 A partner organisation is required</p>
       )}
       {form.requiresAreaOfFocus && (
-        <p className="text-ink-600 text-sm">🎯 An area of focus is required</p>
+        <p className="text-text-secondary text-sm">🎯 An area of focus is required</p>
       )}
 
       {form.fields.map((field, index) => (
@@ -462,7 +471,7 @@ function FormPreview({ form }: { form: FormState }) {
       ))}
 
       {form.fields.length === 0 && (
-        <p className="text-ink-400 text-xs">No extra fields — the form is the standard one.</p>
+        <p className="text-text-muted text-xs">No extra fields — the form is the standard one.</p>
       )}
     </div>
   );

@@ -71,13 +71,13 @@ function QueuedActivities() {
   if (queued.length === 0) return null;
 
   return (
-    <Card className="bg-warning-100 mb-4">
-      <p className="text-warning-700 mb-2 text-sm font-medium">
+    <Card className="bg-warning-subtle mb-4">
+      <p className="text-warning-text mb-2 text-sm font-medium">
         {queued.length} report{queued.length === 1 ? '' : 's'} saved on this device, not yet sent
       </p>
       <ul className="flex flex-col gap-1">
         {queued.map((item) => (
-          <li key={item.id} className="text-ink-700 flex items-center gap-2 text-sm">
+          <li key={item.id} className="text-text-secondary flex items-center gap-2 text-sm">
             <Badge tone={item.status === 'failed' ? 'danger' : 'warning'}>
               {item.status === 'failed' ? 'Needs attention' : 'Waiting'}
             </Badge>
@@ -85,7 +85,7 @@ function QueuedActivities() {
           </li>
         ))}
       </ul>
-      <Link to="/pending" className="text-cranberry-600 mt-2 inline-block text-sm font-medium">
+      <Link to="/pending" className="text-accent mt-2 inline-block text-sm font-medium">
         See what is waiting
       </Link>
     </Card>
@@ -113,8 +113,8 @@ export function ActivitiesPage() {
       header: 'Activity',
       render: (activity: Activity) => (
         <div className="min-w-0">
-          <p className="text-ink-900 font-medium">{activity.title}</p>
-          <p className="text-ink-500 text-xs">
+          <p className="text-text-primary font-medium">{activity.title}</p>
+          <p className="text-text-muted text-xs">
             {activity.activityTypeName}
             {activity.hostName ? ` · ${activity.hostName}` : ''}
           </p>
@@ -298,12 +298,14 @@ export function ActivityDetailPage() {
           </div>
 
           {record.description && (
-            <p className="text-ink-800 mb-4 text-sm whitespace-pre-wrap">{record.description}</p>
+            <p className="text-text-primary mb-4 text-sm whitespace-pre-wrap">
+              {record.description}
+            </p>
           )}
           {record.narrativeReport && (
             <>
-              <h3 className="text-ink-700 mb-1 text-sm font-semibold">Narrative report</h3>
-              <p className="text-ink-800 mb-4 text-sm whitespace-pre-wrap">
+              <h3 className="text-text-secondary mb-1 text-sm font-semibold">Narrative report</h3>
+              <p className="text-text-primary mb-4 text-sm whitespace-pre-wrap">
                 {record.narrativeReport}
               </p>
             </>
@@ -313,15 +315,15 @@ export function ActivityDetailPage() {
             <dl className="mb-4 grid gap-2 sm:grid-cols-2">
               {Object.entries(record.extra).map(([key, value]) => (
                 <div key={key}>
-                  <dt className="text-ink-500 text-xs">{key}</dt>
-                  <dd className="text-ink-900 text-sm">{String(value)}</dd>
+                  <dt className="text-text-muted text-xs">{key}</dt>
+                  <dd className="text-text-primary text-sm">{String(value)}</dd>
                 </div>
               ))}
             </dl>
           )}
 
           {mayVerify && (
-            <div className="border-ink-200 flex flex-wrap gap-2 border-t pt-3">
+            <div className="border-border-subtle flex flex-wrap gap-2 border-t pt-3">
               <Button onClick={() => setDeciding('VERIFY')}>Verify</Button>
               {/* Query is what makes this two-way rather than write-only. */}
               <Button variant="secondary" onClick={() => setDeciding('QUERY')}>
@@ -375,14 +377,14 @@ export function ActivityDetailPage() {
                       <img
                         src={item.thumbUrl ?? item.url ?? ''}
                         alt={item.caption ?? ''}
-                        className="border-ink-200 h-28 w-28 rounded-lg border object-cover"
+                        className="border-border-subtle h-28 w-28 rounded-lg border object-cover"
                       />
                     </a>
                   ) : (
                     // Not processed yet: a placeholder rather than a broken image, which is
                     // what "eventually consistent" has to look like to somebody who does
                     // not know that phrase.
-                    <div className="border-ink-200 bg-ink-50 text-ink-400 flex h-28 w-28 items-center justify-center rounded-lg border text-xs">
+                    <div className="border-border-subtle bg-surface-sunken text-text-muted flex h-28 w-28 items-center justify-center rounded-lg border text-xs">
                       Processing…
                     </div>
                   )}
@@ -485,19 +487,19 @@ export function ActivityCalendarPage() {
           <ul className="flex flex-col gap-3">
             {calendar.data.data.map((day) => (
               <li key={day.date}>
-                <h3 className="text-ink-700 mb-1 text-sm font-semibold">{day.date}</h3>
+                <h3 className="text-text-secondary mb-1 text-sm font-semibold">{day.date}</h3>
                 <ul className="flex flex-col gap-1">
                   {day.activities.map((entry) => (
                     <li key={entry.id}>
                       <Link
                         to={`/activities/${entry.id}`}
                         className={cx(
-                          'border-ink-200 hover:bg-ink-50 flex min-h-11 flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm',
+                          'border-border-subtle hover:bg-surface-sunken flex min-h-11 flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm',
                         )}
                       >
                         <span className="min-w-0">
-                          <span className="text-ink-900 font-medium">{entry.title}</span>
-                          <span className="text-ink-500 block text-xs">
+                          <span className="text-text-primary font-medium">{entry.title}</span>
+                          <span className="text-text-muted block text-xs">
                             {entry.activityTypeName}
                             {entry.hostName ? ` · ${entry.hostName}` : ''}
                           </span>
@@ -521,8 +523,8 @@ export function ActivityCalendarPage() {
 function Fact({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="flex justify-between gap-4">
-      <dt className="text-ink-500">{label}</dt>
-      <dd className="text-ink-900 text-right">{value ?? '—'}</dd>
+      <dt className="text-text-muted">{label}</dt>
+      <dd className="text-text-primary text-right">{value ?? '—'}</dd>
     </div>
   );
 }

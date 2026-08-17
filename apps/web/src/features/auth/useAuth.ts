@@ -85,3 +85,44 @@ export function useScope() {
       (context?.scopes.committeeIds.includes(committeeId) ?? false),
   };
 }
+
+export interface OwnClub {
+  id: string;
+  name: string;
+}
+
+/**
+ * THE club this member belongs to, when there is exactly one.
+ *
+ * A club secretary holds one appointment, at one club. The system already knows which —
+ * it is in the appointment their permissions come from — so asking them to choose it on
+ * every form is asking them to tell the system something it can see. On a 360px phone at
+ * eleven at night it is also one more control between them and filing a report, and the
+ * one they are most likely to get wrong: the picker lists all 68 clubs.
+ *
+ * Returns null for a DISTRICT officer, or for anyone whose scope spans several clubs — an
+ * ADRR over a cluster genuinely does have to say which club they mean, and for them the
+ * picker is the right control rather than a nuisance.
+ *
+ * Presentation only, like every hook here. The server re-checks the scope on every write
+ * and would refuse a club this member does not hold, whatever the form sent.
+ */
+export function useOwnClub(): OwnClub | null {
+  const { context, appointments } = useAuth();
+  if (!context) return null;
+
+  // A district-wide caller has every club in scope and must be asked.
+  if (context.scopes.isDistrictWide) return null;
+  if (context.scopes.clubIds.length !== 1) return null;
+
+  const id = context.scopes.clubIds[0];
+  if (!id) return null;
+
+  // The NAME comes from the appointment, which already carries it resolved — so this costs
+  // no request. An appointment at a cluster or region would have expanded downwards into
+  // clubIds without naming the club, hence the fallback.
+  const named = appointments.find(
+    (appointment) => appointment.scopeType === 'CLUB' && appointment.scopeId === id,
+  );
+  return { id, name: named?.scopeName ?? 'your club' };
+}

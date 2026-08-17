@@ -87,7 +87,7 @@ export function InvitationsPage() {
             hint="Type at least two letters of a name."
           />
 
-          <div className="border-ink-200 mt-3 max-h-64 overflow-y-auto rounded-lg border p-1">
+          <div className="border-border-subtle mt-3 max-h-64 overflow-y-auto rounded-lg border p-1">
             {persons.isPending ? (
               <SkeletonList rows={3} />
             ) : persons.data && persons.data.data.length > 0 ? (
@@ -129,7 +129,7 @@ export function InvitationsPage() {
                   <Badge tone={result.status === 'SENT' ? 'success' : 'danger'}>
                     {result.status}
                   </Badge>
-                  <span className="text-ink-500 font-mono text-xs">
+                  <span className="text-text-muted font-mono text-xs">
                     {result.reason ?? 'invitation sent'}
                   </span>
                 </li>
@@ -261,7 +261,7 @@ export function AuditPage() {
         ) : (
           <ul className="flex flex-col gap-3">
             {audit.data.data.map((entry) => (
-              <li key={entry.id} className="border-ink-200 rounded-lg border p-3">
+              <li key={entry.id} className="border-border-subtle rounded-lg border p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Badge tone={entry.action === 'DELETE' ? 'danger' : 'info'}>
@@ -269,7 +269,7 @@ export function AuditPage() {
                     </Badge>
                     <span className="text-sm font-medium">{entry.entityType}</span>
                   </div>
-                  <span className="text-ink-500 text-xs">
+                  <span className="text-text-muted text-xs">
                     {entry.actorName ?? 'system'} ·{' '}
                     {entry.occurredAt.replace('T', ' ').slice(0, 16)}
                   </span>
@@ -277,7 +277,7 @@ export function AuditPage() {
 
                 {entry.changes.length > 0 && (
                   <table className="mt-2 w-full text-left text-xs">
-                    <thead className="text-ink-500">
+                    <thead className="text-text-muted">
                       <tr>
                         <th className="py-1 font-medium">Field</th>
                         <th className="py-1 font-medium">Before</th>
@@ -286,17 +286,17 @@ export function AuditPage() {
                     </thead>
                     <tbody>
                       {entry.changes.map((change) => (
-                        <tr key={change.field} className="border-ink-100 border-t">
+                        <tr key={change.field} className="border-border-subtle border-t">
                           <td className="py-1 font-mono">{change.field}</td>
                           {change.isRedacted ? (
                             // The field name survives so the log still says WHAT changed;
                             // saying "redacted" beats an empty cell that reads as a bug.
-                            <td colSpan={2} className="text-ink-400 py-1 italic">
+                            <td colSpan={2} className="text-text-muted py-1 italic">
                               redacted — contact detail
                             </td>
                           ) : (
                             <>
-                              <td className="text-ink-500 py-1">{change.before ?? '—'}</td>
+                              <td className="text-text-muted py-1">{change.before ?? '—'}</td>
                               <td className="py-1">{change.after ?? '—'}</td>
                             </>
                           )}
@@ -389,7 +389,7 @@ export function RolloverPage() {
               Run a dry run
             </Button>
           </div>
-          <p className="text-ink-500 mt-2 text-sm">
+          <p className="text-text-muted mt-2 text-sm">
             Everything runs inside a transaction and is then rolled back, so the report below
             describes work that actually executed rather than work that was predicted.
           </p>
@@ -405,9 +405,9 @@ export function RolloverPage() {
                   ['Tier changes', report.tierChanges.length],
                   ['Clubs flagged', report.flaggedClubs.length],
                 ].map(([label, value]) => (
-                  <div key={String(label)} className="border-ink-200 rounded-lg border p-3">
-                    <dt className="text-ink-500 text-xs">{label}</dt>
-                    <dd className="text-ink-900 text-xl font-semibold">{value}</dd>
+                  <div key={String(label)} className="border-border-subtle rounded-lg border p-3">
+                    <dt className="text-text-muted text-xs">{label}</dt>
+                    <dd className="text-text-primary text-xl font-semibold">{value}</dd>
                   </div>
                 ))}
               </dl>
@@ -437,7 +437,7 @@ export function RolloverPage() {
 
               {report.flaggedClubs.length > 0 && (
                 <div className="mb-4">
-                  <h3 className="text-danger-700 mb-2 text-sm font-semibold">
+                  <h3 className="text-danger-text mb-2 text-sm font-semibold">
                     Look at these before confirming
                   </h3>
                   <ul className="text-sm">
@@ -469,7 +469,7 @@ export function RolloverPage() {
 
             {!isCommitted && (
               <Card title="3 — Commit">
-                <p className="text-ink-600 mb-3 text-sm">
+                <p className="text-text-secondary mb-3 text-sm">
                   This locks {report.fromYearLabel}, expires every appointment in it, and opens{' '}
                   {report.toYearLabel}. It cannot be undone. Type{' '}
                   <strong>{report.toYearLabel}</strong> to confirm.
@@ -501,7 +501,7 @@ export function RolloverPage() {
                     Roll over
                   </Button>
                 </div>
-                <p className="text-ink-500 mt-2 text-xs">
+                <p className="text-text-muted mt-2 text-xs">
                   The confirmation expires thirty minutes after the dry run. After that, run it
                   again and read the diff again.
                 </p>

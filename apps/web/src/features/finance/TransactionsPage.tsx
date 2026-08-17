@@ -16,7 +16,7 @@ import {
 import { api } from '../../lib/api';
 import { formatAmount, formatMoney } from '../../lib/money';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
-import { useAuth } from '../auth/useAuth';
+import { useAuth, useOwnClub } from '../auth/useAuth';
 import type { ClubListResponse } from '../clubs/types';
 import type { FinanceCategoryListResponse, Transaction, TransactionListResponse } from './types';
 
@@ -105,8 +105,8 @@ export function TransactionsPage() {
                   header: 'What',
                   render: (row: Transaction) => (
                     <div className="min-w-0">
-                      <p className="text-ink-900 font-medium">{row.categoryName}</p>
-                      <p className="text-ink-500 truncate text-xs">
+                      <p className="text-text-primary font-medium">{row.categoryName}</p>
+                      <p className="text-text-muted truncate text-xs">
                         {row.description ?? row.ownerName ?? '—'}
                       </p>
                     </div>
@@ -170,7 +170,10 @@ export function TransactionsPage() {
  * and letting the two disagree.
  */
 function RecordTransaction({ onClose }: { onClose: () => void }) {
-  const [clubId, setClubId] = useState('');
+  const ownClub = useOwnClub();
+  const [chosenClubId, setChosenClubId] = useState('');
+  // Derived: a member with one club never chooses, so there is nothing to get stale.
+  const clubId = ownClub?.id ?? chosenClubId;
   const [categoryId, setCategoryId] = useState('');
   const [amount, setAmount] = useState('');
   const [occurredOn, setOccurredOn] = useState(new Date().toISOString().slice(0, 10));
@@ -198,13 +201,19 @@ function RecordTransaction({ onClose }: { onClose: () => void }) {
   return (
     <Dialog isOpen title="Record a transaction" onClose={onClose}>
       <div className="flex flex-col gap-3">
-        <Select
-          label="Club"
-          value={clubId}
-          placeholder="Choose a club"
-          options={(clubs.data?.data ?? []).map((club) => ({ value: club.id, label: club.name }))}
-          onChange={(event) => setClubId(event.target.value)}
-        />
+        {ownClub ? (
+          <p className="text-text-secondary text-sm">
+            Recording for <span className="text-text-primary font-medium">{ownClub.name}</span>
+          </p>
+        ) : (
+          <Select
+            label="Club"
+            value={clubId}
+            placeholder="Choose a club"
+            options={(clubs.data?.data ?? []).map((club) => ({ value: club.id, label: club.name }))}
+            onChange={(event) => setChosenClubId(event.target.value)}
+          />
+        )}
 
         <Select
           label="Category"

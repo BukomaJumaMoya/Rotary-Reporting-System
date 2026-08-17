@@ -17,6 +17,53 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Rotaract DIS" />
+
+    <!--
+      The UI face is preloaded because it is on the critical path for every screen. Fraunces
+      is NOT: it appears on page titles and empty states, `font-display: swap` covers its
+      arrival, and preloading it would put 17 KB ahead of content on a metered connection to
+      style six words.
+    -->
+    <link
+      rel="preload"
+      href="/fonts/Inter.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin="anonymous"
+    />
+
+    <!--
+      SHELL STATE, BEFORE FIRST PAINT.
+
+      A flash of the wrong theme is the most common dark-mode implementation bug and it makes
+      an application feel broken in the first 200ms a user ever sees. The same is true of a
+      sidebar that snaps from expanded to rail once React hydrates.
+
+      This runs synchronously, ahead of any stylesheet resolving against `:root`, so both are
+      settled before a single pixel is painted.
+
+      It is inline under a Content-Security-Policy of `script-src 'self' 'sha256-...'`. A hash
+      is as strict as `self` — stricter, arguably, since it pins these exact bytes — but it
+      means EDITING THIS SCRIPT WITHOUT UPDATING THE HASH SILENTLY DISABLES IT. That coupling
+      is enforced by `security-headers.test.ts`, which recomputes the hash from this file and
+      fails the build on a mismatch. Do not weaken it to 'unsafe-inline'.
+    -->
+    <script>
+      (function () {
+        try {
+          var root = document.documentElement;
+          var theme = localStorage.getItem('dis-theme');
+          if (theme !== 'light' && theme !== 'dark') {
+            theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          root.setAttribute('data-theme', theme);
+          var sidebar = localStorage.getItem('dis-sidebar');
+          root.setAttribute('data-sidebar', sidebar === 'rail' ? 'rail' : 'expanded');
+        } catch (e) {
+          /* Private mode denies localStorage. The light default is already correct. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

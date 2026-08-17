@@ -68,7 +68,9 @@ function Bar({ tone, children }: { tone: 'warning' | 'info'; children: React.Rea
       role="status"
       className={cx(
         'flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm',
-        tone === 'warning' ? 'bg-warning-100 text-warning-700' : 'bg-azure-100 text-azure-700',
+        tone === 'warning'
+          ? 'bg-warning-subtle text-warning-text'
+          : 'bg-info-subtle text-info-text',
       )}
     >
       {children}

@@ -162,7 +162,7 @@ export function ClubFormPage({ mode }: { mode: 'create' | 'edit' }) {
   if (!mayEdit) {
     return (
       <Card>
-        <p className="text-ink-600 text-sm">
+        <p className="text-text-secondary text-sm">
           You do not have permission to {mode === 'create' ? 'charter a club' : 'edit this club'}.
         </p>
       </Card>

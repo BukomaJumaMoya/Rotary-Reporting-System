@@ -93,7 +93,7 @@ export function AppointmentsPage() {
               render: (row) => (
                 <div>
                   <p>{row.positionName}</p>
-                  <p className="text-ink-500 text-xs">{row.scopeName ?? row.scopeType}</p>
+                  <p className="text-text-muted text-xs">{row.scopeName ?? row.scopeType}</p>
                 </div>
               ),
             },
@@ -243,7 +243,7 @@ function CreateAppointmentDialog({ onClose }: { onClose: () => void }) {
           hint="Type at least two letters of a name."
         />
 
-        <div className="border-ink-200 max-h-48 overflow-y-auto rounded-lg border">
+        <div className="border-border-subtle max-h-48 overflow-y-auto rounded-lg border">
           {persons.isPending ? (
             <SkeletonList rows={2} />
           ) : persons.data && persons.data.data.length > 0 ? (
@@ -254,13 +254,13 @@ function CreateAppointmentDialog({ onClose }: { onClose: () => void }) {
                     type="button"
                     onClick={() => setPersonId(person.id)}
                     className={`flex min-h-11 w-full items-center justify-between px-3 text-left text-sm ${
-                      personId === person.id ? 'bg-cranberry-50 text-cranberry-700' : ''
+                      personId === person.id ? 'bg-accent-subtle text-accent-text' : ''
                     }`}
                   >
                     <span>
                       {person.firstName} {person.lastName}
                     </span>
-                    <span className="text-ink-500 text-xs">{person.clubs?.[0]?.name}</span>
+                    <span className="text-text-muted text-xs">{person.clubs?.[0]?.name}</span>
                   </button>
                 </li>
               ))}
@@ -285,7 +285,7 @@ function CreateAppointmentDialog({ onClose }: { onClose: () => void }) {
         />
 
         {position && position.scope === 'DISTRICT' && (
-          <p className="text-ink-500 text-sm">
+          <p className="text-text-muted text-sm">
             A district appointment names no scope — it covers the whole district.
           </p>
         )}

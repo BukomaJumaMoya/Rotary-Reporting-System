@@ -15,7 +15,7 @@ import {
 import { api } from '../../lib/api';
 import { formatAmount, formatMoney } from '../../lib/money';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
-import { useAuth } from '../auth/useAuth';
+import { useAuth, useOwnClub } from '../auth/useAuth';
 import type { ClubListResponse } from '../clubs/types';
 import type { TrfClubTotal, TrfContribution } from '@dis/contracts';
 import type { TrfListResponse, TrfSummaryResponse } from './types';
@@ -90,12 +90,12 @@ export function TrfPage() {
         </dl>
 
         {data.byFund.length > 0 && (
-          <div className="border-ink-200 mt-4 border-t pt-3">
-            <p className="text-ink-500 mb-2 text-xs">By fund</p>
+          <div className="border-border-subtle mt-4 border-t pt-3">
+            <p className="text-text-muted mb-2 text-xs">By fund</p>
             <ul className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
               {data.byFund.map((fund) => (
                 <li key={fund.fundType}>
-                  <span className="text-ink-500">
+                  <span className="text-text-muted">
                     {FUND_LABELS[fund.fundType] ?? fund.fundType}
                   </span>{' '}
                   <span className="tabular-nums">{formatAmount(fund.verifiedUsd)}</span>
@@ -105,7 +105,7 @@ export function TrfPage() {
           </div>
         )}
 
-        <p className="text-ink-500 mt-3 text-xs">
+        <p className="text-text-muted mt-3 text-xs">
           Only verified giving counts toward a club&rsquo;s score. These totals are what the
           district has recorded — they are not a reconciliation against Rotary&rsquo;s own figures.
         </p>
@@ -119,7 +119,7 @@ export function TrfPage() {
                 key: 'club',
                 header: 'Club',
                 render: (row: TrfClubTotal) => (
-                  <span className="text-ink-900 font-medium">{row.clubName}</span>
+                  <span className="text-text-primary font-medium">{row.clubName}</span>
                 ),
               },
               {
@@ -143,7 +143,7 @@ export function TrfPage() {
                 render: (row: TrfClubTotal) => (
                   <span>
                     {row.contributingMembers} of {row.rosterSize}
-                    <span className="text-ink-500 ml-1 text-xs">
+                    <span className="text-text-muted ml-1 text-xs">
                       {Math.round(row.contributingMemberRate * 100)}%
                     </span>
                   </span>
@@ -153,7 +153,7 @@ export function TrfPage() {
             rows={data.byClub}
             rowKey={(row) => row.clubId}
           />
-          <p className="text-ink-500 mt-3 text-xs">
+          <p className="text-text-muted mt-3 text-xs">
             A club-level gift counts toward the money but not toward &ldquo;members giving&rdquo; —
             one cheque is not every member contributing.
           </p>
@@ -173,10 +173,10 @@ export function TrfPage() {
                 header: 'Contribution',
                 render: (row: TrfContribution) => (
                   <div className="min-w-0">
-                    <p className="text-ink-900 font-medium">
+                    <p className="text-text-primary font-medium">
                       {FUND_LABELS[row.fundType] ?? row.fundType}
                     </p>
-                    <p className="text-ink-500 truncate text-xs">
+                    <p className="text-text-muted truncate text-xs">
                       {row.clubName} · {row.personName ?? 'club gift'}
                       {row.riReceiptRef ? ` · ${row.riReceiptRef}` : ''}
                     </p>
@@ -253,7 +253,10 @@ function VerifyButton({ contribution }: { contribution: TrfContribution }) {
  * with dozens of them. That is how the reconciliation stops happening.
  */
 function RecordContribution({ onClose }: { onClose: () => void }) {
-  const [clubId, setClubId] = useState('');
+  const ownClub = useOwnClub();
+  const [chosenClubId, setChosenClubId] = useState('');
+  // Derived: a member with one club never chooses, so there is nothing to get stale.
+  const clubId = ownClub?.id ?? chosenClubId;
   const [fundType, setFundType] = useState('ANNUAL_FUND');
   const [amountUsd, setAmountUsd] = useState('');
   const [contributedOn, setContributedOn] = useState(new Date().toISOString().slice(0, 10));
@@ -272,18 +275,24 @@ function RecordContribution({ onClose }: { onClose: () => void }) {
   return (
     <Dialog isOpen title="Record TRF giving" onClose={onClose}>
       <div className="flex flex-col gap-3">
-        <p className="text-ink-500 text-sm">
+        <p className="text-text-muted text-sm">
           Enter what My Rotary shows. The club and fund stay selected, so a whole club can be
           entered without reselecting.
         </p>
 
-        <Select
-          label="Club"
-          value={clubId}
-          placeholder="Choose a club"
-          options={(clubs.data?.data ?? []).map((club) => ({ value: club.id, label: club.name }))}
-          onChange={(event) => setClubId(event.target.value)}
-        />
+        {ownClub ? (
+          <p className="text-text-secondary text-sm">
+            Recording for <span className="text-text-primary font-medium">{ownClub.name}</span>
+          </p>
+        ) : (
+          <Select
+            label="Club"
+            value={clubId}
+            placeholder="Choose a club"
+            options={(clubs.data?.data ?? []).map((club) => ({ value: club.id, label: club.name }))}
+            onChange={(event) => setChosenClubId(event.target.value)}
+          />
+        )}
 
         <Select
           label="Fund"
@@ -314,13 +323,13 @@ function RecordContribution({ onClose }: { onClose: () => void }) {
           onChange={(event) => setRiReceiptRef(event.target.value)}
         />
 
-        <p className="text-ink-500 text-xs">
+        <p className="text-text-muted text-xs">
           This is recorded as a CLUB gift. A named member&rsquo;s contribution is entered from their
           own record, because only a named contribution counts toward the members-giving rate.
         </p>
 
         {saved > 0 && (
-          <p className="text-success-700 text-sm">
+          <p className="text-success-text text-sm">
             {saved} recorded in this sitting. They stay unverified until you verify them.
           </p>
         )}
@@ -371,14 +380,14 @@ function Figure({
 }) {
   return (
     <div>
-      <dt className="text-ink-500 text-xs">{label}</dt>
+      <dt className="text-text-muted text-xs">{label}</dt>
       <dd
         className={
           tone === 'success'
-            ? 'text-success-700 mt-0.5 text-lg font-semibold tabular-nums'
+            ? 'text-success-text mt-0.5 text-lg font-semibold tabular-nums'
             : tone === 'warning'
-              ? 'text-warning-700 mt-0.5 text-lg font-semibold tabular-nums'
-              : 'text-ink-900 mt-0.5 text-lg font-semibold tabular-nums'
+              ? 'text-warning-text mt-0.5 text-lg font-semibold tabular-nums'
+              : 'text-text-primary mt-0.5 text-lg font-semibold tabular-nums'
         }
       >
         {value}

@@ -19,15 +19,32 @@ function mediaOrigins(): string[] {
   return config.CSP_MEDIA_ORIGINS.split(/\s+/).filter(Boolean);
 }
 
+/**
+ * The one inline script in the application: the pre-paint theme and sidebar resolver in
+ * `apps/web/index.html`.
+ *
+ * It is admitted by HASH, not by `'unsafe-inline'`. A hash is at least as strict as `'self'`
+ * — it pins these exact bytes, where `'self'` would admit any same-origin file — and it buys
+ * the one thing an external script cannot: no render-blocking round trip before the theme is
+ * known. On a metered upcountry connection that round trip is the flash.
+ *
+ * The cost is a coupling between two files in different workspaces, which would otherwise be
+ * the kind of thing that silently rots: edit the script, forget the hash, and the theme
+ * quietly stops applying in production while every test still passes. `security-headers.test.ts`
+ * recomputes this from `index.html` and fails the build on a mismatch, which is the only
+ * reason the coupling is acceptable.
+ */
+export const PREPAINT_SCRIPT_HASH = "'sha256-223ctxZlKwMkwNxL8NfTOzhyv2WemcA1XNCCoXStMrk='";
+
 function contentSecurityPolicy(): string {
   const media = mediaOrigins();
 
   const directives: Record<string, string[]> = {
     'default-src': ["'self'"],
-    // No inline scripts: Vite emits hashed module files and nothing else, so this can be
-    // strict. `modulePreload.polyfill` is disabled in vite.config.ts to keep it that way
-    // when route-level code splitting lands.
-    'script-src': ["'self'"],
+    // Vite emits hashed module files and nothing else, so this stays strict.
+    // `modulePreload.polyfill` is disabled in vite.config.ts to keep it that way with
+    // route-level code splitting. The one hash is the pre-paint script above.
+    'script-src': ["'self'", PREPAINT_SCRIPT_HASH],
     // React sets `style` attributes at runtime, which `style-src-attr` governs and which
     // no nonce can cover. Inline STYLE is a far smaller exposure than inline script.
     'style-src': ["'self'", "'unsafe-inline'"],

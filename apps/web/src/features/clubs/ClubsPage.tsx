@@ -75,8 +75,8 @@ export function ClubsPage() {
       header: 'Club',
       render: (club: Club) => (
         <div className="min-w-0">
-          <p className="text-ink-900 font-medium">{club.name}</p>
-          <p className="text-ink-500 text-xs">
+          <p className="text-text-primary font-medium">{club.name}</p>
+          <p className="text-text-muted text-xs">
             {club.riClubId ? `RI ${club.riClubId}` : 'No RI Club ID'}
             {club.affiliation?.clusterName ? ` · ${club.affiliation.clusterName}` : ''}
           </p>
@@ -92,7 +92,7 @@ export function ClubsPage() {
             {club.affiliation.tier}
           </Badge>
         ) : (
-          <span className="text-ink-400">—</span>
+          <span className="text-text-muted">—</span>
         ),
     },
     { key: 'type', header: 'Type', render: (club: Club) => club.baseType, secondary: true },

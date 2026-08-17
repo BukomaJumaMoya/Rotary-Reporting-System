@@ -8,7 +8,7 @@ import { compressImage, formatBytes } from '../../lib/images';
 import { submit as queueSubmission } from '../../lib/offline/submit';
 import { queryKeys, useList } from '../../lib/queries';
 import { useToast } from '../../lib/toast';
-import { useAuth } from '../auth/useAuth';
+import { useAuth, useOwnClub } from '../auth/useAuth';
 import type { ClubListResponse } from '../clubs/types';
 import {
   clearDraft,
@@ -71,6 +71,12 @@ export function ReportPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const { permissions } = useAuth();
+  /**
+   * A club officer belongs to ONE club, and the system already knows which. Asking them to
+   * pick it from all 68 is asking them to tell us something we can see — and it is the
+   * control most likely to be got wrong on a phone at eleven at night.
+   */
+  const ownClub = useOwnClub();
   const [draft, setDraft] = useState<Draft>(loadDraft);
   // Peeked here and cleared in the effect below: a `useState` initialiser runs twice under
   // StrictMode and React discards the first result, so consuming it here would hand the
@@ -82,6 +88,16 @@ export function ReportPage() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => clearHandoffFiles(), []);
+
+  /**
+   * The club this report is FOR — derived, not stored.
+   *
+   * For a member with one club it comes from their appointment, so it is never draft state
+   * and cannot go stale: a draft saved before a rollover, or before `/auth/me` resolved,
+   * still reports against whatever the CURRENT appointment says. Only a member who genuinely
+   * has to choose keeps a chosen value in the draft.
+   */
+  const clubId = ownClub?.id ?? draft.clubId;
 
   const originalBytes = photos.reduce((total, photo) => total + photo.originalBytes, 0);
   const sendBytes = photos.reduce((total, photo) => total + photo.blob.size, 0);
@@ -133,9 +149,14 @@ export function ReportPage() {
   const types = useList<GroupedTypes>(queryKeys.activityTypes, '/activity-types', {
     isActive: true,
   });
-  const clubs = useList<ClubListResponse>([...queryKeys.clubs, 'picker'], '/clubs', {
-    pageSize: 100,
-  });
+  const clubs = useList<ClubListResponse>(
+    [...queryKeys.clubs, 'picker'],
+    '/clubs',
+    { pageSize: 100 },
+    // A member with one club never opens the picker, so never pay for it. On metered data
+    // that is 4 KB nobody needed.
+    { enabled: ownClub === null },
+  );
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -144,7 +165,9 @@ export function ReportPage() {
   if (!permissions.has('activity:create:club')) {
     return (
       <Card>
-        <p className="text-ink-600 text-sm">You do not have permission to report an activity.</p>
+        <p className="text-text-secondary text-sm">
+          You do not have permission to report an activity.
+        </p>
       </Card>
     );
   }
@@ -160,7 +183,7 @@ export function ReportPage() {
       id: draft.activityId,
       activityTypeId: draft.activityTypeId,
       hostScopeType: 'CLUB',
-      hostScopeId: draft.clubId,
+      hostScopeId: clubId,
       title: draft.title.trim(),
       description: draft.description.trim() || null,
       startsAt: new Date(draft.startsAt).toISOString(),
@@ -237,7 +260,7 @@ export function ReportPage() {
         <Card title="What kind of activity?">
           {(types.data?.data ?? []).map((group) => (
             <div key={group.category} className="mb-4">
-              <h3 className="text-ink-500 mb-2 text-xs font-semibold tracking-wide uppercase">
+              <h3 className="text-text-muted mb-2 text-xs font-semibold tracking-wide uppercase">
                 {group.category}
               </h3>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -255,8 +278,8 @@ export function ReportPage() {
                     className={cx(
                       'min-h-16 rounded-lg border p-3 text-left text-sm',
                       draft.activityTypeId === candidate.id
-                        ? 'border-cranberry-500 bg-cranberry-50 text-cranberry-700'
-                        : 'border-ink-200 hover:bg-ink-50',
+                        ? 'border-accent bg-accent-subtle text-accent-text'
+                        : 'border-border-subtle hover:bg-surface-sunken',
                     )}
                   >
                     {candidate.name}
@@ -271,16 +294,28 @@ export function ReportPage() {
       {draft.step === 2 && type && (
         <Card title={type.name}>
           <div className="flex flex-col gap-3">
-            <Select
-              label="Club"
-              value={draft.clubId}
-              placeholder="Choose your club"
-              options={(clubs.data?.data ?? []).map((club) => ({
-                value: club.id,
-                label: club.name,
-              }))}
-              onChange={(event) => set('clubId', event.target.value)}
-            />
+            {ownClub ? (
+              /*
+               * Not a control. A club secretary has one club and the system knows which, so
+               * this states it rather than asking — one fewer decision on the screen that
+               * matters most, and one fewer way to file a report against the wrong club.
+               */
+              <p className="text-text-secondary text-sm">
+                Reporting for <span className="text-text-primary font-medium">{ownClub.name}</span>
+              </p>
+            ) : (
+              <Select
+                label="Club"
+                value={draft.clubId}
+                placeholder="Choose your club"
+                hint="You cover more than one club, so this one is yours to choose."
+                options={(clubs.data?.data ?? []).map((club) => ({
+                  value: club.id,
+                  label: club.name,
+                }))}
+                onChange={(event) => set('clubId', event.target.value)}
+              />
+            )}
             <Input
               label="Title"
               required
@@ -301,11 +336,11 @@ export function ReportPage() {
             />
 
             <label className="flex flex-col gap-1.5">
-              <span className="text-ink-700 text-sm font-medium">What happened</span>
+              <span className="text-text-secondary text-sm font-medium">What happened</span>
               {/* No length limit. The predecessor's was a logged complaint. */}
               <textarea
                 rows={5}
-                className="border-ink-300 rounded-lg border px-3 py-2 text-base"
+                className="border-border rounded-lg border px-3 py-2 text-base"
                 value={draft.description}
                 onChange={(event) => set('description', event.target.value)}
               />
@@ -314,18 +349,18 @@ export function ReportPage() {
             {/* Everything below is rendered from the TYPE. No per-type branch exists here. */}
             {type.requiresReport && (
               <label className="flex flex-col gap-1.5">
-                <span className="text-ink-700 text-sm font-medium">Narrative report *</span>
+                <span className="text-text-secondary text-sm font-medium">Narrative report *</span>
                 <textarea
                   rows={5}
                   className={cx(
                     'rounded-lg border px-3 py-2 text-base',
-                    fieldErrors['narrativeReport'] ? 'border-danger-600' : 'border-ink-300',
+                    fieldErrors['narrativeReport'] ? 'border-danger' : 'border-border',
                   )}
                   value={draft.narrativeReport}
                   onChange={(event) => set('narrativeReport', event.target.value)}
                 />
                 {fieldErrors['narrativeReport'] && (
-                  <span role="alert" className="text-danger-700 text-xs">
+                  <span role="alert" className="text-danger-text text-xs">
                     {fieldErrors['narrativeReport']}
                   </span>
                 )}
@@ -358,9 +393,11 @@ export function ReportPage() {
 
             {type.requiresAreaOfFocus && (
               <fieldset>
-                <legend className="text-ink-700 mb-1 text-sm font-medium">Area of focus *</legend>
+                <legend className="text-text-secondary mb-1 text-sm font-medium">
+                  Area of focus *
+                </legend>
                 {fieldErrors['areaOfFocusCodes'] && (
-                  <p role="alert" className="text-danger-700 mb-1 text-xs">
+                  <p role="alert" className="text-danger-text mb-1 text-xs">
                     {fieldErrors['areaOfFocusCodes']}
                   </p>
                 )}
@@ -400,7 +437,7 @@ export function ReportPage() {
             <StepButtons
               onBack={() => set('step', 1)}
               onNext={() => set('step', 3)}
-              nextDisabled={!draft.clubId || draft.title.trim().length < 3}
+              nextDisabled={!clubId || draft.title.trim().length < 3}
             />
           </div>
         </Card>
@@ -432,12 +469,12 @@ export function ReportPage() {
                   // which on a phone holding four images is a tab the system eventually kills.
                   src={photo.url}
                   alt=""
-                  className="border-ink-200 h-24 w-24 rounded-lg border object-cover"
+                  className="border-border-subtle h-24 w-24 rounded-lg border object-cover"
                 />
                 <button
                   type="button"
                   onClick={() => removePhoto(index)}
-                  className="bg-danger-600 absolute -top-2 -right-2 h-6 w-6 rounded-full text-white"
+                  className="bg-danger absolute -top-2 -right-2 h-6 w-6 rounded-full text-white"
                   aria-label="Remove"
                 >
                   ×
@@ -459,13 +496,13 @@ export function ReportPage() {
             gets corrected, and it costs one line.
           */}
           {savedBytes > 0 && (
-            <p className="text-success-700 mt-3 text-xs">
+            <p className="text-success-text mt-3 text-xs">
               Photographs made smaller before sending: {formatBytes(originalBytes)} →{' '}
               {formatBytes(sendBytes)}, saving {formatBytes(savedBytes)} of your data.
             </p>
           )}
 
-          <p className="text-ink-500 mt-3 text-xs">
+          <p className="text-text-muted mt-3 text-xs">
             Location data is removed from every photograph before it is stored.
           </p>
 
@@ -483,7 +520,9 @@ export function ReportPage() {
             <Row label="Type" value={type.name} />
             <Row
               label="Club"
-              value={clubs.data?.data.find((club) => club.id === draft.clubId)?.name ?? '—'}
+              value={
+                ownClub?.name ?? clubs.data?.data.find((club) => club.id === clubId)?.name ?? '—'
+              }
             />
             <Row label="Title" value={draft.title} />
             <Row label="When" value={draft.startsAt.replace('T', ' ')} />
@@ -522,10 +561,10 @@ function Steps({ current }: { current: number }) {
           className={cx(
             'flex-1 rounded-full py-1 text-center text-xs font-medium',
             index + 1 === current
-              ? 'bg-cranberry-500 text-white'
+              ? 'bg-accent text-white'
               : index + 1 < current
-                ? 'bg-cranberry-100 text-cranberry-700'
-                : 'bg-ink-100 text-ink-500',
+                ? 'bg-accent-subtle text-accent-text'
+                : 'bg-surface-sunken text-text-muted',
           )}
         >
           {label}
@@ -614,8 +653,8 @@ function DeclaredField({
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-4">
-      <dt className="text-ink-500">{label}</dt>
-      <dd className="text-ink-900 text-right">{value}</dd>
+      <dt className="text-text-muted">{label}</dt>
+      <dd className="text-text-primary text-right">{value}</dd>
     </div>
   );
 }

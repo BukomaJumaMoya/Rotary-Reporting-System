@@ -90,7 +90,7 @@ function DistrictGrid() {
               key: 'club',
               header: 'Club',
               render: (row: DuesStatusRow) => (
-                <span className="text-ink-900 font-medium">{row.clubName}</span>
+                <span className="text-text-primary font-medium">{row.clubName}</span>
               ),
             },
             {
@@ -123,7 +123,7 @@ function DistrictGrid() {
               key: 'outstanding',
               header: 'Outstanding',
               render: (row: DuesStatusRow) => (
-                <span className={row.isOverdue ? 'text-danger-700 font-medium' : ''}>
+                <span className={row.isOverdue ? 'text-danger-text font-medium' : ''}>
                   {formatAmount(row.amountOutstanding)}
                   {row.isOverdue && <span className="ml-1 text-xs">overdue</span>}
                 </span>
@@ -202,7 +202,7 @@ function BulkIssue({ onClose }: { onClose: () => void }) {
           onChange={(event) => setDueOn(event.target.value)}
         />
 
-        <p className="text-ink-500 text-xs">
+        <p className="text-text-muted text-xs">
           Clubs that already have an invoice of this type are left untouched — including their
           amount. Safe to run again after a new club is chartered.
         </p>
@@ -264,7 +264,7 @@ function RecordPayment({
   return (
     <Dialog isOpen title={`Payment from ${clubName}`} onClose={onClose}>
       <div className="flex flex-col gap-3">
-        <p className="text-ink-500 text-sm">
+        <p className="text-text-muted text-sm">
           {formatMoney(outstanding)} still outstanding. An overpayment is accepted and flagged, not
           refused.
         </p>
@@ -304,7 +304,7 @@ function RecordPayment({
           />
           <span>
             Confirm it has arrived
-            <span className="text-ink-500 block text-xs">
+            <span className="text-text-muted block text-xs">
               Confirming issues the receipt number and tells the club. Leave it unticked to record a
               claim you have not yet checked against the bank — it will not count until you confirm.
             </span>
@@ -398,16 +398,16 @@ function InvoiceCard({ invoice }: { invoice: DuesInvoice }) {
       </dl>
 
       {invoice.isOverpaid && (
-        <p className="text-warning-700 mb-3 text-sm">
+        <p className="text-warning-text mb-3 text-sm">
           This invoice has been overpaid. The district has a record of it — ask the treasurer how it
           will be applied.
         </p>
       )}
       {invoice.waiverReason && (
-        <p className="text-ink-600 mb-3 text-sm">Waived: {invoice.waiverReason}</p>
+        <p className="text-text-secondary mb-3 text-sm">Waived: {invoice.waiverReason}</p>
       )}
 
-      <p className="text-ink-500 mb-2 text-xs">Due {invoice.dueOn}</p>
+      <p className="text-text-muted mb-2 text-xs">Due {invoice.dueOn}</p>
 
       {payments.length > 0 && (
         <Table
@@ -420,7 +420,7 @@ function InvoiceCard({ invoice }: { invoice: DuesInvoice }) {
               render: (row) =>
                 // The receipt number is the reference a club quotes back when the district
                 // says the money never arrived. It exists only once confirmed.
-                row.receiptNo ?? <span className="text-ink-500">awaiting confirmation</span>,
+                row.receiptNo ?? <span className="text-text-muted">awaiting confirmation</span>,
             },
           ]}
           rows={payments}
@@ -442,14 +442,14 @@ function Figure({
 }) {
   return (
     <div>
-      <dt className="text-ink-500 text-xs">{label}</dt>
+      <dt className="text-text-muted text-xs">{label}</dt>
       <dd
         className={
           tone === 'success'
-            ? 'text-success-700 mt-0.5 font-semibold tabular-nums'
+            ? 'text-success-text mt-0.5 font-semibold tabular-nums'
             : tone === 'danger'
-              ? 'text-danger-700 mt-0.5 font-semibold tabular-nums'
-              : 'text-ink-900 mt-0.5 font-semibold tabular-nums'
+              ? 'text-danger-text mt-0.5 font-semibold tabular-nums'
+              : 'text-text-primary mt-0.5 font-semibold tabular-nums'
         }
       >
         {value}

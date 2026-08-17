@@ -29,11 +29,11 @@ export function ForgotPasswordPage() {
   if (isSent) {
     return (
       <AuthShell title="Check your email">
-        <p className="text-ink-600 text-sm">
+        <p className="text-text-secondary text-sm">
           If an account exists for {email}, a reset link is on its way. The link is valid for one
           hour and can be used once.
         </p>
-        <Link to="/login" className="text-azure-600 mt-4 block text-center text-sm underline">
+        <Link to="/login" className="text-info mt-4 block text-center text-sm underline">
           Back to sign in
         </Link>
       </AuthShell>
@@ -54,7 +54,7 @@ export function ForgotPasswordPage() {
         <Button type="submit" isLoading={isSubmitting} fullWidth>
           Send the link
         </Button>
-        <Link to="/login" className="text-azure-600 text-center text-sm underline">
+        <Link to="/login" className="text-info text-center text-sm underline">
           Back to sign in
         </Link>
       </form>
@@ -119,7 +119,7 @@ export function ResetPasswordPage() {
         />
 
         {error && (
-          <p role="alert" className="text-danger-700 text-sm">
+          <p role="alert" className="text-danger-text text-sm">
             {error.message}
           </p>
         )}
@@ -200,14 +200,14 @@ export function AcceptInvitePage() {
             onChange={(event) => setAcceptsDataProcessing(event.target.checked)}
             className="mt-1 h-5 w-5 shrink-0"
           />
-          <span className="text-ink-600">
+          <span className="text-text-secondary">
             I agree to the district processing my personal data to administer club membership,
             activity and assessment. My contact details stay private unless I choose otherwise.
           </span>
         </label>
 
         {error && (
-          <p role="alert" className="text-danger-700 text-sm">
+          <p role="alert" className="text-danger-text text-sm">
             {error.message}
           </p>
         )}

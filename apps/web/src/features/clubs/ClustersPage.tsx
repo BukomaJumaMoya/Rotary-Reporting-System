@@ -61,11 +61,11 @@ export function ClustersPage() {
             {clusters.data.data.map((cluster) => (
               <li
                 key={cluster.id}
-                className="border-ink-200 flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+                className="border-border-subtle flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
               >
                 <div className="min-w-0">
-                  <p className="text-ink-900 font-medium">{cluster.name}</p>
-                  <p className="text-ink-500 text-xs">{cluster.regionName ?? 'No region'}</p>
+                  <p className="text-text-primary font-medium">{cluster.name}</p>
+                  <p className="text-text-muted text-xs">{cluster.regionName ?? 'No region'}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={cluster.clubCount === 0 ? 'warning' : 'neutral'}>
@@ -223,7 +223,7 @@ function AssignDialog({ cluster, onClose }: { cluster: Cluster; onClose: () => v
         <SkeletonList rows={5} />
       ) : (
         <>
-          <p className="text-ink-500 mb-2 text-xs">
+          <p className="text-text-muted mb-2 text-xs">
             A club already in another cluster moves here. The whole membership is sent, so unticking
             a club removes it.
           </p>

@@ -55,14 +55,14 @@ export function ClubRosterPanel({ clubId }: { clubId: string }) {
       header: 'Member',
       render: (entry: RosterEntry) => (
         <div className="min-w-0">
-          <p className="text-ink-900 font-medium">
+          <p className="text-text-primary font-medium">
             {entry.person.firstName} {entry.person.lastName}
           </p>
           {/* Absent, not empty — the serialiser leaves out what the caller may not see. */}
-          {entry.person.email && <p className="text-ink-500 text-xs">{entry.person.email}</p>}
-          {entry.person.phone && <p className="text-ink-500 text-xs">{entry.person.phone}</p>}
+          {entry.person.email && <p className="text-text-muted text-xs">{entry.person.email}</p>}
+          {entry.person.phone && <p className="text-text-muted text-xs">{entry.person.phone}</p>}
           {entry.person.isRedacted && !entry.person.email && !entry.person.phone && (
-            <p className="text-ink-400 text-xs">Contact details are private</p>
+            <p className="text-text-muted text-xs">Contact details are private</p>
           )}
         </div>
       ),
@@ -217,26 +217,26 @@ export function MembershipHistoryPage() {
                 <li
                   key={event.id}
                   className={[
-                    'border-ink-200 rounded-lg border p-3',
-                    event.isSuperseded ? 'bg-ink-50 opacity-70' : '',
+                    'border-border-subtle rounded-lg border p-3',
+                    event.isSuperseded ? 'bg-surface-sunken opacity-70' : '',
                   ].join(' ')}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-ink-900 font-medium">
+                      <p className="text-text-primary font-medium">
                         {event.person.firstName} {event.person.lastName}
                       </p>
-                      <p className="text-ink-500 text-xs">
+                      <p className="text-text-muted text-xs">
                         {event.effectiveOn}
                         {event.reasonCode ? ` · ${event.reasonCode}` : ''}
                         {event.counterpartyClubName ? ` · ${event.counterpartyClubName}` : ''}
                         {event.rotaryClubName ? ` · ${event.rotaryClubName}` : ''}
                       </p>
                       {event.reasonNote && (
-                        <p className="text-ink-600 mt-1 text-xs">{event.reasonNote}</p>
+                        <p className="text-text-secondary mt-1 text-xs">{event.reasonNote}</p>
                       )}
                       {event.supersedesEventId && (
-                        <p className="text-ink-500 mt-1 text-xs">
+                        <p className="text-text-muted mt-1 text-xs">
                           Corrects{' '}
                           {byId.get(event.supersedesEventId)
                             ? `the ${byId.get(event.supersedesEventId)?.eventType} of ${byId.get(event.supersedesEventId)?.effectiveOn}`
@@ -332,7 +332,7 @@ function CorrectDialog({
       }
     >
       <div className="flex flex-col gap-3">
-        <p className="text-ink-600 text-sm">
+        <p className="text-text-secondary text-sm">
           {event.eventType} for {event.person.firstName} {event.person.lastName} on{' '}
           {event.effectiveOn}. The original stays in the log; this adds an event pointing at it.
         </p>
@@ -407,7 +407,7 @@ export function MembershipStatsPanel({ clubId }: { clubId?: string }) {
 
       {data.byReason.length > 0 && (
         <div className="mt-4">
-          <h3 className="text-ink-700 mb-2 text-sm font-semibold">Why members left</h3>
+          <h3 className="text-text-secondary mb-2 text-sm font-semibold">Why members left</h3>
           <ul className="flex flex-wrap gap-2">
             {data.byReason.map((reason) => (
               <li key={reason.reasonCode}>
@@ -421,7 +421,7 @@ export function MembershipStatsPanel({ clubId }: { clubId?: string }) {
       )}
 
       {data.transitionsToRotary > 0 && (
-        <p className="text-ink-600 mt-4 text-sm">
+        <p className="text-text-secondary mt-4 text-sm">
           {data.transitionsToRotary} member{data.transitionsToRotary === 1 ? '' : 's'} moved on to
           Rotary.
         </p>
@@ -441,15 +441,15 @@ function Figure({
 }) {
   return (
     <div>
-      <dt className="text-ink-500 text-xs">{label}</dt>
+      <dt className="text-text-muted text-xs">{label}</dt>
       <dd
         className={[
           'text-xl font-semibold',
           tone === 'success'
-            ? 'text-success-700'
+            ? 'text-success-text'
             : tone === 'danger'
-              ? 'text-danger-700'
-              : 'text-ink-900',
+              ? 'text-danger-text'
+              : 'text-text-primary',
         ].join(' ')}
       >
         {value}
@@ -482,8 +482,8 @@ export function TransitionsPage() {
       header: 'Member',
       render: (row: Transition) => (
         <div>
-          <p className="text-ink-900 font-medium">{row.personName}</p>
-          <p className="text-ink-500 text-xs">{row.clubName}</p>
+          <p className="text-text-primary font-medium">{row.personName}</p>
+          <p className="text-text-muted text-xs">{row.clubName}</p>
         </div>
       ),
     },

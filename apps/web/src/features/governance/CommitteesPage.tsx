@@ -46,10 +46,10 @@ export function CommitteesPage() {
 
   const renderNode = (node: CommitteeNode) => (
     <li key={node.id}>
-      <div className="border-ink-200 flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
+      <div className="border-border-subtle flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
         <div className="min-w-0">
-          <p className="text-ink-900 font-medium">{node.name}</p>
-          {node.mandate && <p className="text-ink-500 text-xs">{node.mandate}</p>}
+          <p className="text-text-primary font-medium">{node.name}</p>
+          {node.mandate && <p className="text-text-muted text-xs">{node.mandate}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge>{node.memberCount} members</Badge>
@@ -164,7 +164,7 @@ function CreateCommitteeDialog({
           hint="What this committee is for, in a sentence."
         />
         {parent && parent.depth >= 2 && (
-          <p className="text-warning-700 text-sm">
+          <p className="text-warning-text text-sm">
             Committees nest at most three deep. This will be the last level.
           </p>
         )}
@@ -223,11 +223,11 @@ function MembersDialog({
             {members.data.data.map((member) => (
               <li
                 key={member.appointmentId}
-                className="border-ink-200 flex items-center justify-between gap-2 rounded-lg border p-2"
+                className="border-border-subtle flex items-center justify-between gap-2 rounded-lg border p-2"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{member.personName}</p>
-                  <p className="text-ink-500 truncate text-xs">
+                  <p className="text-text-muted truncate text-xs">
                     {member.positionName}
                     {member.roleLabel ? ` · ${member.roleLabel}` : ''}
                   </p>
@@ -245,7 +245,7 @@ function MembersDialog({
         )}
 
         {canManage && (
-          <div className="border-ink-200 flex flex-col gap-3 border-t pt-4">
+          <div className="border-border-subtle flex flex-col gap-3 border-t pt-4">
             <Select
               label="Add an appointment"
               value={appointmentId}

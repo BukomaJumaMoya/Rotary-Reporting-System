@@ -1,152 +1,392 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAuth, useClearAuth } from '../../features/auth/useAuth';
 import { clearDeviceState } from '../../lib/offline/caches';
 import { startOutboxScheduler, useOutbox } from '../../lib/offline/submit';
+import { useSidebar, useTheme } from '../../lib/theme';
 import { Button } from '../ui';
+import { Icon, type IconName } from '../ui/icons';
 import { cx } from '../../lib/cx';
 import { ConnectionBanner } from './ConnectionBanner';
 
 /**
- * The frame.
+ * THE FRAME.
  *
- * Sidebar on desktop, bottom navigation on mobile — not a hamburger, because a menu
- * behind a tap is a menu nobody opens, and the thumb is already at the bottom of the
- * phone. Navigation items filter by permission, which is courtesy rather than security:
- * the server refuses regardless.
+ * A fixed sidebar and header; only the content column scrolls, which is what lets a sticky
+ * table header work without fighting the page.
+ *
+ * **The sidebar has three states.** Expanded at 264px, a 64px icon rail, and — below `md`
+ * only — an overlay drawer over a scrim. The choice between the first two is the member's,
+ * persisted, and read by the inline script in `index.html` BEFORE first paint: a sidebar
+ * that snaps from expanded to rail once React hydrates is the layout equivalent of a theme
+ * flash, and it happens on every single page load.
+ *
+ * **This replaced a bottom bar, and the reasoning that put the bottom bar there was sound
+ * until it was not.** The original argument was that a menu behind a tap is a menu nobody
+ * opens, and the thumb is already at the bottom of a phone. That holds for five
+ * destinations. By M4 there were fifteen sharing one flex row — about 24px each on a 360px
+ * screen, half the width of a fingertip. A bar nobody can hit is worse than a menu behind a
+ * tap, and it fails silently: people just stop using the parts they cannot reach.
+ *
+ * Two things stay OUT of the drawer, because they are what the original argument was
+ * actually about:
+ *
+ *  * **Report** — a button in the header. It is the screen the system exists for.
+ *  * **The pending count** — a badge on the menu button itself. Three unsent reports are not
+ *    something a member should have to go browsing to discover.
  */
 
 interface NavItem {
   to: string;
   label: string;
+  icon: IconName;
   /** Undefined means every signed-in member sees it. */
   permission?: string;
-  /** A short glyph for the bottom bar, where there is no room for words alone. */
-  glyph: string;
-  /** A count shown beside the label. Rendered only when it is above zero. */
-  badge?: number;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { to: '/', label: 'Dashboard', glyph: '◎' },
-  // Held by every position on the slate, club officers included: the directory is the one
-  // screen everybody uses.
-  { to: '/clubs', label: 'Clubs', permission: 'club:read:district', glyph: '⌂' },
-  { to: '/activities', label: 'Activities', permission: 'activity:read:club', glyph: '★' },
-  // THE screen. One tap from anywhere, because it is the one a secretary opens at eleven
-  // at night and the reason the whole system exists.
-  { to: '/report', label: 'Report', permission: 'activity:create:club', glyph: '✎' },
-  { to: '/membership/record', label: 'Members', permission: 'membership:write:club', glyph: '✚' },
+interface NavGroup {
+  /** Rendered as a micro, tracked, muted heading. Hidden in the rail. */
+  label: string;
+  items: NavItem[];
+}
+
+/**
+ * Grouped, because flat navigation fails at this size.
+ *
+ * Every item is filtered through the member's permissions, so most people see two of these
+ * groups and never learn the others exist. A club secretary's sidebar is Overview and My
+ * Club; the district secretary's is all five.
+ */
+const NAV_GROUPS: NavGroup[] = [
   {
-    to: '/finance/transactions',
-    label: 'Money',
-    permission: 'finance:read:club',
-    glyph: '¤',
-  },
-  { to: '/finance/dues', label: 'Dues', permission: 'finance:read:club', glyph: '≡' },
-  { to: '/finance/budget', label: 'Budget', permission: 'finance:read:club', glyph: '◱' },
-  { to: '/finance/trf', label: 'TRF', permission: 'finance:read:club', glyph: '◈' },
-  {
-    to: '/membership/transitions',
-    label: 'Transitions',
-    permission: 'membership:read:club',
-    glyph: '⇢',
+    label: 'Overview',
+    items: [{ to: '/', label: 'Dashboard', icon: 'dashboard' }],
   },
   {
-    to: '/admin/activity-types',
-    label: 'Types',
-    permission: 'activitytype:manage:district',
-    glyph: '⚙',
+    label: 'My Club',
+    items: [
+      {
+        to: '/report',
+        label: 'Report activity',
+        icon: 'report',
+        permission: 'activity:create:club',
+      },
+      {
+        to: '/activities',
+        label: 'Activities',
+        icon: 'activities',
+        permission: 'activity:read:club',
+      },
+      {
+        to: '/membership/record',
+        label: 'Members',
+        icon: 'members',
+        permission: 'membership:write:club',
+      },
+      {
+        to: '/membership/transitions',
+        label: 'Transitions',
+        icon: 'transitions',
+        permission: 'membership:read:club',
+      },
+    ],
   },
   {
-    to: '/admin/clusters',
-    label: 'Clusters',
-    permission: 'cluster:manage:district',
-    glyph: '⬡',
+    label: 'Finance',
+    items: [
+      {
+        to: '/finance/transactions',
+        label: 'Transactions',
+        icon: 'money',
+        permission: 'finance:read:club',
+      },
+      { to: '/finance/budget', label: 'Budget', icon: 'budget', permission: 'finance:read:club' },
+      { to: '/finance/dues', label: 'Dues', icon: 'dues', permission: 'finance:read:club' },
+      { to: '/finance/trf', label: 'TRF', icon: 'trf', permission: 'finance:read:club' },
+    ],
   },
   {
-    to: '/admin/positions',
-    label: 'Positions',
-    permission: 'position:manage:district',
-    glyph: '⬒',
+    label: 'District',
+    items: [
+      { to: '/clubs', label: 'Clubs', icon: 'clubs', permission: 'club:read:district' },
+      {
+        to: '/admin/clusters',
+        label: 'Clusters',
+        icon: 'clusters',
+        permission: 'cluster:manage:district',
+      },
+    ],
   },
   {
-    to: '/admin/appointments',
-    label: 'Appointments',
-    permission: 'appointment:read:district',
-    glyph: '⚇',
+    label: 'Administration',
+    items: [
+      {
+        to: '/admin/positions',
+        label: 'Positions',
+        icon: 'positions',
+        permission: 'position:manage:district',
+      },
+      {
+        to: '/admin/appointments',
+        label: 'Appointments',
+        icon: 'appointments',
+        permission: 'appointment:read:district',
+      },
+      {
+        to: '/admin/committees',
+        label: 'Committees',
+        icon: 'committees',
+        permission: 'committee:manage:district',
+      },
+      {
+        to: '/admin/invitations',
+        label: 'Invitations',
+        icon: 'invites',
+        permission: 'person:invite:club',
+      },
+      {
+        to: '/admin/activity-types',
+        label: 'Activity types',
+        icon: 'types',
+        permission: 'activitytype:manage:district',
+      },
+      { to: '/admin/audit', label: 'Audit', icon: 'audit', permission: 'audit:read:district' },
+      {
+        to: '/admin/rollover',
+        label: 'Rollover',
+        icon: 'rollover',
+        permission: 'year:rollover:district',
+      },
+    ],
   },
-  {
-    to: '/admin/committees',
-    label: 'Committees',
-    permission: 'committee:manage:district',
-    glyph: '⬢',
-  },
-  {
-    to: '/admin/invitations',
-    label: 'Invites',
-    permission: 'person:invite:club',
-    glyph: '✉',
-  },
-  { to: '/admin/audit', label: 'Audit', permission: 'audit:read:district', glyph: '☰' },
-  { to: '/admin/rollover', label: 'Rollover', permission: 'year:rollover:district', glyph: '⟳' },
 ];
 
-function useVisibleNav(): NavItem[] {
+function useVisibleGroups(): NavGroup[] {
   const { permissions } = useAuth();
   const { count } = useOutbox();
 
-  const visible = NAV_ITEMS.filter((item) => !item.permission || permissions.has(item.permission));
+  const groups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.permission || permissions.has(item.permission)),
+  })).filter((group) => group.items.length > 0);
 
-  // Appears only when there is something waiting. A permanent "0 pending" entry would spend
-  // a slot in a bottom bar that has none to spare, and would train members to ignore it.
+  // Appears only when there is something waiting. A permanent "0 pending" entry would train
+  // members to ignore the one row that will one day matter.
   if (count > 0) {
-    visible.push({ to: '/pending', label: 'Pending', glyph: '↑', badge: count });
+    groups[0]?.items.push({ to: '/pending', label: 'Pending', icon: 'pending' });
   }
-  return visible;
+  return groups;
 }
 
 /** The Rotaract wordmark. Never the Rotary wheel — Rotaract has its own mark. */
-function Wordmark() {
+function Wordmark({ compact = false }: { compact?: boolean }) {
+  if (compact) {
+    return (
+      <span
+        className="text-accent text-heading-md font-display leading-none"
+        aria-label="Rotaract District 9218"
+      >
+        R
+      </span>
+    );
+  }
   return (
     <div className="flex items-baseline gap-1.5">
-      <span className="text-cranberry-500 text-lg font-bold tracking-tight">Rotaract</span>
-      <span className="text-ink-400 text-xs font-medium">D9218</span>
+      <span className="text-accent font-display text-heading-md leading-none">Rotaract</span>
+      <span className="text-text-muted text-micro font-medium tracking-[0.08em]">D9218</span>
     </div>
   );
 }
 
-function SignedInAs() {
-  const { person, context, appointments } = useAuth();
+/**
+ * The Rotary Year, made visible.
+ *
+ * Axiom 1 says the Rotary Year is a dimension rather than a filter, and this is where that
+ * becomes something a member can see. A quiet neutral pill in the current year; amber, with
+ * a history icon, the moment the context is one that cannot be written to.
+ *
+ * It exists to prevent the single most confusing failure in a year-scoped system: somebody
+ * working in a historical context, wondering why every save is refused.
+ */
+function YearBadge() {
+  const { context } = useAuth();
+  if (!context?.rotaryYearLabel) return null;
+
+  const readOnly = !context.isYearWritable;
+
+  return (
+    <span
+      className={cx(
+        'text-micro inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 font-medium tabular-nums',
+        readOnly ? 'bg-warning-subtle text-warning-text' : 'bg-surface-sunken text-text-secondary',
+      )}
+      title={readOnly ? 'This year is read-only' : 'The current Rotary Year'}
+    >
+      {readOnly && <Icon name="history" className="size-3.5" />}
+      RY {context.rotaryYearLabel}
+    </span>
+  );
+}
+
+/**
+ * A strip across the top of the content when the year cannot be written to.
+ *
+ * The badge alone is too quiet for this. A member who has navigated into a locked year and
+ * is halfway through a form needs to be told before they finish it, not after the server
+ * refuses — `YEAR_LOCKED` arriving on submit is a wasted five minutes and an unexplained
+ * failure.
+ */
+function ReadOnlyYearStrip() {
+  const { context } = useAuth();
+  if (!context?.rotaryYearLabel || context.isYearWritable) return null;
+
+  return (
+    <div className="bg-warning-subtle text-warning-text text-caption flex items-center justify-center gap-2 px-4 py-2">
+      <Icon name="history" className="size-4 shrink-0" />
+      <span>
+        Viewing <strong className="font-semibold">{context.rotaryYearLabel}</strong> — read only.
+        {context.isYearLocked ? ' This year has been closed.' : ''}
+      </span>
+    </div>
+  );
+}
+
+function SignedInAs({ compact = false }: { compact?: boolean }) {
+  const { person, appointments } = useAuth();
   if (!person) return null;
 
   const primary = appointments[0];
+  const initials = `${person.firstName[0] ?? ''}${person.lastName[0] ?? ''}`.toUpperCase();
+
+  if (compact) {
+    return (
+      <span
+        className="bg-accent-subtle text-accent-text text-caption grid size-9 shrink-0 place-items-center rounded-full font-semibold"
+        title={`${person.firstName} ${person.lastName}`}
+      >
+        {initials}
+      </span>
+    );
+  }
 
   return (
-    <div className="min-w-0">
-      <p className="text-ink-900 truncate text-sm font-medium">
-        {person.firstName} {person.lastName}
-      </p>
-      <p className="text-ink-500 truncate text-xs">
-        {primary
-          ? `${primary.positionName}${primary.scopeName ? ` · ${primary.scopeName}` : ''}`
-          : 'No active appointment'}
-        {context?.rotaryYearLabel ? ` · RY ${context.rotaryYearLabel}` : ''}
-      </p>
+    <div className="flex items-center gap-3">
+      <span className="bg-accent-subtle text-accent-text text-caption grid size-9 shrink-0 place-items-center rounded-full font-semibold">
+        {initials}
+      </span>
+      {/*
+        The position AND the club, each on its own line and not truncated away. "Club
+        Secretary" without "Rotaract Club of Kampala" reads as an account belonging to
+        nobody — which is exactly how it read on a phone, where this panel lived in a
+        sidebar the mobile layout never rendered.
+      */}
+      <div className="min-w-0">
+        <p className="text-text-primary text-body-sm truncate font-medium">
+          {person.firstName} {person.lastName}
+        </p>
+        <p className="text-text-muted text-caption truncate">
+          {primary ? primary.positionName : 'No active appointment'}
+        </p>
+        {primary?.scopeName && (
+          <p className="text-text-secondary text-caption truncate">{primary.scopeName}</p>
+        )}
+      </div>
     </div>
+  );
+}
+
+function ThemeToggle() {
+  const { theme, toggle } = useTheme();
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-label={theme === 'dark' ? 'Switch to the light theme' : 'Switch to the dark theme'}
+      className="text-text-secondary hover:bg-surface-raised press grid size-10 shrink-0 place-items-center rounded-md"
+    >
+      <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+    </button>
+  );
+}
+
+/** Straight to the reporting form, for the member whose job that is. */
+function ReportShortcut() {
+  const { permissions } = useAuth();
+  if (!permissions.has('activity:create:club')) return null;
+
+  return (
+    <NavLink
+      to="/report"
+      className={({ isActive }) =>
+        cx(
+          'press text-body-sm flex min-h-10 shrink-0 items-center gap-1.5 rounded-md px-3 font-medium',
+          isActive
+            ? 'bg-accent-subtle text-accent-text'
+            : 'bg-accent text-white hover:bg-accent-hover',
+        )
+      }
+    >
+      <Icon name="report" className="size-4" />
+      <span className="hidden sm:inline">Report</span>
+    </NavLink>
   );
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const items = useVisibleNav();
+  const groups = useVisibleGroups();
   const navigate = useNavigate();
   const clearAuth = useClearAuth();
+  const { count } = useOutbox();
+  const { isRail, toggle: toggleSidebar } = useSidebar();
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  /** Rail hover-peek: the expanded panel floats over the content without reflowing it. */
+  const [isPeeking, setIsPeeking] = useState(false);
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // The drain loop lives as long as the signed-in shell does. It is what sends the queue on
   // a device where the service worker never registered — an http:// LAN address, or iOS
   // Safari, which has never shipped Background Sync.
   useEffect(() => startOutboxScheduler(), []);
+
+  // Escape closes the drawer; `[` toggles the rail. A full-screen overlay with no keyboard
+  // exit is a trap for anybody not using a touchscreen.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setIsDrawerOpen(false);
+        return;
+      }
+      // Not while typing — `[` is a character somebody may well be entering into a field.
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT' ||
+        target?.isContentEditable === true;
+      if (event.key === '[' && !typing && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggleSidebar]);
+
+  useEffect(() => () => clearTimeout(peekTimer.current), []);
+
+  const openPeek = () => {
+    if (!isRail) return;
+    clearTimeout(peekTimer.current);
+    // 200ms in, 300ms out. Peeking instantly would fire every time the pointer crossed the
+    // rail on its way somewhere else.
+    peekTimer.current = setTimeout(() => setIsPeeking(true), 200);
+  };
+  const closePeek = () => {
+    clearTimeout(peekTimer.current);
+    peekTimer.current = setTimeout(() => setIsPeeking(false), 300);
+  };
 
   const signOut = async () => {
     await api
@@ -162,96 +402,211 @@ export function AppShell({ children }: { children: ReactNode }) {
     navigate('/login', { replace: true });
   };
 
-  return (
-    <div className="min-h-dvh md:flex">
-      <aside className="border-ink-200 hidden w-60 shrink-0 flex-col border-r bg-white md:flex">
-        <div className="border-ink-200 border-b px-4 py-4">
-          <Wordmark />
-        </div>
-        <nav className="flex-1 p-2">
-          <ul className="flex flex-col gap-0.5">
-            {items.map((item) => (
-              <li key={item.to}>
-                <NavLink
-                  to={item.to}
-                  end={item.to === '/'}
-                  className={({ isActive }) =>
-                    cx(
-                      'flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm',
-                      isActive
-                        ? 'bg-cranberry-50 text-cranberry-700 font-medium'
-                        : 'text-ink-600 hover:bg-ink-100',
-                    )
-                  }
-                >
-                  <span aria-hidden="true">{item.glyph}</span>
-                  {item.label}
-                  {item.badge ? (
-                    <span className="bg-cranberry-500 ml-auto rounded-full px-1.5 py-0.5 text-[11px] font-medium text-white">
-                      {item.badge}
-                    </span>
-                  ) : null}
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <div className="border-ink-200 flex flex-col gap-2 border-t p-3">
-          <SignedInAs />
-          <Button variant="secondary" onClick={() => void signOut()} fullWidth>
-            Sign out
+  /**
+   * `collapsed` drives the icon-only presentation. It is NOT the same as `isRail`: a peeking
+   * rail and an open drawer both render expanded contents inside a rail-width shell.
+   */
+  const sidebarBody = (collapsed: boolean) => (
+    <>
+      <div
+        className={cx(
+          'flex h-14 shrink-0 items-center border-b border-border-subtle',
+          collapsed ? 'justify-center px-2' : 'justify-between px-4',
+        )}
+      >
+        <Wordmark compact={collapsed} />
+        <button
+          type="button"
+          onClick={() => setIsDrawerOpen(false)}
+          aria-label="Close the menu"
+          className="text-text-muted hover:bg-surface-raised -mr-2 grid size-11 place-items-center rounded-md md:hidden"
+        >
+          <Icon name="close" />
+        </button>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
+        {groups.map((group) => (
+          <div key={group.label} className="mb-4 last:mb-0">
+            {/* Uppercase always carries added tracking; without it, it is the signature of
+                unconsidered typography. Hidden in the rail, where there is no room. */}
+            {!collapsed && (
+              <p className="text-text-muted text-micro mb-1 px-3 font-medium tracking-[0.08em] uppercase">
+                {group.label}
+              </p>
+            )}
+            <ul className="flex flex-col gap-0.5">
+              {group.items.map((item) => (
+                <li key={item.to}>
+                  <NavLink
+                    to={item.to}
+                    end={item.to === '/'}
+                    // Closed here rather than by watching the location: this IS the event,
+                    // and an effect chasing the URL would be a cascading render for
+                    // something a click handler already knows.
+                    onClick={() => setIsDrawerOpen(false)}
+                    title={collapsed ? item.label : undefined}
+                    className={({ isActive }) =>
+                      cx(
+                        'text-body-sm relative flex min-h-11 items-center gap-3 rounded-md transition-colors duration-[var(--duration-instant)]',
+                        collapsed ? 'justify-center px-0' : 'px-3',
+                        isActive
+                          ? // A tint and a 2px indicator, never a full cranberry fill. The
+                            // brand colour is too loud for something permanently on screen,
+                            // and spending it here would spend it everywhere.
+                            'bg-accent-subtle text-accent-text font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-accent'
+                          : 'text-text-secondary hover:bg-surface-raised hover:text-text-primary',
+                      )
+                    }
+                  >
+                    <Icon name={item.icon} />
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </nav>
+
+      <div className="border-border-subtle flex flex-col gap-3 border-t p-3">
+        {collapsed ? <SignedInAs compact /> : <SignedInAs />}
+        <div className={cx('flex gap-2', collapsed && 'flex-col')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void signOut()}
+            fullWidth={!collapsed}
+            aria-label="Sign out"
+          >
+            <Icon name="signOut" className="size-4" />
+            {!collapsed && 'Sign out'}
           </Button>
+          {/* The collapse toggle lives in the footer, out of the way of the navigation it
+              governs. `[` does the same thing for anybody who would rather not reach. */}
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            aria-label={isRail ? 'Expand the sidebar' : 'Collapse the sidebar to icons'}
+            title={`${isRail ? 'Expand' : 'Collapse'} sidebar  [`}
+            className="text-text-muted hover:bg-surface-raised press hidden size-9 shrink-0 place-items-center rounded-md md:grid"
+          >
+            <Icon name={isRail ? 'expand' : 'collapse'} className="size-4" />
+          </button>
         </div>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="bg-background flex min-h-dvh">
+      {/*
+        THE WIDTH SNAPS; THE CONTENTS ANIMATE.
+
+        Transitioning `width` would run layout on every frame of the collapse, for the whole
+        page, and that is exactly the kind of thing that drops frames on a mid-range Android.
+        So the rail changes width in one step and the labels cross-fade — which reads as
+        smooth, because the eye is following the text, not the edge.
+      */}
+      <aside
+        onMouseEnter={openPeek}
+        onMouseLeave={closePeek}
+        className={cx(
+          'border-border-subtle bg-surface sticky top-0 hidden h-dvh shrink-0 flex-col border-r md:flex',
+          isRail ? 'w-16' : 'w-66',
+        )}
+      >
+        {sidebarBody(isRail && !isPeeking)}
+
+        {/*
+          HOVER-PEEK. The expanded panel floats OVER the content at shadow-lg rather than
+          pushing it, so nothing reflows and the member keeps their place on the page. It
+          gives the space saving of a rail with none of its memory cost.
+        */}
+        {isRail && isPeeking && (
+          <div
+            className="border-border-subtle bg-surface absolute inset-y-0 left-0 z-30 flex w-66 flex-col border-r shadow-[var(--shadow-lg)] motion-safe:animate-[rise-in_var(--duration-base)_var(--ease-out)]"
+            onMouseEnter={openPeek}
+            onMouseLeave={closePeek}
+          >
+            {sidebarBody(false)}
+          </div>
+        )}
       </aside>
 
+      {/* The same navigation as an overlay drawer below md. */}
+      {isDrawerOpen && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <button
+            type="button"
+            aria-label="Close the menu"
+            onClick={() => setIsDrawerOpen(false)}
+            className="absolute inset-0 size-full bg-[var(--scrim)]"
+          />
+          <aside className="border-border-subtle bg-surface absolute inset-y-0 left-0 flex w-70 max-w-[85vw] flex-col border-r shadow-[var(--shadow-lg)]">
+            {sidebarBody(false)}
+          </aside>
+        </div>
+      )}
+
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="border-ink-200 flex items-center justify-between border-b bg-white px-4 py-3 md:hidden">
-          <Wordmark />
-          <Button variant="ghost" onClick={() => void signOut()}>
-            Sign out
-          </Button>
+        {/*
+          56px, sticky, with a hairline and a backdrop blur. The blur is the ONE permitted
+          use of `backdrop-filter` in the system: an 8px blur on a 56px strip is cheap even
+          on mid-range hardware, where blurring a full-page panel is not.
+        */}
+        <header className="border-border-subtle bg-surface/85 sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b px-3 backdrop-blur-lg md:px-6">
+          <button
+            type="button"
+            onClick={() => setIsDrawerOpen(true)}
+            aria-label="Open the menu"
+            aria-expanded={isDrawerOpen}
+            className="text-text-secondary hover:bg-surface-raised press relative grid size-11 shrink-0 place-items-center rounded-md md:hidden"
+          >
+            <Icon name="menu" />
+            {/*
+              The pending count follows the menu button. It is the one thing behind the
+              drawer a member must be able to see WITHOUT opening it.
+            */}
+            {count > 0 && (
+              <span className="bg-accent text-micro absolute top-1 right-1 min-w-4 rounded-full px-1 leading-4 font-medium text-white tabular-nums">
+                {count}
+              </span>
+            )}
+          </button>
+
+          <div className="md:hidden">
+            <Wordmark />
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <YearBadge />
+            <ThemeToggle />
+            <ReportShortcut />
+          </div>
         </header>
+
+        <ReadOnlyYearStrip />
 
         {/* Above the content, never over it: a member mid-form is not interrupted. */}
         <ConnectionBanner />
 
-        {/* pb-20 keeps the last row clear of the bottom bar on mobile. */}
-        <main className="flex-1 px-4 pt-4 pb-20 md:px-6 md:pt-6 md:pb-6">{children}</main>
-
-        <nav className="border-ink-200 fixed inset-x-0 bottom-0 border-t bg-white md:hidden">
-          <ul className="flex">
-            {items.map((item) => (
-              <li key={item.to} className="flex-1">
-                <NavLink
-                  to={item.to}
-                  end={item.to === '/'}
-                  className={({ isActive }) =>
-                    cx(
-                      'flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px]',
-                      isActive ? 'text-cranberry-600 font-medium' : 'text-ink-500',
-                    )
-                  }
-                >
-                  <span aria-hidden="true" className="relative text-base">
-                    {item.glyph}
-                    {item.badge ? (
-                      <span className="bg-cranberry-500 absolute -top-1 -right-2 rounded-full px-1 text-[10px] leading-4 font-medium text-white">
-                        {item.badge}
-                      </span>
-                    ) : null}
-                  </span>
-                  {item.label}
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        <main className="flex-1 px-4 pt-6 pb-10 md:px-8">
+          {/* Content widths are a design decision, not an accident of the viewport. */}
+          <div className="mx-auto w-full max-w-[1280px]">{children}</div>
+        </main>
       </div>
     </div>
   );
 }
 
-/** The frame for the signed-out screens: one centred card, nothing to navigate. */
+/**
+ * The frame for the signed-out screens.
+ *
+ * One of the three showcase surfaces, so it gets the display face and room to breathe: this
+ * is the first thing anybody ever sees of the system, and a sign-in page that looks
+ * provisional makes everything behind it feel provisional too.
+ */
 export function AuthShell({
   title,
   subtitle,
@@ -262,14 +617,27 @@ export function AuthShell({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center px-4 py-10">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 flex flex-col items-center gap-2 text-center">
+    <div className="bg-background relative flex min-h-dvh flex-col items-center justify-center px-4 py-12">
+      {/* Geometric pattern at 3%, on a showcase surface only — never behind working
+          content. Inline, a few hundred bytes, no request. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cpath d='M30 0l30 17.32v34.64L30 69.28 0 51.96V17.32z' fill='none' stroke='%23d41367' stroke-width='1.5'/%3E%3C/svg%3E\")",
+          backgroundSize: '60px 52px',
+        }}
+      />
+      <div className="relative w-full max-w-sm">
+        <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <Wordmark />
-          <h1 className="text-ink-900 text-xl font-semibold">{title}</h1>
-          {subtitle && <p className="text-ink-500 text-sm">{subtitle}</p>}
+          <h1 className="font-display text-display-md text-text-primary text-balance">{title}</h1>
+          {subtitle && <p className="text-text-muted text-body-sm text-pretty">{subtitle}</p>}
         </div>
-        <div className="border-ink-200 rounded-xl border bg-white p-5">{children}</div>
+        <div className="border-border-subtle bg-surface hairline-top rounded-lg border p-6 shadow-[var(--shadow-md)]">
+          {children}
+        </div>
       </div>
     </div>
   );

@@ -14,7 +14,7 @@ import {
 import { api } from '../../lib/api';
 import { formatAmount, formatMoney } from '../../lib/money';
 import { queryKeys, useApiMutation, useList } from '../../lib/queries';
-import { useAuth, useScope } from '../auth/useAuth';
+import { useAuth, useOwnClub, useScope } from '../auth/useAuth';
 import type { ClubListResponse } from '../clubs/types';
 import type {
   Budget,
@@ -87,10 +87,17 @@ export function BudgetPage() {
 }
 
 function CreateBudget() {
-  const [clubId, setClubId] = useState('');
-  const clubs = useList<ClubListResponse>([...queryKeys.clubs, 'picker'], '/clubs', {
-    pageSize: 100,
-  });
+  const ownClub = useOwnClub();
+  const [chosenClubId, setChosenClubId] = useState('');
+  // Derived: a club treasurer budgets for their own club and nobody else's.
+  const clubId = ownClub?.id ?? chosenClubId;
+
+  const clubs = useList<ClubListResponse>(
+    [...queryKeys.clubs, 'picker'],
+    '/clubs',
+    { pageSize: 100 },
+    { enabled: ownClub === null },
+  );
 
   const create = useApiMutation(
     async (body: Record<string, unknown>) => api.post<BudgetResponse>('/budgets', body),
@@ -99,13 +106,15 @@ function CreateBudget() {
 
   return (
     <div className="flex flex-wrap items-end gap-2">
-      <Select
-        label="For"
-        value={clubId}
-        placeholder="Choose a club"
-        options={(clubs.data?.data ?? []).map((club) => ({ value: club.id, label: club.name }))}
-        onChange={(event) => setClubId(event.target.value)}
-      />
+      {ownClub ? null : (
+        <Select
+          label="For"
+          value={clubId}
+          placeholder="Choose a club"
+          options={(clubs.data?.data ?? []).map((club) => ({ value: club.id, label: club.name }))}
+          onChange={(event) => setChosenClubId(event.target.value)}
+        />
+      )}
       <Button
         isLoading={create.isPending}
         disabled={!clubId}
@@ -113,7 +122,7 @@ function CreateBudget() {
           create.mutate({ ownerScopeType: 'CLUB', ownerScopeId: clubId, currencyCode: 'UGX' })
         }
       >
-        Start a budget
+        {ownClub ? `Start a budget for ${ownClub.name}` : 'Start a budget'}
       </Button>
     </div>
   );
@@ -152,7 +161,7 @@ function BudgetDetail({ budgetId, canWrite }: { budgetId: string; canWrite: bool
             value={formatMoney(data.totalPlannedExpenditure, data.currencyCode)}
           />
           <div>
-            <dt className="text-ink-500 text-xs">Status</dt>
+            <dt className="text-text-muted text-xs">Status</dt>
             <dd className="mt-0.5">
               <Badge tone={data.isApproved ? 'success' : 'warning'}>
                 {data.isApproved ? 'Approved' : 'Draft'}
@@ -170,7 +179,7 @@ function BudgetDetail({ budgetId, canWrite }: { budgetId: string; canWrite: bool
             >
               {data.isApproved ? 'Withdraw approval' : 'Approve'}
             </Button>
-            <p className="text-ink-500 self-center text-xs">
+            <p className="text-text-muted self-center text-xs">
               {data.isApproved
                 ? 'Withdrawing approval unlocks the lines again. It is recorded.'
                 : 'Approving locks the lines. Record differences as transactions afterwards.'}
@@ -183,7 +192,7 @@ function BudgetDetail({ budgetId, canWrite }: { budgetId: string; canWrite: bool
         title="Lines"
         actions={
           data.isApproved ? (
-            <span className="text-ink-500 text-xs">Frozen by approval</span>
+            <span className="text-text-muted text-xs">Frozen by approval</span>
           ) : undefined
         }
       >
@@ -194,8 +203,8 @@ function BudgetDetail({ budgetId, canWrite }: { budgetId: string; canWrite: bool
               header: 'Category',
               render: (line: BudgetLine) => (
                 <div className="min-w-0">
-                  <p className="text-ink-900 font-medium">{line.categoryName}</p>
-                  <p className="text-ink-500 truncate text-xs">{line.description}</p>
+                  <p className="text-text-primary font-medium">{line.categoryName}</p>
+                  <p className="text-text-muted truncate text-xs">{line.description}</p>
                 </div>
               ),
             },
@@ -258,7 +267,7 @@ function AddLine({ budgetId }: { budgetId: string }) {
   );
 
   return (
-    <div className="border-ink-200 mt-4 grid gap-3 border-t pt-4 sm:grid-cols-4">
+    <div className="border-border-subtle mt-4 grid gap-3 border-t pt-4 sm:grid-cols-4">
       <Select
         label="Category"
         value={categoryId}
@@ -325,8 +334,8 @@ function RemoveLine({ budgetId, line }: { budgetId: string; line: BudgetLine }) 
 function Figure({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-ink-500 text-xs">{label}</dt>
-      <dd className="text-ink-900 mt-0.5 font-semibold tabular-nums">{value}</dd>
+      <dt className="text-text-muted text-xs">{label}</dt>
+      <dd className="text-text-primary mt-0.5 font-semibold tabular-nums">{value}</dd>
     </div>
   );
 }

@@ -313,14 +313,24 @@ apps/web/src/
                  useList, useApiMutation) · cx.ts · toast.ts · uuid.ts
                  images.ts — shrinks a photograph BEFORE it leaves the phone
                  money.ts   formats a decimal STRING. The one permitted conversion.
+                 errors.ts  every domain code as a sentence saying what to DO.
+                            errors.test.ts reads the server's registry, so a new
+                            code fails the build until somebody writes its line.
+                 theme.ts   the React side of the pre-paint script's contract —
+                            reads the DOM attribute, never localStorage twice.
   lib/offline/   outbox.ts   THE QUEUE — IndexedDB, backoff, 409-as-success
                  transport.ts  send/sendFile, shared with sw.ts. No React.
                  submit.ts   the one submission path + the drain scheduler
                  caches.ts (cleared on sign-out) · connectivity.ts (heartbeat)
                  pwa.ts (registration, update prompt, install prompt)
   components/    ui/index.tsx — the whole design system in one file
+                 ui/icons.tsx — hand-written 24×24 stroke paths. No icon library:
+                                a wholesale import is hundreds of KB, and the text
+                                glyphs these replaced rendered as missing-glyph
+                                boxes on the Android fonts this system targets.
                  Can.tsx — permission-gated rendering, presentation only
-                 layout/AppShell.tsx — nav, pending badge, year, district, sign-out
+                 layout/AppShell.tsx — sidebar (expanded · rail · drawer), header,
+                                Rotary Year badge and the read-only year strip
                  layout/ConnectionBanner.tsx — offline, update, install; never modal
   test/setup.ts  fake-indexeddb, for the web suite (vitest, node environment)
   features/
@@ -732,9 +742,11 @@ work is the committee tree, where "may I manage this node" needs SCOPE as well a
 permission — `committee:manage:district` anywhere, or chairing this subtree — and that
 answer comes from `RequestScopes`, computed server-side and merely read here.
 
-**One design-system file.** `components/ui/index.tsx` holds every primitive. Tailwind v4
-with tokens in CSS, no component library: the payload budget is 250 KB of initial JS on
-metered Android data, and a component library is the easiest way to lose it.
+**One design-system file.** `components/ui/index.tsx` holds every primitive, with the icon
+set beside it in `ui/icons.tsx`. Tailwind v4 with tokens in CSS, no component library: the
+payload budget is 250 KB of initial JS on metered Android data, and a component library is
+the easiest way to lose it. (Rebuilt on the token system in the M4 design pass below; the
+one-file rule survived it.)
 
 **The 401 handler is registered from `App.tsx`, not imported into `lib/api.ts`.** The fetch
 wrapper stays free of navigation, so tests and non-React callers can use it.
