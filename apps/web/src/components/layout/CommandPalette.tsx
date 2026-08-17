@@ -190,13 +190,13 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             aria-label="Search screens"
             className="text-body placeholder:text-text-muted h-12 flex-1 bg-transparent outline-none"
           />
-          <kbd className="border-border text-text-muted text-micro hidden rounded-sm border px-1.5 py-0.5 sm:block">
+          <kbd className="border-border text-text-muted text-meta hidden rounded-sm border px-1.5 py-0.5 sm:block">
             esc
           </kbd>
         </div>
 
         {results.length === 0 ? (
-          <p className="text-text-muted text-body-sm px-4 py-10 text-center">
+          <p className="text-text-muted text-table px-4 py-10 text-center">
             Nothing matches “{query}”. Try a shorter word.
           </p>
         ) : (
@@ -204,7 +204,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             {results.map((item, index) => (
               <li key={item.to}>
                 {item.heading && (
-                  <p className="text-text-muted text-micro mt-2 mb-1 px-2 font-medium tracking-[0.08em] uppercase first:mt-0">
+                  <p className="text-text-muted text-meta mt-2 mb-1 px-2 font-medium tracking-[0.08em] uppercase first:mt-0">
                     {item.heading}
                   </p>
                 )}
@@ -213,7 +213,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                   onClick={() => choose(item.to)}
                   onMouseMove={() => setHighlighted(index)}
                   className={cx(
-                    'text-body-sm flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left',
+                    'text-table flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left',
                     index === highlighted
                       ? 'bg-accent-subtle text-accent-text font-medium'
                       : 'text-text-secondary',
@@ -222,7 +222,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                   <Icon name={item.icon} className="size-4" />
                   <span className="flex-1 truncate">{item.label}</span>
                   {index === highlighted && (
-                    <kbd className="text-micro text-text-muted hidden sm:block">↵</kbd>
+                    <kbd className="text-meta text-text-muted hidden sm:block">↵</kbd>
                   )}
                 </button>
               </li>
@@ -246,8 +246,8 @@ export function CommandPaletteTrigger({ onClick }: { onClick: () => void }) {
       <span className="grid size-10 place-items-center md:size-auto">
         <Icon name="search" className="size-4" />
       </span>
-      <span className="text-body-sm hidden md:inline">Search…</span>
-      <kbd className="border-border text-micro ml-6 hidden rounded-sm border px-1.5 py-0.5 md:block">
+      <span className="text-table hidden md:inline">Search…</span>
+      <kbd className="border-border text-meta ml-6 hidden rounded-sm border px-1.5 py-0.5 md:block">
         ⌘K
       </kbd>
     </button>

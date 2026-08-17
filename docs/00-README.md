@@ -32,6 +32,7 @@ A complete design baseline sufficient to begin implementation immediately, writt
 | 15 | `15-ClaudeCode-M5-Sessions.md` | Session prompts for M5 — the assessment engine |
 | 16 | `16-ClaudeCode-M6-M9-Sessions.md` | Session prompts for M6 to M9 |
 | 17 | `17-Device-Pass.md` | The manual checklist for M3 session 4 — the part no test can do |
+| 18 | `18-Design-System.md` | The operative design system — typography, ink-and-paper colour, document apparatus, tables, motion, print, accessibility |
 | — | `CLAUDE.md` | Project context file for Claude Code — drop at repository root |
 
 ## Reading order

@@ -53,8 +53,8 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
 };
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {
-  sm: 'min-h-9 px-3 text-caption',
-  md: 'min-h-10 px-4 text-body-sm',
+  sm: 'min-h-9 px-3 text-label',
+  md: 'min-h-10 px-4 text-table',
   lg: 'min-h-12 px-5 text-body',
 };
 
@@ -150,7 +150,7 @@ function Field({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-text-secondary text-body-sm font-medium">
+      <label htmlFor={id} className="text-text-secondary text-table font-medium">
         {label}
         {required === true && (
           <span className="text-danger ml-0.5" aria-hidden="true">
@@ -160,7 +160,7 @@ function Field({
       </label>
       {children}
       {hint && !error && (
-        <p id={`${id}-hint`} className="text-text-muted text-caption">
+        <p id={`${id}-hint`} className="text-text-muted text-label">
           {hint}
         </p>
       )}
@@ -173,7 +173,7 @@ function Field({
         <p
           id={`${id}-error`}
           role="alert"
-          className="text-danger-text text-caption flex items-start gap-1.5"
+          className="text-danger-text text-label flex items-start gap-1.5"
         >
           <svg
             aria-hidden="true"
@@ -317,7 +317,7 @@ export function Card({
       {(title || actions) && (
         <header className="border-border-subtle flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
           {typeof title === 'string' ? (
-            <h2 className="text-text-primary text-heading-sm font-semibold">{title}</h2>
+            <h2 className="text-text-primary text-subsection font-semibold">{title}</h2>
           ) : (
             title
           )}
@@ -340,18 +340,33 @@ export interface Column<T> {
   secondary?: boolean;
   /** Right-aligned and tabular. Set it on every money, count and score column. */
   numeric?: boolean;
+  /**
+   * The unit, stated ONCE in the header rather than repeated in every cell — `USD`, `UGX`,
+   * `%`, `members`. Repeating a unit down a column is noise; omitting it entirely is an
+   * ambiguity somebody will resolve wrongly.
+   */
+  unit?: string;
 }
 
 /**
- * A table on desktop; a stack of cards on mobile.
+ * THE TABLE. The primary artefact of this system.
  *
- * A horizontally scrolling table is an admission that the mobile case was not designed, and
- * the members this system is for are on 360px screens. Below `md` each row becomes a card of
- * label/value pairs — which is why `Column.header` has to read as a label on its own, not
- * only as a column heading.
+ * The audience reads tables fluently and will judge the product on them, so this follows
+ * statistical publication convention rather than web convention:
  *
- * No zebra striping. It is dated, and it measurably reduces scannability compared with a
- * hairline rule and a hover state.
+ *  * **Horizontal rules only.** No vertical rules, no cell borders, no zebra striping. A
+ *    hairline above the header, a stronger rule below it, a rule at the foot. This is the
+ *    standard scientific table, and it is standard because it is the most legible.
+ *  * **Sentence-case headers, not uppercase.** Uppercase headers are a web convention; a
+ *    published table does not shout its column names.
+ *  * **Units in the header**, in parentheses at `meta` size.
+ *  * Numbers right-aligned and tabular; text left-aligned. A data column is never centred.
+ *  * **Total rows in medium weight above a rule**, never bold and filled.
+ *
+ * On small screens each row becomes a definition card — which is why `Column.header` has to
+ * read as a label on its own, not only as a column heading. **Restructure, never hide:**
+ * every figure available on desktop is available on a phone. A mobile view that drops
+ * columns is a mobile view that cannot be trusted.
  */
 export function Table<T>({
   columns,
@@ -360,35 +375,43 @@ export function Table<T>({
   onRowClick,
   emptyState,
   isPending,
+  total,
 }: {
   columns: Column<T>[];
   rows: T[];
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
   emptyState?: ReactNode;
-  /** Rows awaiting confirmation — rendered optimistically, at reduced opacity. */
+  /** Rows not yet confirmed by the server. Marked in words, not by motion. */
   isPending?: (row: T) => boolean;
+  /** A total or subtotal row, rendered in medium weight above a rule. */
+  total?: { label: string; cells: Partial<Record<string, ReactNode>> };
 }) {
   if (rows.length === 0) return <>{emptyState ?? <EmptyState title="Nothing here yet" />}</>;
 
   return (
     <>
       <div className="hidden md:block">
-        <table className="text-body-sm w-full text-left tabular-nums">
+        <table className="text-table w-full text-left">
           <thead>
-            <tr className="border-border-subtle border-b">
+            {/* A hairline above, a strong rule below. Those two rules are the entire
+                structure of a scientific table. */}
+            <tr className="border-border-strong border-b">
               {columns.map((column) => (
                 <th
                   key={column.key}
                   scope="col"
                   className={cx(
-                    // Uppercase always carries added tracking. Uppercase at default tracking
-                    // is one of the clearest signatures of unconsidered typography.
-                    'text-text-muted text-micro px-4 py-3 font-medium tracking-[0.06em] uppercase',
+                    'text-text-secondary text-label px-4 py-2.5 font-medium',
                     column.numeric && 'text-right',
                   )}
                 >
                   {column.header}
+                  {column.unit && (
+                    <span className="text-text-muted text-meta ml-1 font-normal">
+                      ({column.unit})
+                    </span>
+                  )}
                 </th>
               ))}
             </tr>
@@ -399,58 +422,103 @@ export function Table<T>({
                 key={rowKey(row)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 className={cx(
-                  'border-border-subtle border-b transition-colors duration-[var(--duration-instant)] last:border-0',
-                  onRowClick && 'hover:bg-surface-raised cursor-pointer',
-                  isPending?.(row) && 'pending-pulse',
+                  'border-border-subtle border-b',
+                  onRowClick && 'hover:bg-surface-sunken cursor-pointer',
                 )}
               >
-                {columns.map((column) => (
+                {columns.map((column, index) => (
                   <td
                     key={column.key}
-                    /* 48px rows: the tuned density, applied once, everywhere. */
+                    /* 44px rows. Dense, and still a viable touch target. */
                     className={cx(
-                      'text-text-primary h-12 px-4 py-3 align-middle',
+                      'text-text-primary h-11 px-4 py-2 align-middle',
                       column.numeric && 'text-right',
                     )}
                   >
                     {column.render(row)}
+                    {/*
+                      The pending state, in words, on the first cell.
+                      It used to be an opacity pulse. A pulsing row draws the eye to the one
+                      piece of information on the page that is LEAST settled, and it cannot
+                      be screenshotted, printed or read aloud. A label can.
+                    */}
+                    {index === 0 && isPending?.(row) && (
+                      <span className="text-text-muted text-meta ml-2 inline-flex items-center gap-1">
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 16 16"
+                          className="size-3 fill-none stroke-current"
+                          strokeWidth={1.5}
+                        >
+                          <circle cx="8" cy="8" r="6" />
+                          <path d="M8 4.5V8l2.5 1.5" strokeLinecap="round" />
+                        </svg>
+                        Pending
+                      </span>
+                    )}
                   </td>
                 ))}
               </tr>
             ))}
           </tbody>
+          {total && (
+            <tfoot>
+              <tr className="border-border-strong border-t">
+                {columns.map((column, index) => (
+                  <td
+                    key={column.key}
+                    className={cx(
+                      'text-text-primary h-11 px-4 py-2 font-medium',
+                      column.numeric && 'text-right',
+                    )}
+                  >
+                    {index === 0 ? total.label : (total.cells[column.key] ?? null)}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
-      <ul className="flex flex-col gap-3 md:hidden">
-        {rows.map((row) => (
-          <li
-            key={rowKey(row)}
-            onClick={onRowClick ? () => onRowClick(row) : undefined}
-            className={cx(
-              'border-border-subtle bg-surface rounded-md border p-4',
-              onRowClick && 'active:bg-surface-raised cursor-pointer',
-              isPending?.(row) && 'pending-pulse',
-            )}
-          >
-            {columns.map((column) => (
-              <div
-                key={column.key}
-                className="text-body-sm flex items-baseline justify-between gap-4 py-1"
-              >
-                <span className="text-text-muted text-caption shrink-0">{column.header}</span>
-                <span
-                  className={cx(
-                    'text-text-primary min-w-0 text-right',
-                    column.numeric && 'tabular-nums',
+      {/*
+        DEFINITION CARDS below `md`. The identifying column heads the card; everything else
+        is a label-value pair. Numbers stay tabular so they still align to each other from
+        card to card, which is most of why a stack of cards remains readable as data.
+      */}
+      <ul className="divide-border-subtle border-border-subtle divide-y border-y md:hidden">
+        {rows.map((row) => {
+          const [first, ...rest] = columns;
+          return (
+            <li
+              key={rowKey(row)}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              className={cx('py-4', onRowClick && 'active:bg-surface-sunken cursor-pointer')}
+            >
+              {first && (
+                <p className="text-text-primary text-subsection font-serif mb-2 flex items-baseline justify-between gap-3">
+                  <span className="min-w-0">{first.render(row)}</span>
+                  {isPending?.(row) && (
+                    <span className="text-text-muted text-meta shrink-0">Pending</span>
                   )}
-                >
-                  {column.render(row)}
-                </span>
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                {rest.map((column) => (
+                  <div key={column.key} className="contents">
+                    <span className="text-text-muted text-meta">
+                      {column.header}
+                      {column.unit && ` (${column.unit})`}
+                    </span>
+                    <span className={cx('text-text-primary text-table min-w-0', 'text-right')}>
+                      {column.render(row)}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
     </>
   );
@@ -492,7 +560,7 @@ export function Badge({
   return (
     <span
       className={cx(
-        'text-micro inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium',
+        'text-meta inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium',
         BADGE_TONES[tone],
       )}
     >
@@ -590,7 +658,7 @@ export function Dialog({
         )}
       >
         <header className="border-border-subtle bg-surface-overlay sticky top-0 flex items-center justify-between gap-4 border-b px-5 py-4">
-          <h2 className="text-heading-sm font-semibold">{title}</h2>
+          <h2 className="text-subsection font-semibold">{title}</h2>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">
             <svg aria-hidden="true" viewBox="0 0 16 16" className="size-4 fill-current">
               <path d="M4.28 3.22a.75.75 0 0 0-1.06 1.06L6.94 8l-3.72 3.72a.75.75 0 1 0 1.06 1.06L8 9.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L9.06 8l3.72-3.72a.75.75 0 0 0-1.06-1.06L8 6.94Z" />
@@ -630,18 +698,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setMessages((current) => [...current.slice(-(TOAST_MAX - 1)), { id, tone, text }]);
 
     /*
-     * Eight milliseconds on a success, and never on a failure.
-     *
-     * Barely perceptible, and it is most of what separates a web application from a native
-     * one on a phone. It goes here because every mutation in the system ends in a toast, so
-     * one line covers all of them. Never on an error: a buzz on failure reads as punishment,
-     * and the member filing a report at eleven at night on a bad connection is already
-     * having a worse time than they should be.
-     *
-     * Desktop browsers do not implement it, which is the correct behaviour rather than
-     * something to feature-detect around.
+     * There was a haptic here — eight milliseconds on a success. It has been removed along
+     * with the springs, the count-ups and the stagger. A buzz is a flourish, and this
+     * interface does not perform: the confirmation is the message, and the message is enough.
      */
-    if (tone === 'success') navigator.vibrate?.(8);
     // An error stays until it is dismissed. It usually carries an instruction, and four
     // seconds is not long enough to read one and act on it.
     if (tone !== 'error') {
@@ -670,7 +730,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             role={message.tone === 'error' ? 'alert' : undefined}
             className={cx(
               'pointer-events-auto relative w-full max-w-sm overflow-hidden rounded-md px-4 py-3',
-              'text-body-sm shadow-[var(--shadow-lg)] motion-safe:animate-[toast-in_var(--duration-base)_var(--ease-spring)]',
+              'text-table shadow-[var(--shadow-lg)] motion-safe:animate-[dialog-in_var(--duration-base)_var(--ease-out)]',
               message.tone === 'success'
                 ? 'bg-text-primary text-text-inverse'
                 : 'bg-danger text-white',
@@ -691,14 +751,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 </button>
               )}
             </div>
-            {/* A hairline draining along the bottom edge: the time remaining, shown rather
-                than guessed at. */}
-            {message.tone !== 'error' && (
-              <span
-                aria-hidden="true"
-                className="absolute inset-x-0 bottom-0 h-0.5 origin-left bg-current opacity-30 motion-safe:animate-[toast-drain_4s_linear]"
-              />
-            )}
           </div>
         ))}
       </div>
@@ -764,11 +816,11 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-      <h3 className="font-display text-heading-lg text-text-primary">
+      <h3 className="font-serif text-section text-text-primary">
         {filtered ? 'Nothing matches those filters' : title}
       </h3>
       {(description || filtered) && (
-        <p className="text-text-muted text-body-sm max-w-sm text-pretty">
+        <p className="text-text-muted text-table max-w-sm text-pretty">
           {filtered
             ? 'Try widening the search, or clear the filters to see everything again.'
             : description}
@@ -838,7 +890,7 @@ export function Pagination({
 
   return (
     <div className="border-border-subtle mt-4 flex items-center justify-between gap-4 border-t pt-4">
-      <p className="text-text-muted text-body-sm tabular-nums">
+      <p className="text-text-muted text-table tabular-nums">
         Showing {first}–{last} of {total}
       </p>
       <div className="flex gap-2">
@@ -884,8 +936,8 @@ export function Checkbox({
         className="accent-accent mt-1 size-5 shrink-0"
       />
       <span className="min-w-0">
-        <span className="text-text-primary text-caption block font-mono">{label}</span>
-        {description && <span className="text-text-muted text-caption block">{description}</span>}
+        <span className="text-text-primary text-label block font-mono">{label}</span>
+        {description && <span className="text-text-muted text-label block">{description}</span>}
       </span>
     </label>
   );
@@ -914,17 +966,17 @@ export function PageHeader({
 }) {
   return (
     <header className="mb-6 flex flex-col gap-3">
-      {breadcrumb && <div className="text-text-muted text-caption">{breadcrumb}</div>}
+      {breadcrumb && <div className="text-text-muted text-label">{breadcrumb}</div>}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           {/* Fraunces, at a display size, with the negative tracking that stops large type
               looking accidental. Restricted to page titles and the showcase screens. */}
-          <h1 className="font-display text-heading-lg md:text-display-md text-text-primary text-balance">
+          <h1 className="font-serif text-section md:text-title text-text-primary text-balance">
             {title}
           </h1>
-          {meta && <p className="text-text-muted text-caption mt-1.5">{meta}</p>}
+          {meta && <p className="text-text-muted text-label mt-1.5">{meta}</p>}
           {description && (
-            <p className="text-text-secondary text-body-sm mt-2 max-w-prose text-pretty">
+            <p className="text-text-secondary text-table mt-2 max-w-prose text-pretty">
               {description}
             </p>
           )}

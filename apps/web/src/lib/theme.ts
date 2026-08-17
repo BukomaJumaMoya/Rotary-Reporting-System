@@ -71,7 +71,9 @@ export function useTheme(): { theme: Theme; toggle: () => void } {
     // The browser chrome follows the page. Without this the address bar stays cranberry on a
     // dark page, which looks like a rendering fault rather than a choice.
     const meta = document.querySelector('meta[name="theme-color"]');
-    meta?.setAttribute('content', next === 'dark' ? '#2b2426' : '#d41367');
+    // Slate on dark, paper on light. NOT the brand colour: cranberry has retreated to the
+    // mark and the primary action, and the address bar is neither.
+    meta?.setAttribute('content', next === 'dark' ? '#232529' : '#faf9f7');
   }, []);
 
   return { theme, toggle };

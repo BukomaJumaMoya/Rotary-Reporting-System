@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAuth, useClearAuth } from '../../features/auth/useAuth';
 import { clearDeviceState } from '../../lib/offline/caches';
@@ -62,7 +62,7 @@ function Wordmark({ compact = false }: { compact?: boolean }) {
   if (compact) {
     return (
       <span
-        className="text-accent text-heading-md font-display leading-none"
+        className="text-accent text-subsection font-serif leading-none"
         aria-label="Rotaract District 9218"
       >
         R
@@ -71,8 +71,8 @@ function Wordmark({ compact = false }: { compact?: boolean }) {
   }
   return (
     <div className="flex items-baseline gap-1.5">
-      <span className="text-accent font-display text-heading-md leading-none">Rotaract</span>
-      <span className="text-text-muted text-micro font-medium tracking-[0.08em]">D9218</span>
+      <span className="text-accent font-serif text-subsection leading-none">Rotaract</span>
+      <span className="text-text-muted text-meta font-medium tracking-[0.08em]">D9218</span>
     </div>
   );
 }
@@ -96,8 +96,8 @@ function YearBadge() {
   return (
     <span
       className={cx(
-        'text-micro inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 font-medium tabular-nums',
-        readOnly ? 'bg-warning-subtle text-warning-text' : 'bg-surface-sunken text-text-secondary',
+        'text-meta inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 font-medium tabular-nums',
+        readOnly ? 'bg-warning-subtle text-warning-text' : 'text-text-muted',
       )}
       title={readOnly ? 'This year is read-only' : 'The current Rotary Year'}
     >
@@ -120,7 +120,7 @@ function ReadOnlyYearStrip() {
   if (!context?.rotaryYearLabel || context.isYearWritable) return null;
 
   return (
-    <div className="bg-warning-subtle text-warning-text text-caption flex items-center justify-center gap-2 px-4 py-2">
+    <div className="bg-warning-subtle text-warning-text text-label flex items-center justify-center gap-2 px-4 py-2">
       <Icon name="history" className="size-4 shrink-0" />
       <span>
         Viewing <strong className="font-semibold">{context.rotaryYearLabel}</strong> — read only.
@@ -140,7 +140,7 @@ function SignedInAs({ compact = false }: { compact?: boolean }) {
   if (compact) {
     return (
       <span
-        className="bg-accent-subtle text-accent-text text-caption grid size-9 shrink-0 place-items-center rounded-full font-semibold"
+        className="bg-accent-subtle text-accent-text text-label grid size-9 shrink-0 place-items-center rounded-full font-semibold"
         title={`${person.firstName} ${person.lastName}`}
       >
         {initials}
@@ -150,7 +150,7 @@ function SignedInAs({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="flex items-center gap-3">
-      <span className="bg-accent-subtle text-accent-text text-caption grid size-9 shrink-0 place-items-center rounded-full font-semibold">
+      <span className="bg-accent-subtle text-accent-text text-label grid size-9 shrink-0 place-items-center rounded-full font-semibold">
         {initials}
       </span>
       {/*
@@ -160,14 +160,14 @@ function SignedInAs({ compact = false }: { compact?: boolean }) {
         sidebar the mobile layout never rendered.
       */}
       <div className="min-w-0">
-        <p className="text-text-primary text-body-sm truncate font-medium">
+        <p className="text-text-primary text-table truncate font-medium">
           {person.firstName} {person.lastName}
         </p>
-        <p className="text-text-muted text-caption truncate">
+        <p className="text-text-muted text-label truncate">
           {primary ? primary.positionName : 'No active appointment'}
         </p>
         {primary?.scopeName && (
-          <p className="text-text-secondary text-caption truncate">{primary.scopeName}</p>
+          <p className="text-text-secondary text-label truncate">{primary.scopeName}</p>
         )}
       </div>
     </div>
@@ -199,7 +199,7 @@ function ReportShortcut() {
       to="/report"
       className={({ isActive }) =>
         cx(
-          'press text-body-sm flex min-h-10 shrink-0 items-center gap-1.5 rounded-md px-3 font-medium',
+          'press text-table flex min-h-10 shrink-0 items-center gap-1.5 rounded-md px-3 font-medium',
           isActive
             ? 'bg-accent-subtle text-accent-text'
             : 'bg-accent text-white hover:bg-accent-hover',
@@ -310,7 +310,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {/* Uppercase always carries added tracking; without it, it is the signature of
                 unconsidered typography. Hidden in the rail, where there is no room. */}
             {!collapsed && (
-              <p className="text-text-muted text-micro mb-1 px-3 font-medium tracking-[0.08em] uppercase">
+              <p className="text-text-muted text-meta mb-1 px-3 font-medium tracking-[0.08em] uppercase">
                 {group.label}
               </p>
             )}
@@ -327,14 +327,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                     title={collapsed ? item.label : undefined}
                     className={({ isActive }) =>
                       cx(
-                        'text-body-sm relative flex min-h-11 items-center gap-3 rounded-md transition-colors duration-[var(--duration-instant)]',
+                        'text-table relative flex min-h-11 items-center gap-3 rounded-md transition-colors duration-[var(--duration-instant)]',
                         collapsed ? 'justify-center px-0' : 'px-3',
                         isActive
-                          ? // A tint and a 2px indicator, never a full cranberry fill. The
-                            // brand colour is too loud for something permanently on screen,
-                            // and spending it here would spend it everywhere.
-                            'bg-accent-subtle text-accent-text font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-accent'
-                          : 'text-text-secondary hover:bg-surface-raised hover:text-text-primary',
+                          ? // INK, NOT CRANBERRY. A 2px ink rule and a weight change, and
+                            // nothing else. The brand colour has retreated to three places —
+                            // the mark, the one primary action on a page, and a chart series
+                            // — and a state that sits permanently on screen for every member
+                            // was the least defensible place to have been spending it.
+                            'text-text-primary before:bg-text-primary font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5'
+                          : 'text-text-muted hover:text-text-primary',
                       )
                     }
                   >
@@ -380,6 +382,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="bg-background flex min-h-dvh">
       {/*
+        The first focusable element on every page. Without it, a keyboard or screen-reader
+        user tabs through the entire navigation — five groups, up to eighteen items — before
+        reaching the content, on every single page load.
+        Visible only when focused, which is the point: it costs sighted mouse users nothing.
+      */}
+      <a
+        href="#main"
+        className="bg-surface text-text-primary focus:ring-accent sr-only rounded-md px-4 py-2 focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-[80] focus:ring-2"
+      >
+        Skip to content
+      </a>
+      {/*
         THE WIDTH SNAPS; THE CONTENTS ANIMATE.
 
         Transitioning `width` would run layout on every frame of the collapse, for the whole
@@ -390,6 +404,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside
         onMouseEnter={openPeek}
         onMouseLeave={closePeek}
+        data-print="hide"
         className={cx(
           'border-border-subtle bg-surface sticky top-0 hidden h-dvh shrink-0 flex-col border-r md:flex',
           isRail ? 'w-16' : 'w-66',
@@ -404,7 +419,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         */}
         {isRail && isPeeking && (
           <div
-            className="border-border-subtle bg-surface absolute inset-y-0 left-0 z-30 flex w-66 flex-col border-r shadow-[var(--shadow-lg)] motion-safe:animate-[rise-in_var(--duration-base)_var(--ease-out)]"
+            className="border-border-subtle bg-surface absolute inset-y-0 left-0 z-30 flex w-66 flex-col border-r shadow-[var(--shadow-lg)] motion-safe:animate-[dialog-in_var(--duration-base)_var(--ease-out)]"
             onMouseEnter={openPeek}
             onMouseLeave={closePeek}
           >
@@ -434,7 +449,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           use of `backdrop-filter` in the system: an 8px blur on a 56px strip is cheap even
           on mid-range hardware, where blurring a full-page panel is not.
         */}
-        <header className="border-border-subtle bg-surface/85 sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b px-3 backdrop-blur-lg md:px-6">
+        <header
+          data-print="hide"
+          className="border-border-subtle bg-surface/85 sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b px-3 backdrop-blur-lg md:px-6"
+        >
           <button
             type="button"
             onClick={() => setIsDrawerOpen(true)}
@@ -448,7 +466,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               drawer a member must be able to see WITHOUT opening it.
             */}
             {count > 0 && (
-              <span className="bg-accent text-micro absolute top-1 right-1 min-w-4 rounded-full px-1 leading-4 font-medium text-white tabular-nums">
+              <span className="bg-accent text-meta absolute top-1 right-1 min-w-4 rounded-full px-1 leading-4 font-medium text-white tabular-nums">
                 {count}
               </span>
             )}
@@ -473,10 +491,22 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Above the content, never over it: a member mid-form is not interrupted. */}
         <ConnectionBanner />
 
-        <main className="flex-1 px-4 pt-6 pb-10 md:px-8">
+        <main id="main" className="flex-1 px-4 pt-6 pb-10 md:px-8">
           {/* Content widths are a design decision, not an accident of the viewport. */}
           <div className="mx-auto w-full max-w-[1280px]">{children}</div>
         </main>
+
+        <footer
+          data-print="hide"
+          className="border-border-subtle text-text-muted text-meta mt-auto border-t px-4 py-4 md:px-8"
+        >
+          <Link
+            to="/accessibility"
+            className="hover:text-text-primary underline underline-offset-2"
+          >
+            Accessibility statement
+          </Link>
+        </footer>
       </div>
     </div>
   );
@@ -514,8 +544,8 @@ export function AuthShell({
       <div className="relative w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <Wordmark />
-          <h1 className="font-display text-display-md text-text-primary text-balance">{title}</h1>
-          {subtitle && <p className="text-text-muted text-body-sm text-pretty">{subtitle}</p>}
+          <h1 className="font-serif text-title text-text-primary text-balance">{title}</h1>
+          {subtitle && <p className="text-text-muted text-table text-pretty">{subtitle}</p>}
         </div>
         <div className="border-border-subtle bg-surface hairline-top rounded-lg border p-6 shadow-[var(--shadow-md)]">
           {children}

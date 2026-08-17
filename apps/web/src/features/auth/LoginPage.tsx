@@ -113,7 +113,7 @@ export function LoginPage() {
             />
             <button
               type="button"
-              className="text-text-muted hover:text-text-primary text-body-sm self-start underline underline-offset-2 transition-colors"
+              className="text-text-muted hover:text-text-primary text-table self-start underline underline-offset-2 transition-colors"
               onClick={() => {
                 setUseRecoveryCode((current) => !current);
                 setSecondFactor('');
@@ -127,7 +127,7 @@ export function LoginPage() {
         {error && (
           <p
             role="alert"
-            className="bg-danger-subtle text-danger-text text-body-sm flex items-start gap-2 rounded-sm px-3 py-2"
+            className="bg-danger-subtle text-danger-text text-table flex items-start gap-2 rounded-sm px-3 py-2"
           >
             <svg
               aria-hidden="true"
@@ -146,7 +146,7 @@ export function LoginPage() {
 
         <Link
           to="/forgot"
-          className="text-text-muted hover:text-text-primary text-body-sm text-center underline underline-offset-2 transition-colors"
+          className="text-text-muted hover:text-text-primary text-table text-center underline underline-offset-2 transition-colors"
         >
           Forgotten your password?
         </Link>

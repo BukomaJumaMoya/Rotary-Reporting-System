@@ -324,6 +324,9 @@ apps/web/src/
                  caches.ts (cleared on sign-out) · connectivity.ts (heartbeat)
                  pwa.ts (registration, update prompt, install prompt)
   components/    ui/index.tsx — the whole design system in one file
+                 ui/document.tsx — the document apparatus: Provenance (origin,
+                                verification, as-at, COVERAGE), Caption, Section,
+                                DocumentHeader, Statistic, Identifier
                  ui/icons.tsx — hand-written 24×24 stroke paths. No icon library:
                                 a wholesale import is hundreds of KB, and the text
                                 glyphs these replaced rendered as missing-glyph
@@ -341,6 +344,9 @@ apps/web/src/
   features/
     auth/        LoginPage (password → TOTP → recovery), PasswordPages
                  (forgot, reset, accept invite), useAuth/useScope
+    help/        AccessibilityPage — the statement at /accessibility. Deliberately
+                 OUTSIDE RequireAuth: a procurement officer deciding whether the
+                 system is usable cannot sign in to read it.
     offline/     PendingPage — what is waiting to be sent, and why
     clubs/       ClubsPage (directory) · ClubProfilePage (tabs, one summary call)
                  ClubFormPage (charter and edit) · ClustersPage · types.ts
@@ -1737,84 +1743,130 @@ types × N years: about 1,360 rows after a decade, and a sequential scan over th
 the right plan. Somebody will one day see "Seq Scan" in a plan and try to fix it. There is
 nothing to fix.
 
-### The design pass — tokens, typography, shell
+### The design pass — two briefs, and what survived the second
 
-Run after M4 code-complete and before the device pass, against a written design
-specification. Presentation only: **no endpoint, no schema, no permission and no contract
-changed.** 522 tests passed before it and after it.
+Run after M4 code-complete and before the device pass, against two written design
+specifications. **Presentation only: no endpoint, no schema, no permission and no contract
+changed.** 522 tests passed before it and after it. The merged, operative specification is
+`docs/18-Design-System.md`.
 
-**The premise.** People judge whether software works by whether it looks like it works. A
-club secretary who finds the application cheap will distrust a score that is correct, and
-adoption is this project's principal risk. The budget is what makes that affordable rather
-than what fights it — the things that read as expensive (typography, spacing discipline,
-motion timing, perceived speed) are nearly free, and the things that read as cheap
-(component libraries, motion frameworks, glassmorphism) are heavy. Initial JS went from
-93 KB to **101.4 KB of the 250 KB budget**, and none of the increase is a dependency.
+It happened in two rounds, and the second overruled parts of the first. Both rounds are
+recorded because the reasoning matters more than the outcome, and because roughly half the
+work of round one is still load-bearing.
 
-**Every colour is now a token, and components consume a semantic layer.** Six hues generated
+#### Round one — the token foundation
+
+**Every colour became a token, and components consume a semantic layer.** Six hues generated
 in OKLCH — perceptually uniform, so a ramp stepped by lightness looks evenly stepped and dark
-mode is derived (lift lightness, cut chroma) instead of hand-tuned per colour. Components
+mode is derived (lift lightness, cut chroma) rather than hand-tuned per colour. Components
 name `surface`, `text-primary`, `accent`, `danger`; nothing names a ramp step. 282 ramp
 classes were migrated across 25 files to get there, mechanically, by script.
 
-**Danger is ember at hue 30, not red — and this is the load-bearing colour decision.**
-Cranberry *is* red. A conventional red destructive button would read as the primary button,
-in a system whose destructive actions include erasure and rollover. Never place a cranberry
-and an ember button adjacent.
-
-**Two self-hosted faces, 64 KB.** The previous stylesheet argued for the system stack on
-payload grounds and that was defensible, but a system-font interface cannot be made to look
-considered, because the decision that most determines whether it does has been given away.
-Fraunces is pinned to one instance (optical size 144, weight 600) at 17 KB rather than 66 KB
-for the two-axis variable font: it is restricted to display sizes, so that axis would have
-sat at its display end permanently.
+**Danger is ember at hue 30, not red — the load-bearing colour decision, and it survived
+round two.** Cranberry *is* red. A conventional red destructive button would read as the
+primary button, in a system whose destructive actions include erasure and rollover.
 
 **The pre-paint script is admitted by CSP hash.** Theme and sidebar state are stamped on
 `<html>` before first paint, which needs an inline script under `script-src 'self'`. A hash
 is stricter than `'self'` — it pins exact bytes — but it couples `index.html` to
 `security-headers.ts` across workspaces, and the failure is silent: the browser refuses the
-script, nothing throws, and the application merely flashes white on every cold load.
-`security-headers.test.ts` recomputes the hash from the file, and from `dist/index.html`
-when a build exists. **Do not edit that script without running the API suite.**
+script, nothing throws, and the application merely flashes on every cold load.
+`security-headers.test.ts` recomputes the hash from the file, and from `dist/index.html` when
+a build exists. **Do not edit that script without running the API suite.** This was caught
+live once already — the running API had the old policy while serving the new HTML.
 
-**The sidebar has three states and the width does not animate.** Expanded, a 64px rail with
-a 200ms hover-peek that floats over the content without reflowing it, and an overlay drawer
-below `md`. Transitioning `width` would run layout on every frame for the whole page, which
-drops frames on the mid-range Android this system is actually used on; instead the width
-snaps and the labels cross-fade, which reads as smooth because the eye follows the text
-rather than the edge.
+**The sidebar has three states and the width does not animate.** Expanded, a 64px rail with a
+200ms hover-peek that floats over the content without reflowing it, and an overlay drawer
+below `md`. Transitioning `width` would run layout every frame for the whole page, which drops
+frames on the mid-range Android this system is actually used on; the width snaps and the
+labels cross-fade instead, which reads as smooth because the eye follows the text.
 
 **The Rotary Year is visible in the shell.** Axiom 1 says it is a dimension rather than a
-filter, and this is where a member can see it: a neutral pill in the current year, amber with
-a history icon plus a strip across the content when the context cannot be written to. It
-exists to prevent the worst failure mode of a year-scoped system — filling in a form and
-being refused on submit with `YEAR_LOCKED`.
+filter, and this is where a member can see it: a quiet pill in the current year, amber with a
+history icon plus a strip across the content when the context cannot be written to. It exists
+to prevent the worst failure of a year-scoped system — filling in a form and being refused on
+submit with `YEAR_LOCKED`.
 
 **Icons are hand-written paths.** The text glyphs they replaced (`◎`, `⌂`, `⬡`) cost nothing
-and looked it: the glyph coverage of the default Android font differs from the desktop one,
-so several rendered as a dotted missing-glyph box on precisely the devices this system
-targets. No icon library — a wholesale import is hundreds of kilobytes.
+and looked it: the glyph coverage of the default Android font differs from the desktop one, so
+several rendered as a dotted missing-glyph box on precisely the devices this system targets.
 
-**All 39 domain codes now have a sentence.** `lib/errors.ts` maps each to what happened AND
-what to do; `errors.test.ts` reads the server's own registry, so adding a code fails the
-build until somebody writes its line, while they still have the context to write a good one.
-`ErrorState` also asks `isRetryable` before offering a retry, because a retry button on a
-locked year never works, and one that never works teaches people to distrust every other.
+**All 39 domain codes have a sentence.** `lib/errors.ts` maps each to what happened AND what
+to do; `errors.test.ts` reads the server's own registry, so adding a code fails the build
+until somebody writes its line, while they still have the context to write a good one.
+`ErrorState` asks `isRetryable` before offering a retry, because a retry on a locked year
+never works and a button that never works teaches people to distrust every other one.
 
-**Deferred, deliberately.** The command palette searches SCREENS only. §4.9 of the
-specification also wants clubs, members and activities in it, permission-filtered
-server-side — which is right, and needs a search endpoint that filters in the database.
-Doing it on the client would mean shipping the district's member list to every device in
-order to search it, which is the exact failure this system exists to correct. It waits for
-an endpoint.
+#### Round two — institutional grade
 
-**Also unbuilt from the specification**, for want of the screens rather than the will:
-the scorecard showcase surface, progress arcs and score count-up, the generated club identity
-mark, and standings — all of which belong to the assessment milestone that owns those pages.
-The mobile bottom bar described in §4.1 and §4.5 was **not** built; §4.3's overlay drawer was,
-because fifteen destinations had already broken the bar once and a five-item cap plus a
-"More" sheet solves the same problem the drawer already solves. That is a deliberate
-divergence from the specification, not an omission.
+The second brief's argument: the audience for what this system produces has read a thousand
+reports, and is impressed by software that looks CORRECT rather than software that looks
+impressive. **The move is subtractive.** What follows was reversed or removed.
+
+**Typography.** Inter and Fraunces out; **Source Serif 4, IBM Plex Sans and IBM Plex Mono**
+in. Fraunces is warm and characterful — right for a consumer product, slightly informal for a
+ministry. Source Serif was drawn for long-form policy reading. Source Serif carries the weight
+axis only (49.6 KB against 119.5 KB with optical size); Mono is not preloaded, because
+browsers fetch a face only when it actually renders, which is what "load it lazily" means in
+practice. The scale tightened and the 3.5rem display size was deleted outright: a 56px number
+is a marketing gesture.
+
+**`tabular-nums slashed-zero` on `:root`.** The slashed zero is what stops `0` being read as
+`O` in a reference code transcribed down a phone line.
+
+**Cranberry retreated to three uses** — the mark, the single primary action, one chart series.
+The active navigation state, which sits permanently on screen for every member, was the least
+defensible place to have been spending the brand colour; it is now a 2px ink rule and a weight
+change. The focus ring keeps cranberry, because a focus ring must be unmistakable.
+
+**Light warmed to hue 85 (paper); dark cooled to hue 260 (slate).** The two modes deliberately
+no longer share a hue — a warm dark mode reads as sepia.
+
+**Motion was subtracted, including things added days earlier in round one**: the haptic on
+submit, the spring easing on toasts, the toast drain bar, and the optimistic pulse on pending
+rows. The pulse is now a static `Pending` label — a pulsing row draws the eye to the least
+settled thing on the page and cannot be screenshotted, printed or read aloud. Durations
+dropped to 100–180ms. The press scale survived: feedback, not spectacle.
+
+**Tables were rebuilt to publication convention** — horizontal rules only, sentence-case
+headers rather than uppercase, units in the header, 44px rows, total rows in medium weight
+above a rule, and definition cards on mobile. *Restructure, never hide:* a mobile view that
+drops columns cannot be trusted.
+
+**The document apparatus is new** (`components/ui/document.tsx`): `Provenance`, `Caption`,
+`Section`, `DocumentHeader`, `Statistic`, `Identifier`. **`Provenance` is the most important
+component in the system** — origin, verification, as-at, and coverage. Coverage is what
+separates a reporting system from a dashboard, because a donor or ministry reader asks "of how
+many, and what about the rest?" within seconds of any aggregate. It is never truncated; it
+wraps, because a half-shown provenance line looks like concealment.
+
+**A real print stylesheet**, A4 with running structure, chrome excluded via
+`[data-print="hide"]`, `thead` repeated across pages and hatching carrying the encoding once
+backgrounds are stripped. **Check it by printing in greyscale, not by imagining it.**
+
+**An accessibility statement at `/accessibility`, outside authentication** — a procurement
+officer deciding whether the system is usable cannot sign in to read it. It names its known
+limitations honestly, including that no screen-reader user has yet tested it.
+
+#### Cost
+
+Initial JS went 93 KB → **102.3 KB of the 250 KB budget**, and none of the increase is a
+dependency. Fonts are 108 KB total, 94 KB of it on the critical path.
+
+#### What is deliberately not built
+
+Charts do not exist anywhere in the application yet, so the chart house style, small
+multiples, sparklines, bar-in-cell and the "View as table" toggle have nothing to attach to.
+Revision markers, series breaks and the "How is this calculated?" panel need
+`assessment_period_results` and `assessment_scores.evidence`, which are M5. The command
+palette searches SCREENS, not records: filtering records properly needs a server-side search
+endpoint, and doing it on the client would ship the district's member list to every device —
+the exact failure this system exists to correct. `docs/18-Design-System.md` §9 is the full
+list.
+
+**One deliberate divergence from both briefs.** Each describes a mobile bottom bar; the
+application uses the overlay drawer instead, which the second brief's §7.4 permits. Fifteen
+destinations had already broken a bottom bar once, at about 24px per item on a 360px screen.
 
 ---
 

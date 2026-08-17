@@ -84,6 +84,11 @@ const AppointmentsPage = lazy(() =>
 const CommitteesPage = lazy(() =>
   import('./features/governance/CommitteesPage').then((m) => ({ default: m.CommitteesPage })),
 );
+// Lazy: procurement and auditors look for this page by name, but no club secretary opens
+// it mid-report, so it has no business in the initial payload.
+const AccessibilityPage = lazy(() =>
+  import('./features/help/AccessibilityPage').then((m) => ({ default: m.AccessibilityPage })),
+);
 const PositionsPage = lazy(() =>
   import('./features/governance/PositionsPage').then((m) => ({ default: m.PositionsPage })),
 );
@@ -230,6 +235,12 @@ export function App() {
             </RequireAuth>
           }
         />
+        {/*
+          Deliberately OUTSIDE RequireAuth. An accessibility statement that can only be read
+          by somebody already signed in cannot be checked by the procurement officer deciding
+          whether the system is usable in the first place.
+        */}
+        <Route path="/accessibility" element={<AccessibilityPage />} />
         <Route
           path="/finance/transactions"
           element={

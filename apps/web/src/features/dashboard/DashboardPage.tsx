@@ -36,7 +36,7 @@ function AlertStrip({ alerts }: { alerts: Alert[] }) {
         <li
           key={alert.text}
           className={cx(
-            'text-body-sm flex flex-wrap items-center gap-3 rounded-md px-4 py-3',
+            'text-table flex flex-wrap items-center gap-3 rounded-md px-4 py-3',
             alert.tone === 'danger' && 'bg-danger-subtle text-danger-text',
             // Warnings always carry an icon — colour alone is not a signal everybody
             // receives, and amber sits close enough to gold to need the help.
@@ -49,7 +49,7 @@ function AlertStrip({ alerts }: { alerts: Alert[] }) {
           {alert.to && alert.action && (
             <Link
               to={alert.to}
-              className="text-caption shrink-0 font-medium underline underline-offset-2"
+              className="text-label shrink-0 font-medium underline underline-offset-2"
             >
               {alert.action}
             </Link>
@@ -107,7 +107,7 @@ function QuickActions() {
           <span className="bg-accent-subtle text-accent-text grid size-9 place-items-center rounded-md">
             <Icon name={action.icon} className="size-4" />
           </span>
-          <span className="text-text-primary text-body-sm font-medium text-balance">
+          <span className="text-text-primary text-table font-medium text-balance">
             {action.label}
           </span>
         </Link>
@@ -161,12 +161,12 @@ export function DashboardPage() {
   return (
     <div className="flex flex-col gap-8">
       <header>
-        {/* Fraunces at a display size. This is one of the three showcase surfaces, and it is
-            the first thing a member sees after signing in. */}
-        <h1 className="font-display text-display-md text-text-primary text-balance">
+        {/* The editorial face, at title size. Quiet: this greets somebody, it does not
+            announce anything. */}
+        <h1 className="font-serif text-title text-text-primary text-balance">
           Hello, {person?.firstName ?? 'there'}
         </h1>
-        <p className="text-text-muted text-body-sm mt-1.5">
+        <p className="text-text-muted text-table mt-1.5">
           {primary ? primary.positionName : 'No active appointment'}
           {primary?.scopeName ? ` · ${primary.scopeName}` : ''}
           {context?.rotaryYearLabel ? ` · RY ${context.rotaryYearLabel}` : ''}
@@ -191,16 +191,16 @@ export function DashboardPage() {
                 className="border-border-subtle flex flex-wrap items-center justify-between gap-3 rounded-md border p-4"
               >
                 <div className="min-w-0">
-                  <p className="text-text-primary text-body-sm truncate font-medium">
+                  <p className="text-text-primary text-table truncate font-medium">
                     {appointment.positionName}
                   </p>
-                  <p className="text-text-muted text-caption truncate">
+                  <p className="text-text-muted text-label truncate">
                     {appointment.scopeName ?? appointment.scopeType}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <Badge tone="info">{appointment.scopeType}</Badge>
-                  <span className="text-text-muted text-caption tabular-nums">
+                  <span className="text-text-muted text-label tabular-nums">
                     from {appointment.startsOn}
                     {appointment.endsOn ? ` to ${appointment.endsOn}` : ''}
                   </span>
@@ -222,7 +222,7 @@ export function DashboardPage() {
       */}
       {context && context.permissions.length > 0 && (
         <details className="group">
-          <summary className="text-text-muted hover:text-text-primary text-body-sm inline-flex cursor-pointer items-center gap-2 transition-colors">
+          <summary className="text-text-muted hover:text-text-primary text-table inline-flex cursor-pointer items-center gap-2 transition-colors">
             <Icon
               name="expand"
               className="size-4 transition-transform group-open:rotate-90 motion-reduce:transition-none"
