@@ -210,11 +210,9 @@ permission, an error code or a table.
 
 ## Current phase
 
-**M0 — Foundations, M1 — Governance core and M2 — the reporting spine are all complete**
-(August 2026). **M3 — offline and mobile — and M4 — finance — are both CODE-COMPLETE.**
-M4 closed all eight of its exit criteria. M3 has not: session 4 is the manual device pass and
-has NOT been run, so neither milestone is closed until it has been.
-`docs/schema.sql` is at v2.1; 522 tests.
+**M0 — Foundations, M1 — Governance core, M2 — the reporting spine, M3 — offline and mobile,
+and M4 — finance are ALL COMPLETE AND CLOSED** (August 2026). `docs/schema.sql` is at v2.1;
+522 tests. **Next is M5 — the assessment engine**, `docs/15-ClaudeCode-M5-Sessions.md`.
 
 M0: monorepo and CI, schema translated and migrated, session authentication with lockout,
 mail delivery, TOTP with encrypted secrets and recovery codes, the request context and
@@ -232,30 +230,17 @@ configurable activity types with a `field_config` builder; the media pipeline wi
 sniffing and EXIF stripping; activities with reporting and verification; and a seed at the
 real shape — 68 clubs, 3,000 members, a year of activity.
 
-**Two items remain outside the code.**
+M3: an installable PWA with a hand-written service worker, and **the outbox** — everything a
+club officer creates goes through `submit()` in `apps/web/src/lib/offline/`, written to
+IndexedDB BEFORE any request is attempted, always, online or not. A `409` counts as SUCCESS,
+because that is what a client-generated id is for. **Do not add a second submission path.**
+Photographs are compressed on the device before they are queued. The device pass was run and
+passed on 18 August 2026 — on a flagship rather than the mid-range Android the checklist asks
+for, which is recorded in `docs/17-Device-Pass.md` §3 and carried into the M6 pilot.
 
-The first is organisational: the repository and the hosting accounts are on a personal
-account. ADR-011 and `docs/08-Incumbent-Assessment.md` both name that as the specific failure
-this project exists to correct. Create the district-owned GitHub and Fly organisations with
-two administrators, move the repository, then `fly launch` and add `FLY_API_TOKEN`.
-
-The second is the **M2 exit test, which has not been run**: a real club secretary filing a
-fellowship report with a photograph, on an Android phone, unassisted, in under three minutes
-— and watched. Not a developer friend; they navigate around problems a real user walks
-straight into. Every part of that path is built and tested. Whether it takes three minutes
-for somebody who has never seen it is not a question the suite can answer.
-
-**M3 sessions 1 and 2 are built.** The app is an installable PWA, and everything a club
-officer creates — activities, persons, membership events — goes through **the outbox** in
-`apps/web/src/lib/offline/`. The record is written to IndexedDB **before** any request is
-attempted, always, online or not; a `409` from the server counts as SUCCESS, because that is
-what a client-generated id is for. Do not add a second submission path: `submit()` is the
-only way a club officer's write reaches the API.
-
-**The payload budget is enforced, not aspirational.** `npm run bundle:check` fails the build
-over 250 KB gzipped of initial JS (currently 91.6 KB) and runs in CI. Routes are split by
-AUDIENCE: **a screen a club secretary uses on a phone is eager, everything else is lazy.**
-Photographs are compressed on the device before they are queued — `lib/images.ts`.
+M4: budgets and lines, transactions, dues invoicing and reconciliation, member dues with
+prepayment, and TRF giving with its own verification permission for the District Foundation
+Chair.
 
 **MONEY IS NEVER A JAVASCRIPT NUMBER.** `NUMERIC` in Postgres, `Decimal` in Prisma, a decimal
 STRING on the wire, converted only in `apps/web/src/lib/money.ts` and only to hand to
@@ -268,13 +253,36 @@ somebody types, comes from the server.
 (ADR-012), and since schema v2.1 they count CONFIRMED payments only — a recorded payment is a
 claim, and `dues.status` is a scored criterion.
 
-**Next: M3 session 4 — the device pass.** Not a coding session: `docs/17-Device-Pass.md`,
-on a mid-range Android over real mobile data. It has **not been run**, and two of the seven
-M3 exit criteria cannot be closed without it — nor can either milestone be closed. A service
-worker needs a SECURE CONTEXT, so a LAN address tests none of it: use Chrome's port
-forwarding to `localhost` over USB, or staging. After that, **M5 — the assessment engine**,
-`docs/15-ClaudeCode-M5-Sessions.md`.
+**The payload budget is enforced, not aspirational.** `npm run bundle:check` fails the build
+over 250 KB gzipped of initial JS (currently 104 KB) and runs in CI. Routes are split by
+AUDIENCE: **a screen a club secretary uses on a phone is eager, everything else is lazy.**
 
-See `docs/09-ClaudeCode-M0-Sessions.md`, `docs/12-ClaudeCode-M1-Sessions.md` and
-`docs/13-ClaudeCode-M2-Sessions.md` for the session prompts already used,
-`docs/10-Build-Log.md` for current state, and `docs/07-Roadmap.md` for milestones beyond M2.
+**The design system is `docs/18-Design-System.md` and it is not decoration.** Its governing
+rule is a register split: **report surfaces are austere, working surfaces are warm.** Every
+colour is a token — a literal hex in a component is a defect, and there is currently not one.
+Screens are built from `components/ui/page.tsx`, never hand-rolled. Tabs are routes and
+filters are URL parameters, because a view nobody can link to is a view nobody can share.
+Every domain code has a sentence in `lib/errors.ts` saying what to DO, and a test fails the
+build when a new code has none.
+
+**The pre-paint script in `apps/web/index.html` is admitted by CSP HASH.** Edit it without
+updating `PREPAINT_SCRIPT_HASH` in `platform/security-headers.ts` and the browser refuses it
+silently. Run the API suite after touching it.
+
+**Two items remain outside the code.**
+
+The first is organisational: the repository and the hosting accounts are on a personal
+account. ADR-011 and `docs/08-Incumbent-Assessment.md` both name that as the specific failure
+this project exists to correct. Create the district-owned GitHub and Fly organisations with
+two administrators, move the repository, then `fly launch` and add `FLY_API_TOKEN`.
+
+The second is the **M2 exit test, still unrun**: a real club secretary filing a fellowship
+report with a photograph, on an Android phone, unassisted, in under three minutes — and
+watched. Not a developer; they navigate around problems a real user walks straight into. M3's
+device pass proved the mechanics on a phone, but it was run by the developer, which is the one
+thing that test is designed to exclude.
+
+See `docs/09-ClaudeCode-M0-Sessions.md`, `docs/12-ClaudeCode-M1-Sessions.md`,
+`docs/13-ClaudeCode-M2-Sessions.md` and `docs/14-ClaudeCode-M3-M4-Sessions.md` for the session
+prompts already used, `docs/10-Build-Log.md` for current state, and `docs/07-Roadmap.md` for
+milestones beyond M5.

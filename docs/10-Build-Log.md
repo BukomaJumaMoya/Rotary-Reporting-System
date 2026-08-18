@@ -4,10 +4,10 @@
 describe what the system *should* be; this one records what has actually been built, what
 was decided along the way, and what is deliberately unfinished.
 
-Last updated: 17 August 2026, after M4 session 5. **M4 is code-complete.** **M0, M1 and M2 are complete; M3 is
-code-complete but NOT closed — its device pass has not been run; M4 is under way.**
+Last updated: 18 August 2026, at the M3 and M4 close. **M0, M1, M2, M3 and M4 are all
+complete and closed. Next is M5 — the assessment engine.**
 
-<!-- dis:state milestone=M2 schema=v2.1 tests=522 -->
+<!-- dis:state milestone=M4 schema=v2.1 tests=522 -->
 
 ---
 
@@ -18,33 +18,30 @@ can reach for; these two are what you need before writing anything. `npm run doc
 verifies most of what follows against the code, so if it is green the claims here are not
 merely assertions.
 
-**Where the build is.** M0 (foundations), M1 (governance core) and M2 (the reporting spine)
-are complete. **M3 and M4 are both CODE-COMPLETE. Neither is closed.**
+**Where the build is.** M0 (foundations), M1 (governance core), M2 (the reporting spine),
+**M3 (offline and mobile) and M4 (finance) are all COMPLETE and closed.** M3's device pass
+was run on 18 August 2026 and passed — `docs/17-Device-Pass.md` §3, including what it did
+and did not establish.
 
-M3 — offline and mobile — has sessions 1 (the PWA shell), 2 (the offline submission queue)
-and 3 (the payload budget) done. **Session 4 is a manual device pass and it has NOT been
-run**; two of the seven M3 exit criteria cannot be closed without it. Do not run
-`/close-milestone` for M3 until somebody has worked through `docs/17-Device-Pass.md` on a
-real phone.
+**The next milestone is M5 — the assessment engine.** Prompts are in
+`docs/15-ClaudeCode-M5-Sessions.md`. It is the milestone the whole system exists to serve,
+and the one where a bug is an award scandal rather than a ticket: build the resolvers with
+tests first.
 
-M4 — finance — is done across all five sessions and **all eight of its exit criteria are
-closed**. It is not "closed" only because M3 sits in front of it.
-
-Prompts are in `docs/14-ClaudeCode-M3-M4-Sessions.md`.
-
-A real club could use the system now: clubs, members, the membership event log and its
-derived roster, configurable activity types, activity reporting with photographs, and
-verification. Since M3 it also works without a signal — a report saved with no connection is
-written to the device and sent on its own when one returns — and it costs 92 KB to open.
-Since M4 it also keeps the books: budgets, transactions, dues and TRF giving, with money as
-`NUMERIC` end to end and a build-time check that keeps it that way.
+A real club can use the system now. Clubs, members, the membership event log and its derived
+roster, configurable activity types, activity reporting with photographs, and verification.
+It works without a signal — a report saved with no connection is written to the device and
+sent on its own when one returns — and it costs 104 KB to open. It keeps the books: budgets,
+transactions, dues and TRF giving, with money as `NUMERIC` end to end and a build-time check
+that keeps it that way. Since the design pass it also looks like something a district officer
+would put in front of a board.
 
 **Read in this order.** `CLAUDE.md` for the axioms and the non-negotiable rules → this
 section → §0a for what the last milestone changed about how you must write code → the
 session prompt for the milestone you are implementing. Reach into §4 when you hit something
 surprising; it is written to answer "why is it like this".
 
-**What is true about the system right now** — the four things most likely to trip you up:
+**What is true about the system right now** — the five things most likely to trip you up:
 
 1. Scoped models are absent from the `prisma` export's *type*. `prisma.activity` does not
    compile. Use `db(ctx)`, and `findFirst`/`updateMany`/`deleteMany` rather than
@@ -56,17 +53,22 @@ surprising; it is written to answer "why is it like this".
    unauthenticated-PII harness will not walk it and will pass without proving anything.
 4. Every new database guard needs a check in `apps/api/prisma/checks/invariants.sql`, and
    the suite asserts an exact count — adding a guard without a check fails the build.
+5. **Money is never a JavaScript number.** `NUMERIC` in Postgres, `Decimal` in Prisma, a
+   decimal STRING on the wire, converted only in `apps/web/src/lib/money.ts`.
+   `docs:check` FAILS on `Number(`, `parseFloat` or `parseInt` anywhere in the finance path
+   without a `money-safe:` comment saying why.
 
 **Open items that shape the next milestone** are in §5. One is not code: the repository and
 the hosting accounts are still on a personal account (ADR-011, M0's last unmet exit
 condition). It needs a district decision and two named administrators, not a commit.
 
-**The M2 exit test has not been run.** A real club secretary filing a fellowship report with
-a photograph, on an Android phone, unassisted, in under three minutes — and watched. Every
-part of that path is built and tested; whether it takes three minutes for somebody who has
-never seen it is not something the test suite can answer.
-
----
+**Two exit tests remain unrun, and both need a person rather than a suite.** The M2 test — a
+real club secretary filing a fellowship report with a photograph, unassisted, in under three
+minutes, watched — has still not been run. And M3's device pass was run on a FLAGSHIP over
+real mobile data, which discharges half of what `docs/17-Device-Pass.md` §0 asks for: it
+proves the mechanics and the metered-data cost, and proves nothing about perceived speed on
+the mid-range Android the 250 KB budget exists for. Re-run that checklist on the first pilot
+handset that is not a flagship.
 
 ## 0a. What the last milestone changed about the rules
 
@@ -74,41 +76,49 @@ never seen it is not something the test suite can answer.
 one.** Its purpose is that a fresh session does not rediscover a rule by breaking it. The
 full history is in §4.
 
-**After M2, when writing code:**
+**After M3 and M4, when writing code:**
 
-- **Every response containing a person goes through `serialisePerson`** —
-  `modules/people/serialiser.ts` — INCLUDING the nested ones inside activities, rosters,
-  attendees and appointments. Contact data leaks through relations, not through the endpoint
-  anybody reviews. Withheld fields are ABSENT, not null. Tell it `rosterClubIds` when you
-  know them; omitting them falls back to the visibility flags, which is the safe direction.
-- **Every background job payload carries `districtId` and `rotaryYearId`** and is validated
-  on RECEIPT. `runJob` hands the handler a `systemContext`, never the ids — the same
-  discipline as `withBody` on the HTTP side.
-- **Raw SQL now has TWO homes**: `modules/assessment/resolvers/` and
-  `modules/membership/analytics.ts`. It bypasses the scope extension completely, so those
-  files bind district, year and club from the context BY HAND in every query. ESLint and
-  `doc-check.mjs` both name the exemption; adding a third home means editing both.
-- **A module that needs another module's numbers calls an exported service function.** The
-  club summary reads a roster count and an activity count through `membership` and
-  `activity`, never by querying `club_rosters` or `activities`. `assessment.markStale()`
-  exists as a no-op for the same reason: M5 fills in a body rather than hunting for call
-  sites.
-- **Prisma 7 does not populate `meta.target` on P2002.** Match on `meta.modelName`. Code
-  matching `target` — which is what every example does — silently never fires, and the
-  caller gets a 500 where a domain error was intended.
-- **A CORRECTION is a retraction, not a state.** It supersedes its target and is then
-  excluded from the ranking, so `club_rosters` and the as-at reconstruction both carry
-  `WHERE event_type <> 'CORRECTION'`. Two definitions of "who is a member" is one that will
-  disagree with the roster.
-- **Uploads are typed by MAGIC BYTES**, capped while reading, stored under a GENERATED key,
-  and stripped of every piece of metadata by the worker. Never trust a filename, never trust
-  a `Content-Type`, never keep the original after the variants exist.
-- **`clubs.meeting_day` is 0 = Sunday**, matching Postgres `EXTRACT(DOW)`. The column has
-  been `CHECK (0..6)` since M0 and the contract assumed ISO 1..7 until M2 s10 found it.
+- **`submit()` in `lib/offline/submit.ts` is the ONLY way a club officer's write reaches the
+  API.** The record is written to IndexedDB BEFORE any request is attempted, always, online
+  or not. Do not add a second submission path; a screen that calls `api.post` directly is a
+  screen that loses work on a bad connection.
+- **A `409` from the server counts as SUCCESS in the outbox.** That is what a client-generated
+  id is for: the row is already there, so the retry has achieved its purpose.
+- **Money is never a JavaScript number**, end to end. `NUMERIC` → `Decimal` → decimal STRING
+  on the wire → `Intl.NumberFormat` in `lib/money.ts`, and nowhere else. There is no
+  client-side sum in this application: every total, including a budget's running total while
+  somebody is typing, comes from the server. `docs:check` enforces it.
+- **No stored status.** `dues_invoices.status` and `member_dues.amount_paid` are VIEWS, and
+  since schema v2.1 they count CONFIRMED payments only. A recorded payment is a claim;
+  `dues.status` is a scored criterion, so counting an unconfirmed one would let a club award
+  itself points. If you add a derived financial figure, it is a view (ADR-012).
+- **Writing into a year the caller is not in goes through `systemContext`, never around the
+  layer.** Dues prepayment is the worked example: the scoped layer refuses it by design, and
+  the sanctioned answer is a system context with a MANDATORY reason that reaches `audit_log`.
+- **A route added after this point must also be added to the payload story.** Routes are split
+  by AUDIENCE: a screen a club secretary uses on a phone is eager, everything else is lazy.
+  `npm run bundle:check` fails over 250 KB gzipped of initial JS and runs in CI.
+- **The pre-paint script in `apps/web/index.html` is admitted by CSP HASH.** Editing it
+  without updating `PREPAINT_SCRIPT_HASH` in `platform/security-headers.ts` makes the browser
+  refuse it silently — nothing throws, and the application merely flashes on every cold load.
+  `security-headers.test.ts` recomputes the hash from the file and fails the build. **Run the
+  API suite after touching that script.**
+- **Every colour is a token and no component names a ramp step.** Components use the semantic
+  layer — `bg-surface`, `text-text-muted`, `border-border`. A literal hex in a component is a
+  defect; grepping components for one currently returns nothing, and it should stay that way.
+- **Screens are built from `components/ui/page.tsx`**, not hand-rolled. `PageLayout`,
+  `StatGrid`, `ListGroup`/`ListRow`, `FilterBar`, `FilterTabs`, `SearchField`,
+  `SectionHeading`. A table is for COMPARISON; a list is for IDENTIFICATION. See
+  `docs/18-Design-System.md` §4 and §8.
+- **Tabs are routes and filters are URL parameters.** A view somebody cannot link to is a view
+  they cannot share, and the back button silently stops working. The club profile carries
+  `?tab=`.
+- **Every domain code needs a sentence in `apps/web/src/lib/errors.ts`** saying what happened
+  AND what to do. `errors.test.ts` reads the server's own registry, so a new code fails the
+  build until somebody writes its line.
 
-**No axiom changed in M2.** The conformance review is in §4a.
-
----
+**No axiom changed in M3 or M4.** The conformance review is in §4a, including one
+pre-existing constant it put on the record.
 
 ## 1. Where the build is
 
@@ -147,17 +157,28 @@ full history is in §4.
 | M3 session | State | Commit |
 |---|---|---|
 | 1 — PWA shell and service worker | **done** | `1bcd510` |
-| 2 — Offline submission queue | **done** | this commit |
+| 2 — Offline submission queue | **done** | `c0f8299` |
 | 3 — Payload budget | **done** | `bf36e63` |
-| 4 — Real device pass | **manual, not a code session** — checklist in `docs/17-Device-Pass.md`, **not yet run** | |
+| 4 — Real device pass | **done, 18 Aug 2026** — passed on a high-end Android over real mobile data; results and limits in `docs/17-Device-Pass.md` §3 | manual |
 
 | M4 session | State | Commit |
 |---|---|---|
-| 1 — Budgets and transactions | **done** | this commit |
-| 2 — Dues invoicing and reconciliation | **done** | this commit |
-| 3 — TRF contributions | **done** | this commit |
-| 4 — Finance UI | **done** | this commit |
-| 5 — Finance hardening | **done** | this commit |
+| 1 — Budgets and transactions | **done** | `ef9cfd0` |
+| 2 — Dues invoicing and reconciliation | **done** | `7b670ef` |
+| 3 — TRF contributions | **done** | `a2263e4` |
+| 4 — Finance UI | **done** | `0fd0fc1` |
+| 5 — Finance hardening | **done** | `f9fab38` |
+
+**The design pass** ran after M4's code and before the close. Presentation only — no endpoint,
+no schema, no permission and no contract changed. Three rounds, because the second overshot
+and the third corrected it; the reasoning is in §4 and the settled system is
+`docs/18-Design-System.md`.
+
+| Design round | State | Commit |
+|---|---|---|
+| 1 — OKLCH tokens, typography, shell | **done** | `db6d070`, `af45094` |
+| 2 — institutional register (superseded in part) | **done** | `12b6cf3` |
+| 3 — the correction, and the pages themselves | **done** | `153ca7d`, `4c53ca1`, `1e66a82`, `bdc6909` |
 
 CI runs typecheck → lint → format:check → test → build → `npm audit` against a
 `postgres:17` service container, and is green on `main`.
@@ -1965,6 +1986,36 @@ naive timestamps. The rest is judgement and belongs here.
 **A row may legitimately say an axiom was bent.** Recording that is the point; an axiom
 nobody may ever qualify becomes an axiom people route around silently.
 
+### As at M3 and M4 close
+
+Written at the close, after the device pass was run. The M4 code-complete review below still
+stands for the finance and offline code; this row set re-asks each question of **everything
+since**, which is the three-round design pass — presentation-only work, and therefore work
+that is easy to wave through without asking.
+
+| # | Axiom | Holds? | What has happened to it since the code-complete review |
+|---|---|---|---|
+| 1 | The Rotary Year is a dimension, not a filter | **holds, and is now visible** | No new data path. The design pass made the axiom legible for the first time: a badge in the header carrying `RY 2027-28`, and an amber strip across the content when the context cannot be written to. That exists to kill the worst failure of a year-scoped system — filling in a form and being refused on submit with `YEAR_LOCKED`. The client reads `isYearWritable` off the resolved context; it never infers the year from a URL. |
+| 2 | District affiliation is temporal | **holds, untouched** | No query was added or changed. `clubs` still has no `district_id`. |
+| 3 | Membership is an event log | **holds, untouched** | The roster screen became a list, and the as-at control was deliberately kept as a labelled field rather than folded into the filter bar — because it does not filter the roster, it RECONSTRUCTS it from the event log at a past date, and a control that hides that distinction invites somebody to read a reconstruction as the present. |
+| 4 | One activity model | **holds** | Activities became a list rather than a table. Rendering is still driven by the type's own row; nothing acquired a bespoke screen. |
+| 5 | The assessment rubric is data | **not yet exercised — and one pre-existing constant is now on the record** | Unchanged by the design pass. The review did surface something that predates it: `TIER_THRESHOLD = 40` in `modules/org/clubs.service.ts` decides T1 against T2, and tier decides which framework a club is scored under. It sits upstream of the rubric rather than inside it, and is frozen within a year by design — but it is a number a district could plausibly vote to change, which is exactly the test this axiom sets. **Not a break, and not introduced this milestone**; it is a row in §5 to settle when M5 makes frameworks real. |
+| 6 | Personal data is private by default | **holds — and the design pass made one decision FOR it** | Two things to record. First, the command palette searches SCREENS and not records, deliberately: filtering clubs and members properly needs a server-side search endpoint, and doing it on the client would mean shipping the district's member list to every device in order to search it — the precise failure this project exists to correct. Second, the rebuilt roster row renders `person.email` and `person.phone` when present, which is safe only because `serialisePerson` OMITS withheld fields rather than nulling them; a serialiser that returned `null` would have had the client render an empty line instead of nothing, and nobody would have seen the difference. The PII harness walks all 115 routes and passes. |
+
+**Bent, deliberately, and why.** Nothing new. The two standing items from the code-complete
+review are unchanged and still correct: the outbox stores a member's own unsent submissions
+unencrypted in IndexedDB and survives sign-out on purpose, and `markStale()` is still a no-op
+whose call sites all become load-bearing at once in M5.
+
+**One thing the design pass got wrong and then corrected**, worth recording because the
+mistake is the kind that looks like discipline. The second design round applied a
+report-publication register to the whole application — shadows removed, every surface set to
+one value, brand colour cut to three appearances. On a printed page that is restraint; in an
+interface it produced cards indistinguishable from the page behind them, and read as
+unstyled. The settled rule is a split, now the opening section of `docs/18-Design-System.md`:
+**report surfaces are austere, working surfaces are warm.** No axiom was involved, but the
+failure mode — applying a correct principle to the wrong surface — is worth recognising again.
+
 ### As at M4 code-complete (M3 and M4 both awaiting the device pass)
 
 Written when M4's code landed rather than at a close, because the close is blocked on a
@@ -2046,18 +2097,18 @@ re-checked whenever a new write path is added.
 | ~~The worker process group in `fly.toml` is commented out~~ | **uncommented in M2 session 1**; two process groups from one image | — |
 | A dead-lettered job is recorded but not retryable from the UI | `JOB_FAILED` in `audit_log` carries the queue, the error and the payload, which is enough to re-run it by hand; a button needs a screen that does not exist | M7, with the admin surface |
 | `recordAction(EXPORT, …)` exists and is unused | there is no export module yet | M7 |
-| The M2 exit test has not been run | a real club secretary filing a report on a phone in under three minutes, WATCHED. Every part of the path is built and tested; whether it takes three minutes for somebody who has never seen it is not a thing the suite can answer | before M3 |
+| The M2 exit test has not been run | a real club secretary filing a report on a phone in under three minutes, WATCHED. Every part of the path is built and tested; whether it takes three minutes for somebody who has never seen it is not a thing the suite can answer. M3's device pass covered the MECHANICS on a phone but was run by the developer, not by a secretary who had never seen the screen — which is the whole point of this one | **carried**: it needs a willing club secretary and an hour, not a commit. Fold it into the M6 pilot's first week |
 | A verification comment is logged, not stored — for activities AND now for TRF contributions | there is no `activity_comments` table, and adding one for a single string belongs with M5's dispute surface, where comments already have a home. The contract still REQUIRES one for anything but VERIFIED, so the officer has to articulate the objection even while it only reaches the audit log | M5 |
-| A dues payment cannot be corrected or reversed | `dues_payments` has no update or delete path. The honest fix is a compensating negative row, which the `amount >= 0` CHECK forbids, or a `voided_at` column and a view that skips it — a schema change, and one worth designing rather than bolting on at the end of a session | **M4 session 5** |
-| TRF contributions have no bulk entry, and the figures are transcribed BY HAND from My Rotary | there is no feed. The District Foundation Chair reads club × fund giving off `my.rotary.org` and the Foundation reports; 68 clubs times several funds, typed one row at a time, is how the reconciliation stops happening. The M4 s4 screen should be a club × fund grid rather than a form, and a paste-a-table import belongs with M7's export/import surface | **M4 session 4** for the grid; M7 for import |
+| A dues payment cannot be corrected or reversed | `dues_payments` has no update or delete path. The honest fix is a compensating negative row, which the `amount >= 0` CHECK forbids, or a `voided_at` column and a view that skips it. **M4 session 5 did not build it** — the session went on hardening and the scope test instead, and a schema change to the payment trail deserved its own design rather than the end of a session. It matters more now than it did: `dues.status` is a scored criterion, so a mistyped payment that cannot be reversed is a score that cannot be corrected | M5, alongside disputes — the surface where a wrong figure already has a correction path |
+| TRF contributions have no bulk entry, and the figures are transcribed BY HAND from My Rotary | there is no feed. The District Foundation Chair reads club × fund giving off `my.rotary.org`; 68 clubs times several funds, typed one row at a time, is how the reconciliation stops happening. **M4 session 4 shipped a form and a by-fund summary, not the grid** — the recording path was the session's job and the bulk path was not, which was the right call under the time but leaves the transcription slow. A paste-a-table import belongs with M7's import surface | M7, with import — the grid is not worth building twice |
 | Nothing records WHAT My Rotary said, only what the district entered | **Asked and DECLINED, 17 August 2026.** A `trf_source_readings` snapshot was proposed so the gap between RI's figure and the district's could be queried rather than remembered. The district does not want the table: the reconciliation stays on paper, and the system records the district's own figure only. **Do not re-raise it** — the answer is not "not yet", it is no | not planned |
 | A dead-lettered job cannot be re-run from the UI | `JOB_FAILED` in `audit_log` carries the queue, the error and the payload, which is enough to re-run by hand | M7 |
 | No list endpoint accepts `?format=xlsx` yet | the export module queues a job and returns a signed URL; every list is written to take the parameter | M7 |
-| Media is never re-processed if the worker was down at upload | the row keeps its original key and reports `isProcessed: false`, so the state is visible rather than silent; a sweep would be a second scheduler for one case | M3, with the offline queue |
+| Media is never re-processed if the worker was down at upload | the row keeps its original key and reports `isProcessed: false`, so the state is visible rather than silent; a sweep would be a second scheduler for one case. **Not built in M3** — the milestone's queue is the CLIENT's outbox, which is a different problem, and nothing in the device pass hit the case | **carried**: revisit only if a pilot club actually loses a variant. The failure is visible and recoverable by re-upload |
 | Only ACTIVITIES, PERSONS and MEMBERSHIP EVENTS go through the outbox | those are what a club officer creates in the field. Governance and administration screens are used at a desk, and queueing an appointment nobody can see the effect of until it syncs would be worse than refusing it offline | not planned |
 | A queued photograph that fails to upload is dropped silently | the activity is filed, which is what the club is assessed on, and the image can be added again from the detail screen; a per-file retry queue is a second queue with its own failure modes | revisit if it happens in practice |
 | Background Sync cannot be exercised over a LAN address | a service worker needs a secure context, so `http://192.168.x.x` gets no worker at all. Use `localhost` with adb port forwarding, or staging | not fixable |
-| The compression itself is only proven by the FALLBACK path | `compressImage` needs a real canvas and a real image decoder, so the node suite can only assert that a browser which cannot do the work gets its file back untouched. Whether a 6 MB photograph actually comes out under 400 KB is measured in `docs/17-Device-Pass.md` | **M3 session 4**, on hardware |
+| The compression itself is only proven by the FALLBACK path | `compressImage` needs a real canvas and a real image decoder, so the node suite can only assert that a browser which cannot do the work gets its file back untouched. **The device pass ran and passed, but its measurement table was not captured**, so the 400 KB budget is still unproven by a recorded number rather than by observation | M6, on the first pilot handset that is not a flagship — see `docs/17-Device-Pass.md` §3 |
 | "Caches cleared on logout" has no automated test | `clearDeviceState()` runs on sign-out and is straightforward, but Cache Storage needs a browser: the web suite runs in node, and asserting it properly wants a jsdom-plus-`Cache` harness or a Playwright case. It is on the M3 exit checklist and is currently proven by reading the code, which is not the same thing | M6, with the pilot — or sooner if a browser-mode runner is added for another reason |
 | Person photographs have no upload path at all | `persons.photo_url` is a column nothing writes. When one is built it must go through the same compression and the same thumb/full split as activity media, or a directory page becomes the heaviest screen in the system | M6 |
 | A malformed or unauthorised `?year=` fails EVERY authenticated route, including `/auth/logout` | context resolution is global and eager; sending `?year=` to logout is a client bug | not planned |
@@ -2066,11 +2117,39 @@ re-checked whenever a new write path is added.
 | ~~A person's contact details have no endpoint at all~~ | **built in M2 session 5**: one serialiser, three ways to see contact, absent-not-null | — |
 | Committee scope expands downwards but a sub-committee chair cannot see the parent | nothing expands upwards, deliberately | not planned |
 | Rollover does not carry appointments forward | an appointment is a decision for the incoming DRR to make, not a default | not planned |
+| The command palette searches SCREENS, not records | filtering clubs, members and activities properly needs a server-side search endpoint that filters in the DATABASE. Doing it on the client would mean shipping the district's member list to every device in order to search it, which is the precise failure this project exists to correct | M5 or later, when there is an endpoint worth calling |
+| The chart house style is written down but unbuilt | `docs/18-Design-System.md` §5 specifies direct labelling, small multiples, bullet charts, no pie or donut, and a "View as table" toggle on every figure. **There is not one chart in the application yet**, so there was nothing to apply it to | M5, with the scorecard and standings |
+| Revision markers, series breaks and "How is this calculated?" | all three need `assessment_period_results` and `assessment_scores.evidence` to exist. They are the conventions that make a published score defensible rather than merely displayed, and they are specified so the intent survives to the milestone that owns the screens | M5 |
+| `TIER_THRESHOLD = 40` is a TypeScript constant | tier decides which framework a club is scored under, and the boundary is a number a district could plausibly vote to change — which is the test axiom 5 sets. It sits upstream of the rubric rather than inside it, and is frozen within a year by design, so it is not a break. Settle it when frameworks become real rows: either it becomes a district setting, or the reason it cannot is written down | M5 |
+| Exports carry no cover sheet or methodology note | `docs/18-Design-System.md` §6 asks an XLSX to open on source, coverage, as-at and method before the data. The export pipeline itself is M7 | M7 |
+| The accessibility statement has never been read by a screen-reader user | `/accessibility` claims WCAG 2.1 AA with AAA body contrast, and the interface was built to it — keyboard operability, trapped focus, real table semantics, never colour alone. But it has been tested against automated checks and a keyboard, not by somebody who uses assistive technology daily, which is the only test that settles it. The statement says so itself | M6, with the pilot |
 
 
 ---
 
 ## 6. Traps worth knowing
+
+**A transform script anchored on `
+` silently matches nothing in a CRLF file.** Several
+source files are CRLF in the working tree via git's `autocrlf`. A Node script doing
+`source.indexOf('  return (
+    <>
+')` finds nothing, replaces nothing, and **exits zero
+reporting success**. Python's default text read normalises line endings and does not have the
+problem. Two migration scripts reported "0 replacements across 0 files" for this reason before
+it was spotted; both were believed at first, because a script that fails loudly is easier to
+trust than one that succeeds emptily.
+
+**A shell heredoc collapses `\b` to ``.** In a JavaScript template literal `` is a
+BACKSPACE character, not a regex word boundary, so a word-bounded replacement written into a
+heredoc matches nothing at all. Write transform scripts to a FILE and run the file. The same
+applies to any script long enough to be worth writing: two heredocs in this milestone were
+truncated or mangled before the pattern was recognised.
+
+**`/tmp` is not the same directory for Git Bash and for Python on this machine.** A file
+written with `cat > /tmp/x` was not visible to a Python process opening `/tmp/x`. Use the
+session scratchpad path for intermediate files.
+
 
 **npm prunes transitive optional platform binaries.** Any `npm install -w <pkg> <dep>`
 removes `@esbuild/*`, breaking `tsx` and therefore `npm run dev`. They are pinned in the

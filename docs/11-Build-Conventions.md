@@ -250,9 +250,19 @@ Amend these as you reach them rather than working around them.
 
 | Document | Issue |
 |---|---|
-| `01-SRS.md` FR-5.3, FR-6 | Describes invoice status and assessment totals as stored state |
+| `01-SRS.md` FR-6 | Describes assessment totals as stored state. (FR-5.3 on invoice status was settled in M4: `dues_invoice_states` is a VIEW, and since v2.1 it counts confirmed payments only.) |
 | `03-Data-Model.md` §6 | ERD shows `total_score`, `max_possible`, `rank_in_tier` as columns |
 | `06-Assessment-Engine.md` §5 | `upsertScore` cannot use Prisma `upsert` on a scoped delegate |
+
+**Amended in M3 and M4** and now current:
+
+| Document | What changed |
+|---|---|
+| `05-API-Spec.md` | The finance surface as built — budgets, transactions, dues, member dues and TRF — with the four new permissions in §10 and the new domain codes in §1 |
+| `07-Roadmap.md` M3, M4 | Both marked complete, with what landed AND what did not |
+| `schema.sql` | now v2.1 — budget approval freezes its lines, and both dues state views count CONFIRMED payments only. The second was a bug: it would have let a club award itself points for a payment it merely claimed |
+| `17-Device-Pass.md` §3 | The run recorded, including the two things it did not establish |
+| `18-Design-System.md` | New. The operative design system, merged from three rounds of direction, with every superseded rule marked rather than deleted |
 
 **Amended in M1** and now current — do not work around these:
 

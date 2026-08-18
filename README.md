@@ -160,10 +160,15 @@ the deployment rather than racing it.
 Migrations run as a Fly **release command**, once, before the new version takes traffic.
 Never from an app process: every instance would race the others.
 
-The web client is a static bundle with no secrets in it. CI builds it and uploads it as an
-artifact; point the last step of the `web` job at the district's static host once that
-account exists. **This is now due** — M2 is the first milestone whose screens somebody
-outside the repository needs to open.
+**The web client is served by the API container, same origin** (M2 session 2). That is why
+the content security policy is short — no CORS to open, no third-party script host — and why
+`connect-src 'self'` covers every request the client makes. There is no separate static host
+to point anything at.
+
+One consequence worth knowing: the SPA's pre-paint script is admitted by a CSP **hash**, so
+`apps/web/index.html` and `platform/security-headers.ts` are coupled. Editing that script
+without updating the hash makes the browser refuse it silently. `security-headers.test.ts`
+recomputes it and fails the build.
 
 **Required in staging and production**, beyond the defaults in
 [`.env.example`](.env.example):
@@ -178,10 +183,9 @@ outside the repository needs to open.
 | `COOKIE_SECURE=true` · `TRUST_PROXY_HOPS=1` | Behind Fly's TLS termination                                                                                                                |
 | `SMTP_*` · `MAIL_FROM`                      | Password reset and invitations are useless without delivery                                                                                 |
 
-**The worker process is not deployed yet.** pg-boss has not been built; notifications
-deliver inline and the `notifications` row is already the queue. The process group is
-present in `fly.toml`, commented, so it goes in with the jobs module rather than
-crash-looping until then.
+**The worker runs as a second process group from the same image** (M2 session 1). pg-boss is
+pinned to the v10 line — v11 and later require Node 22, and this project's baseline is Node 20. Jobs get a `systemContext` with a mandatory reason rather than the raw ids, which is the
+same discipline `withBody` enforces on the HTTP side.
 
 ## Repository layout
 
@@ -212,7 +216,12 @@ the result:
 ```bash
 npm run docs:check                          # cheap; run it any time
 npm run docs:check -- --strict --with-db    # the milestone gate
+npm run bundle:check                        # the 250 KB payload budget. Build first.
 ```
+
+`bundle:check` reads Vite's manifest, walks the entry's static imports, and fails over
+**250 KB gzipped of initial JS**. It runs in CI. Routes are split by AUDIENCE rather than by
+size: a screen a club secretary opens on a phone is eager, everything else is lazy.
 
 `docs:check` compares the documents against the code: every seeded permission appears in
 the API spec and vice versa, every registered route is documented, every error code's

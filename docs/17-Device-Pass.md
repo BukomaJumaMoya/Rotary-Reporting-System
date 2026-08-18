@@ -133,16 +133,44 @@ queue, and it stops M3 being done.
 
 ## 3. Results
 
-*Not yet run.* Fill this in — date, handset, network, and what actually happened, including
-the parts that went fine. A checklist with no recorded run is a checklist somebody will
-assume was run.
+**Run on 18 August 2026 by the district developer. Outcome: PASS.** Every item on the
+checklist behaved, and no friction point was judged worth logging.
 
 | Date | Handset | Network | Outcome |
 |---|---|---|---|
-| | | | |
+| 18 Aug 2026 | High-end Android | Real mobile data | **Pass** — full checklist, no data loss |
+
+### What this pass does and does not establish
+
+Recorded plainly, because a pass with an unstated limitation is worse than no pass: somebody
+reads the word "pass" in a year and assumes more was proved than was.
+
+**Established.** The mechanics. A service worker registered against a secure context; the app
+installed; a report with a photograph was filed and survived; the outbox queued, drained and
+did not double-submit; and it ran over **real mobile data**, which is the half of §0 that
+matters most and the only condition that says anything about metered cost.
+
+**Not established.** §0 asks for a **mid-range** phone and this was a flagship. The document's
+own words are that "a flagship on wifi will pass everything and tell you nothing" — half of
+that caveat is discharged by the real-data connection, and half is not. Nothing here is
+evidence about **perceived speed on the hardware the budget exists for**: first paint, the
+cost of client-side image compression, or scroll behaviour on a cheap Tecno or Infinix. Those
+are precisely what a fast CPU hides.
+
+**The measurement table below was not captured**, so it stays empty rather than being filled
+in from the laptop build. The built column is what the build produces; an empty "actual on
+device" column is an honest gap, and a guess in it would be worse than the gap.
+
+**What to do about it.** Not a blocker for M3 — the milestone is about whether offline works,
+and it does. It is a **standing item for the M6 pilot**, where ten to fifteen clubs will
+supply exactly the mid-range hardware this pass could not, under exactly the conditions that
+matter. Re-run this checklist on the first pilot handset that is not a flagship.
 
 ### Friction log
 
+**Deliberately empty.** Nothing was judged worth logging on this run — recorded explicitly so
+a later reader can tell "nothing found" apart from "nobody wrote it down".
+
 | # | What happened | Severity | Lands in |
 |---|---|---|---|
-| | | | |
+| — | — | — | — |

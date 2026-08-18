@@ -83,17 +83,27 @@ Clubs CRUD with RI IDs, affiliations, clusters, tier calculation. Persons with v
 
 Get an actual secretary to do this. Watch them. Do not ask a fellow developer.
 
-### M3 — Offline and mobile (Jan 2027)
+### M3 — Offline and mobile (Jan 2027) — ✅ **COMPLETE, closed 18 August 2026**
 
 Service worker, PWA manifest, install prompt. IndexedDB outbox with background sync. Idempotent replay on the server. Image compression client-side before upload. Bundle analysis against the 250 KB budget. Test on a real mid-range Android on a throttled connection, not on a laptop.
 
-*Exit test:* submit three reports in aeroplane mode, reconnect, all three appear exactly once.
+*Exit test:* submit three reports in aeroplane mode, reconnect, all three appear exactly once. **Passed.**
 
-### M4 — Finance (Feb 2027)
+**What landed.** An installable PWA with a hand-written service worker. Everything a club officer creates — activities, persons, membership events — goes through one outbox: the record is written to IndexedDB BEFORE any request is attempted, and a `409` counts as success, which is what a client-generated id is for. Photographs are compressed on the device before they are queued. The payload budget is enforced in CI, not aspirational: **104 KB of the 250 KB** initial JS.
+
+**What did not.** The device pass was run on a **flagship**, not the mid-range Android the roadmap asks for. That discharges the mechanics and the metered-data cost — it ran over real mobile data — and discharges nothing about perceived speed on cheap hardware. Its measurement table was not captured. Both are recorded in `docs/17-Device-Pass.md` §3 and carried into the M6 pilot rather than ticked around.
+
+### M4 — Finance (Feb 2027) — ✅ **COMPLETE, closed 18 August 2026**
 
 Budgets and lines, transactions, club finance summary. Dues invoices, payments, receipts, reconciliation view. Member dues with prepayment. TRF contributions with verification.
 
-*Exit test:* the District Treasurer reconciles a partial payment and the club sees an accurate balance and receipt.
+*Exit test:* the District Treasurer reconciles a partial payment and the club sees an accurate balance and receipt. **Passed** — all eight exit criteria closed.
+
+**What landed.** Money is `NUMERIC` end to end, a decimal STRING on the wire, and a build-time check fails on `Number(`, `parseFloat` or `parseInt` anywhere in the finance path. There is no client-side sum in the application: every total comes from the server. Dues and member-dues state are VIEWS, never stored columns — and since schema v2.1 they count **CONFIRMED payments only**, because a recorded payment is a claim and `dues.status` is a scored criterion.
+
+**What did not.** A dues payment still cannot be corrected or reversed, and TRF still has no bulk entry — both in §5 of the build log with their new targets. Neither blocks the milestone; both matter more once M5 turns these figures into scores.
+
+**A design pass ran between M4's code and this close.** Presentation only: no endpoint, no schema, no permission, no contract. Three rounds — the second overshot into a report-publication register that made working screens look unstyled, and the third corrected it. The settled system is `docs/18-Design-System.md`; the governing rule is that report surfaces are austere and working surfaces are warm.
 
 ### M5 — Assessment engine (Feb–Mar 2027)
 
