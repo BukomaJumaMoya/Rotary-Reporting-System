@@ -42,7 +42,34 @@ describe('the pre-paint script is admitted by the policy that ships with it', ()
     // If this fails at the count, someone added a second inline script. It needs its own
     // hash in `script-src`; it will not inherit this one.
     expect(scripts).toHaveLength(1);
-    expect(sha256(scripts[0] ?? '')).toBe(PREPAINT_SCRIPT_HASH);
+
+    const script = scripts[0] ?? '';
+
+    /*
+     * LINE ENDINGS FIRST, because that is what this usually is.
+     *
+     * A hash covers exact bytes, so the same file checked out with CRLF hashes differently
+     * from the one the policy was written against — and the symptom is identical to somebody
+     * having edited the script and forgotten the hash. `.gitattributes` pins the repository
+     * to LF everywhere precisely so this cannot happen; if it has fired anyway, that setting
+     * is missing or has been overridden locally, and no amount of staring at the script will
+     * show it. Checked before the real assertion so the failure names its own cause.
+     */
+    expect(
+      // Carriage return by code point, so this line cannot itself be mangled by the
+      // very line-ending conversion it exists to detect.
+      script.includes(String.fromCharCode(13)),
+      'index.html has CRLF line endings, so its bytes — and therefore its hash — differ from ' +
+        'the LF version the policy was written against. This is a checkout problem, not a ' +
+        'script problem: check .gitattributes and `git config core.autocrlf`.',
+    ).toBe(false);
+
+    expect(
+      sha256(script),
+      'the inline script in apps/web/index.html no longer hashes to PREPAINT_SCRIPT_HASH in ' +
+        'platform/security-headers.ts. If the script was edited on purpose, update the hash ' +
+        'there; otherwise the browser will silently refuse to run it.',
+    ).toBe(PREPAINT_SCRIPT_HASH);
   });
 
   it('still matches after Vite has built the page', () => {

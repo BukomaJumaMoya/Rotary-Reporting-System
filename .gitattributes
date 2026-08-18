@@ -1,0 +1,21 @@
+# Line endings are LF in the repository AND in every working tree, on every platform.
+#
+# This is not a style preference. `apps/web/index.html` carries an inline script that the
+# Content-Security-Policy admits by SHA-256 hash, and a hash covers exact bytes — so a
+# working tree checked out with CRLF hashes differently from the one the policy was written
+# against, and a build made from it ships a policy that refuses its own script. The failure
+# is silent in the browser and invisible in CI, because CI runs on Linux and gets LF.
+#
+# Git already stored LF; only Windows working trees were converted on checkout. Setting this
+# therefore changes no file content, only what lands on disk.
+#
+# It also stops a second, quieter problem: transform scripts anchored on "\n" match nothing
+# in a CRLF file and exit zero, which cost real time during the M4 design pass.
+* text=auto eol=lf
+
+# Binary, never converted or diffed as text.
+*.woff2 binary
+*.png    binary
+*.jpg    binary
+*.ico    binary
+*.pdf    binary
